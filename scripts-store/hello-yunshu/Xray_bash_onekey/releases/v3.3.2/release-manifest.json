@@ -1,0 +1,12 @@
+{
+  "bundleSha256": "88f6f4d679da05ed14c016bfac40f67399d61985e2528b05f3c5b3367f71071c",
+  "candidateCommit": "1b2bde9780931682cee0585cefdde7feb39d5d89",
+  "canonicalCommit": "f91d9dfacffdec6268277d80c80aaab4d2042017",
+  "canonicalDigest": "67d65c9b050608937f695bcf2d0f4c04833d25c5718883591c3f38b9772ebfbf",
+  "installSha256": "764ac1253591f1f9d46c1b69ac3ead593d2ea35012ffbf79f583ba993e5a5df4",
+  "qualificationRunId": "41807906137",
+  "qualificationWorkflow": ".github/workflows/test-install.yml",
+  "schemaVersion": 1,
+  "statsScriptSha256": "c11b8d18f86f1d6a4fc879cb32da79e6f13f824c21fcaa37425b3d689d345a1c",
+  "version": "3.3.2"
+}
