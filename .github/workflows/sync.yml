@@ -1,13 +1,19 @@
-name: Sync Scripting Hub
+# 工作流：同步脚本中心
+# 每 6 小时自动运行一次，也可以在 Actions 页面手动触发。
+name: 同步脚本中心
 
 on:
   schedule:
+    # 定时任务：UTC 时间每 6 小时的整点运行一次
     - cron: "0 */6 * * *"
+  # 允许在 Actions 页面手动点击运行
   workflow_dispatch:
 
+# 授予工作流写入仓库内容的权限（用于提交同步结果）
 permissions:
   contents: write
 
+# 同一时间只允许一个同步任务运行，避免冲突
 concurrency:
   group: sync-scripting-hub
   cancel-in-progress: false
@@ -16,25 +22,27 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: 拉取仓库代码
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: 安装 Python 3.12
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Run sync
+      - name: 运行同步脚本
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python sync.py
 
-      - name: Commit changes
+      - name: 提交并推送变更
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
           if git diff --cached --quiet; then
-            echo "No changes."
+            echo "没有变更，无需提交。"
           else
-            git commit -m "Sync scripting hub $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            git commit -m "同步脚本中心 $(date -u +%Y-%m-%dT%H:%M:%SZ)"
             git push
           fi

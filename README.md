@@ -1,37 +1,108 @@
-# Scripting Hub
+# 📚 脚本中心（Scripting Hub）
 
-An automated collection of Scripting, Scriptable, and iOS scripting projects from across GitHub.
+一个全自动的脚本收集仓库，汇集 GitHub 上 **Scripting**、**Scriptable** 以及 **iOS 脚本** 相关的项目与脚本文件。
+你不需要手动寻找，每隔一段时间它会自动更新。
 
-A GitHub Actions workflow runs every 6 hours. It searches public repositories tagged with these topics:
+---
 
-- scriptable
-- scripting
-- ios-scripting
-- scripting-app
+## ✨ 这个仓库是做什么的
 
-For each repository, it downloads the latest release assets (scripts, archives, and related files with supported extensions), and saves them under:
+- 🔍 **自动搜索**：在 GitHub 上查找带有以下主题标签（topic）的公开仓库：
+  - `scriptable`
+  - `scripting`
+  - `ios-scripting`
+  - `scripting-app`
+- 📦 **自动下载**：对每个仓库，下载其最近 5 个 Release 中的资源文件（脚本、压缩包等）。
+- 🗂️ **自动分类**：按照 `作者 / 仓库 / Release 版本` 的层级整理保存。
+- 📝 **自动生成目录**：更新 `index.json` 和 `CATALOG.md`，方便浏览和查询。
+
+---
+
+## ⚙️ GitHub Actions 如何运行
+
+工作流文件位于 `.github/workflows/sync.yml`，名称为 **「同步脚本中心」**。
+
+| 触发方式 | 说明 |
+|---|---|
+| ⏰ 定时运行 | 每 6 小时运行一次（UTC 时间的整点） |
+| 🖱️ 手动运行 | 在 Actions 页面手动触发（见下方说明） |
+
+每次运行的步骤如下：
+
+1. **拉取仓库代码**：获取最新的仓库内容。
+2. **安装 Python 3.12**：准备运行环境。
+3. **运行同步脚本**：执行 `sync.py`，搜索仓库并下载文件。
+4. **提交并推送变更**：如果有新内容，就自动提交并推送到本仓库；如果没有变化，则跳过提交。
+
+> 同一时间只会运行一个同步任务，避免多个任务同时修改仓库造成冲突。
+
+---
+
+## 📁 目录结构
 
 ```
-scripts-store/<owner>/<repo>/releases/<tag>/<file>
+scripting-hub/
+├── sync.py                  # 同步脚本（搜索、下载、分类、生成目录）
+├── index.json               # 机器可读的索引（所有仓库及其文件列表）
+├── CATALOG.md               # 人类可读的脚本目录（表格形式）
+├── README.md                # 本说明文件
+├── .github/
+│   └── workflows/
+│       └── sync.yml         # GitHub Actions 工作流配置
+└── scripts-store/           # 下载的脚本文件（运行后生成）
+    └── <作者>/
+        └── <仓库名>/
+            └── releases/
+                └── <版本标签>/
+                    └── <文件名>
 ```
 
-The results are recorded in:
+各文件说明：
 
-- `index.json`: machine-readable list of every synced repo and its files
-- `CATALOG.md`: human-readable table with links, stars, and descriptions
+- **`sync.py`**：核心脚本，负责所有的同步逻辑。
+- **`index.json`**：包含每个仓库的名称、链接、简介、Star 数、主题和已下载文件列表。
+- **`CATALOG.md`**：以表格列出所有仓库，便于直接在网页上浏览。
+- **`scripts-store/`**：实际保存的脚本与资源文件，首次成功运行后才会出现。
 
-## Running it manually
+---
 
-Open the Actions tab, choose "Sync Scripting Hub", and click "Run workflow". Or run locally:
+## 🖱️ 如何手动触发同步
 
-```
+不想等待定时任务？可以随时手动运行：
+
+1. 打开本仓库页面，点击顶部的 **Actions** 标签。
+2. 在左侧列表中选择 **「同步脚本中心」**。
+3. 点击右侧的 **Run workflow** 按钮。
+4. 确认分支为 `main`，再次点击绿色的 **Run workflow** 即可开始。
+
+运行完成后，刷新页面即可看到最新的 `CATALOG.md` 和 `scripts-store/` 内容。
+
+### 在本地运行
+
+```bash
 python sync.py
 ```
 
-Set `GITHUB_TOKEN` to avoid strict API rate limits.
+建议设置环境变量 `GITHUB_TOKEN`，以避免 GitHub API 的速率限制：
 
-## Notes
+```bash
+export GITHUB_TOKEN=你的令牌
+python sync.py
+```
 
-- Only public repositories are included, and forks and archived repos are skipped.
-- Files larger than 25 MB are skipped.
-- Each repo's license applies to its own files. Check the original repository before reuse.
+---
+
+## ❓ 常见问题
+
+- **为什么有些仓库没有出现？**
+  只收录公开、非 Fork、未归档的仓库，并且每个主题最多取 30 个。
+- **为什么有些文件没有下载？**
+  只下载以下扩展名的文件：`.js`、`.ts`、`.tsx`、`.jsx`、`.zip`、`.scripting`、`.json`、`.md`；超过 25 MB 的文件也会跳过。
+- **脚本能直接使用吗？**
+  每个仓库的版权和许可证归原作者所有。使用或二次分发前，请先查看原仓库的许可证说明。
+
+---
+
+## 📜 免责声明
+
+本仓库仅用于整理与索引公开内容，所有脚本的版权归原作者所有。
