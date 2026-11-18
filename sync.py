@@ -1,9 +1,20 @@
 #!/usr/bin/env python3
-"""同步带有 Scripting / Scriptable 相关主题或中文关键词的 GitHub 仓库：
-下载 Release 中的脚本与资源文件，按 作者/仓库 分类保存；
-检测仓库是否有中文文档，为英文简介生成中文参考译文（词典方式），
-自动清理已失效的仓库和文件，并生成 index.json（机器可读索引）和 CATALOG.md（中文目录）。"""
-import base64
+"""scripting-hub 同步脚本（重写版）
+
+与原版的关键区别：
+1. 判据：原版把 GitHub 搜索结果直接入库（Python / Shell / exe 全进来）。
+   本版只有真正包含合法 script.json 的 Scripting App 项目才入库。
+2. 来源：原版只抓 release 资产，漏掉绝大多数脚本。本版抓默认分支源码树 + 最新 release，
+   两者都必须过 script.json 校验。
+3. 版本：原版存 5 个历史版本（同一脚本重复 5 份）。本版只取最新 release，并按项目名去重。
+4. 分类：原版子串匹配，"ai" 会命中 email / trainer。本版 ASCII 关键词按词边界匹配。
+5. 简介：原版用 60 词条词典逐词替换（with -> 配合）。本版直接取 script.json 里的真实中文描述。
+6. 清理：保留原版的安全策略（搜索失败跳过清理、非 404 不删、抓取失败保留旧文件）。
+
+运行环境：GitHub Actions，仅依赖标准库。设置 GITHUB_TOKEN 可把 API 限额提到 5000/小时。
+设置 DRY_RUN=1 可只看结果不落盘。
+"""
+import io
 import json
 import os
 import re
@@ -11,351 +22,490 @@ import shutil
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 from datetime import datetime, timezone
 
-# GitHub 访问令牌（在 Actions 中由 secrets.GITHUB_TOKEN 提供，可提高 API 速率上限）
 TOKEN = os.environ.get("GITHUB_TOKEN", "")
-
-# 英文主题标签搜索
-TOPICS = ["scriptable", "scripting", "ios-scripting", "scripting-app"]
-
-# 中文关键词搜索：用于发现中文社区的 Scriptable / Scripting 脚本仓库
-CN_QUERIES = [
-    "Scriptable 脚本",
-    "Scripting 脚本",
-    "Scriptable 中文",
-    "iOS 脚本 Scriptable",
-    "签到脚本 Scriptable",
-    "小组件 脚本 Scriptable",
-]
-
-# 每次搜索最多获取的仓库数量
-MAX_REPOS_PER_QUERY = 30
-# 每个仓库最多获取的 Release 数量
-MAX_RELEASES = 5
-# 单个文件的大小上限（超过则跳过），25 MB
-MAX_ASSET_BYTES = 25 * 1024 * 1024
-# README 摘要的最大字符数（只用于判断是否含中文）
-README_SNIPPET_CHARS = 3000
+DRY_RUN = os.environ.get("DRY_RUN", "") not in ("", "0", "false", "False")
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 STORE = os.path.join(ROOT, "scripts-store")
-# 允许下载的文件扩展名
-ALLOWED_EXT = (".js", ".ts", ".tsx", ".jsx", ".zip", ".scripting", ".json", ".md")
+INDEX_PATH = os.path.join(ROOT, "index.json")
+CATALOG_PATH = os.path.join(ROOT, "CATALOG.md")
 
-# 中文字符（CJK 统一汉字）的正则
-CJK_RE = re.compile(r"[\u4e00-\u9fff]")
-
-# 英文常用词 -> 中文词典（用于生成中文参考译文，仅做词语替换，并非完整机器翻译）
-GLOSSARY = [
-    ("scriptable", "Scriptable"),
-    ("scripting", "脚本"),
-    ("script", "脚本"),
-    ("scripts", "脚本"),
-    ("widget", "小组件"),
-    ("widgets", "小组件"),
-    ("shortcut", "快捷指令"),
-    ("shortcuts", "快捷指令"),
-    ("automation", "自动化"),
-    ("automate", "自动化"),
-    ("tool", "工具"),
-    ("tools", "工具"),
-    ("utility", "实用工具"),
-    ("collection", "合集"),
-    ("library", "库"),
-    ("helper", "辅助工具"),
-    ("template", "模板"),
-    ("templates", "模板"),
-    ("example", "示例"),
-    ("examples", "示例"),
-    ("sample", "示例"),
-    ("daily", "每日"),
-    ("check-in", "签到"),
-    ("checkin", "签到"),
-    ("calendar", "日历"),
-    ("reminder", "提醒"),
-    ("reminders", "提醒"),
-    ("weather", "天气"),
-    ("music", "音乐"),
-    ("photo", "照片"),
-    ("photos", "照片"),
-    ("notes", "备忘录"),
-    ("note", "备忘录"),
-    ("file", "文件"),
-    ("files", "文件"),
-    ("network", "网络"),
-    ("api", "接口"),
-    ("ui", "界面"),
-    ("interface", "界面"),
-    ("game", "游戏"),
-    ("games", "游戏"),
-    ("finance", "金融"),
-    ("health", "健康"),
-    ("fitness", "健身"),
-    ("news", "新闻"),
-    ("translate", "翻译"),
-    ("translation", "翻译"),
-    ("assistant", "助手"),
-    ("ai", "AI"),
-    ("openai", "OpenAI"),
-    ("chatgpt", "ChatGPT"),
-    ("for", "用于"),
-    ("and", "和"),
-    ("with", "配合"),
-    ("the", ""),
-    ("a", ""),
-    ("an", ""),
-    ("of", "的"),
-    ("to", "到"),
-    ("in", "中"),
-    ("on", "上"),
-    ("your", "你的"),
-    ("my", "我的"),
-    ("from", "来自"),
-    ("based", "基于"),
-    ("simple", "简单"),
-    ("easy", "简易"),
-    ("fast", "快速"),
-    ("powerful", "强大"),
-    ("open source", "开源"),
-    ("open-source", "开源"),
-    ("iOS", "iOS"),
-    ("iphone", "iPhone"),
-    ("ipad", "iPad"),
-    ("mac", "Mac"),
-    ("macos", "macOS"),
+SEARCH_QUERIES = [
+    "topic:scripting",
+    "topic:scriptable",
+    "topic:ios-scripting",
+    "topic:scripting-app",
+    "scripting in:name,description",
+    "scriptable in:name,description",
+    "scripting 脚本 in:name,description",
+    "scripting 小组件 in:name,description",
 ]
 
-# 简单分类规则：按关键词归入大类（用于目录分组）
+MAX_REPOS_PER_QUERY = 50
+MAX_PROJECTS_PER_REPO = 40
+MAX_FILES_PER_PROJECT = 250
+MAX_FILE_BYTES = 4 * 1024 * 1024
+MAX_ZIP_BYTES = 25 * 1024 * 1024
+MAX_REPO_BYTES = 40 * 1024 * 1024
+
+ALLOWED_EXT = (
+    ".ts", ".tsx", ".js", ".jsx", ".json", ".md", ".txt", ".css", ".html",
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".plist", ".scripting", ".zip",
+)
+
+SKIP_DIRS = {".git", ".github", "node_modules", ".vscode", "__pycache__", ".idea", "dist", "build"}
+
+# 分类规则：ASCII 关键词按词边界匹配，中文关键词按子串匹配。
 CATEGORY_RULES = [
-    ("小组件", ["widget", "小组件"]),
-    ("签到", ["check-in", "checkin", "签到"]),
-    ("AI 与翻译", ["ai", "openai", "chatgpt", "translate", "translation", "assistant", "翻译"]),
-    ("快捷指令与自动化", ["shortcut", "shortcuts", "automation", "automate", "快捷指令"]),
-    ("工具", ["tool", "utility", "helper", "工具"]),
-    ("模板与示例", ["template", "example", "sample", "模板", "示例"]),
+    ("小组件", ["widget", "widgets", "小组件"]),
+    ("签到", ["check-in", "checkin", "签到", "打卡"]),
+    ("快捷指令与自动化", ["shortcut", "shortcuts", "automation", "automate", "快捷指令", "自动化"]),
+    ("AI 与翻译", ["ai", "chatgpt", "openai", "llm", "translate", "translation", "translator", "翻译"]),
+    ("媒体与下载", ["video", "player", "download", "downloader", "photo", "photos", "music",
+                 "媒体", "下载", "照片", "相册"]),
+    ("效率工具", ["tool", "tools", "utility", "helper", "manager", "editor",
+                 "编辑器", "工具", "助手", "管理"]),
+    ("模板与示例", ["template", "example", "sample", "demo", "模板", "示例"]),
 ]
 DEFAULT_CATEGORY = "其他"
 
-# 运行过程中的状态（用于判断清理是否安全）
-SEARCH_FAILED = False  # 任一搜索失败时，为避免误删，本次跳过仓库级清理
-EXPECTED_FILES = {}  # (作者目录, 仓库目录) -> 本次应保留的文件绝对路径集合
-RELEASES_OK = set()  # 本次成功获取 Release 列表的 (作者目录, 仓库目录)
+CJK_RE = re.compile("[\u4e00-\u9fff]")
+HTML_TAG_RE = re.compile("<[^>]{1,400}>")
+WS_RE = re.compile(r"\s+")
+ILLEGAL_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 
-
-def api(url, accept="application/vnd.github+json"):
-    """调用 GitHub REST API，并返回解析后的 JSON 数据。HTTP 错误会抛出异常。"""
-    headers = {"Accept": accept, "User-Agent": "scripting-hub-sync"}
-    if TOKEN:
-        headers["Authorization"] = f"Bearer {TOKEN}"
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return json.loads(r.read().decode("utf-8"))
-
-
-def download(url, dest):
-    """下载文件到 dest。若文件超过大小上限则放弃并返回 False。"""
-    headers = {"User-Agent": "scripting-hub-sync"}
-    if TOKEN:
-        headers["Authorization"] = f"Bearer {TOKEN}"
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=120) as r:
-        data = r.read(MAX_ASSET_BYTES + 1)
-    if len(data) > MAX_ASSET_BYTES:
-        return False
-    os.makedirs(os.path.dirname(dest), exist_ok=True)
-    with open(dest, "wb") as f:
-        f.write(data)
-    return True
-
-
-def safe(name):
-    """把名称中的非法字符替换为下划线，确保可以安全地用作文件名或目录名。"""
-    return re.sub(r"[^A-Za-z0-9._-]", "_", name)
+# 运行状态
+STATUS = {}          # (owner, repo) -> "ok" | "empty" | "error"
+EXPECTED_FILES = {}  # (owner, repo) -> set(绝对路径)
+SEARCH_FAILED = False
+RATE_LIMITED = False
 
 
 def has_cjk(text):
-    """判断文本中是否包含中文字符。"""
     return bool(text) and bool(CJK_RE.search(text))
 
 
-def translate_desc(text):
-    """用词典生成中文参考译文。若原文已含中文则直接返回原文。
-    注意：这是逐词替换的参考译文，不是完整的机器翻译，仅供浏览参考。"""
+def strip_html(text):
+    """去掉 HTML 标签与实体残留，用于清洗被误当作简介的整段网页。"""
     if not text:
         return ""
-    if has_cjk(text):
-        return text
-    out = text
-    # 先替换较长的词组，避免被短词打断
-    for en, zh in sorted(GLOSSARY, key=lambda p: -len(p[0])):
-        if not zh:
-            continue
-        pattern = r"(?<![A-Za-z])" + re.escape(en) + r"(?![A-Za-z])"
-        out = re.sub(pattern, zh, out, flags=re.IGNORECASE)
-    out = re.sub(r"\s+", " ", out).strip()
-    return out
+    text = HTML_TAG_RE.sub(" ", text)
+    text = text.replace("&nbsp;", " ").replace("&amp;", "&")
+    text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"')
+    return WS_RE.sub(" ", text).strip()
 
 
-def categorize(name, desc):
-    """按名称和简介中的关键词，把仓库归入一个大类。"""
-    text = f"{name} {desc}".lower()
+def clean_text(text, limit=240):
+    """压平空白、去 HTML、截断。"""
+    if not text:
+        return ""
+    text = strip_html(str(text))
+    if len(text) > limit:
+        text = text[:limit].rstrip() + "…"
+    return text
+
+
+def ascii_word_hit(keyword, text):
+    """ASCII 关键词按词边界匹配，避免 "ai" 命中 email / trainer / detail。"""
+    pattern = r"(?<![a-z0-9])" + re.escape(keyword) + r"(?![a-z0-9])"
+    return re.search(pattern, text) is not None
+
+
+def categorize(text):
+    """按名称 / 描述归类。中文关键词用子串，英文关键词用词边界。"""
+    low = (text or "").lower()
     for category, keywords in CATEGORY_RULES:
         for kw in keywords:
-            if kw.lower() in text:
+            if has_cjk(kw):
+                if kw in text:
+                    return category
+            elif ascii_word_hit(kw, low):
                 return category
     return DEFAULT_CATEGORY
 
 
-def fetch_readme_snippet(full_name):
-    """获取仓库 README 的开头部分，用于检测是否有中文文档。失败时返回空字符串。"""
-    try:
-        data = api(f"https://api.github.com/repos/{full_name}/readme")
-        content = base64.b64decode(data.get("content", "")).decode("utf-8", errors="ignore")
-        return content[:README_SNIPPET_CHARS]
-    except Exception as e:
-        print(f"获取 {full_name} 的 README 失败：{e}")
+def safe_name(name):
+    """目录/文件名清洗。保留中文，仅替换路径非法字符。"""
+    cleaned = ILLEGAL_RE.sub("_", str(name)).strip().strip(".")
+    return cleaned or "_"
+
+
+def skip_path(path):
+    return any(part in SKIP_DIRS for part in path.split("/"))
+
+
+def allowed_ext(path):
+    return path.lower().endswith(ALLOWED_EXT)
+
+
+def is_project_json(obj):
+    """判定一份 script.json 是否像一个 Scripting App 项目配置。"""
+    if not isinstance(obj, dict):
+        return False
+    name = obj.get("name")
+    entry = obj.get("entry")
+    has_name = isinstance(name, str) and name.strip() != ""
+    has_entry = isinstance(entry, str) and entry.strip() != ""
+    return has_name or has_entry
+
+
+def group_project_files(blob_paths):
+    """从源码树路径里找出所有含 script.json 的项目目录，并把文件归到最深的那一层。"""
+    dirs = []
+    for p in blob_paths:
+        if p == "script.json":
+            dirs.append("")
+        elif p.endswith("/script.json"):
+            dirs.append(p[: -len("/script.json")])
+    dirs = [d for d in dict.fromkeys(dirs) if not skip_path(d)]
+
+    groups = {d: [] for d in dirs}
+    for p in blob_paths:
+        if skip_path(p) or not allowed_ext(p):
+            continue
+        best = None
+        for d in dirs:
+            if d == "" or p.startswith(d + "/"):
+                if best is None or len(d) > len(best):
+                    best = d
+        if best is not None:
+            groups[best].append(p)
+    return {d: sorted(files) for d, files in groups.items() if files}
+
+
+def pick_description(meta):
+    """优先取 script.json 的 localizedDescriptions.zh，其次 description。"""
+    if not isinstance(meta, dict):
         return ""
+    loc = meta.get("localizedDescriptions")
+    if isinstance(loc, dict):
+        zh = loc.get("zh")
+        if isinstance(zh, str) and zh.strip():
+            return zh.strip()
+    desc = meta.get("description")
+    return desc.strip() if isinstance(desc, str) else ""
 
 
-def search_repos(query, label, found):
-    """执行一次仓库搜索，把结果合并进 found（按完整名称去重，并记录来源）。
-    搜索失败时设置 SEARCH_FAILED，以便后续跳过仓库级清理。"""
-    global SEARCH_FAILED
-    q = urllib.parse.quote(f"{query} fork:false archived:false")
-    url = f"https://api.github.com/search/repositories?q={q}&sort=updated&per_page={MAX_REPOS_PER_QUERY}"
+def pick_zh_name(meta, fallback):
+    if isinstance(meta, dict):
+        loc = meta.get("localizedNames")
+        if isinstance(loc, dict):
+            zh = loc.get("zh")
+            if isinstance(zh, str) and zh.strip():
+                return zh.strip()
+        name = meta.get("name")
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+    return fallback
+
+
+class RateLimited(Exception):
+    """API 限额用尽。触发后立即停止扫描，并且不做清理。"""
+
+
+def api(url, accept="application/vnd.github+json"):
+    headers = {"Accept": accept, "User-Agent": "scripting-hub-sync"}
+    if TOKEN:
+        headers["Authorization"] = "Bearer " + TOKEN
+    req = urllib.request.Request(url, headers=headers)
     try:
-        items = api(url).get("items", [])
-    except Exception as e:
-        SEARCH_FAILED = True
-        print(f"搜索 {query} 失败：{e}")
-        return
-    for item in items:
-        name = item["full_name"]
-        if name not in found:
-            found[name] = {"item": item, "sources": []}
-        if label not in found[name]["sources"]:
-            found[name]["sources"].append(label)
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        remaining = e.headers.get("X-RateLimit-Remaining") if e.headers else None
+        if e.code in (403, 429) and remaining == "0":
+            raise RateLimited(url)
+        raise
 
 
-def find_repos():
-    """依次执行英文主题搜索和中文关键词搜索，合并并去重。"""
-    found = {}
-    for topic in TOPICS:
-        search_repos(f"topic:{topic}", f"topic:{topic}", found)
-    for query in CN_QUERIES:
-        search_repos(query, f"关键词:{query}", found)
-    return found
+def fetch_bytes(url, limit):
+    headers = {"User-Agent": "scripting-hub-sync"}
+    if TOKEN:
+        headers["Authorization"] = "Bearer " + TOKEN
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=120) as r:
+        data = r.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError("over size limit")
+    return data
 
 
-def sync_repo(full_name, meta):
-    """处理单个仓库：获取最近的 Release，下载符合扩展名的资源文件，并生成中文信息。
-    同时记录本次应保留的文件，供后续清理使用。"""
-    item = meta["item"]
+def raw_url(full_name, branch, path):
+    return "https://raw.githubusercontent.com/{}/{}/{}".format(
+        full_name,
+        urllib.parse.quote(branch, safe=""),
+        urllib.parse.quote(path, safe="/"),
+    )
+
+
+def zip_project_meta(src):
+    """校验 zip 内是否含合法 script.json。src 可传 bytes 或已存在的文件路径。"""
+    try:
+        z = zipfile.ZipFile(src)
+        names = z.namelist()
+        for n in names:
+            if n == "script.json" or n.endswith("/script.json"):
+                try:
+                    obj = json.loads(z.read(n).decode("utf-8", errors="ignore"))
+                except Exception:
+                    continue
+                if is_project_json(obj):
+                    return obj
+    except Exception:
+        return None
+    return None
+
+
+def read_remote_project_json(full_name, branch, dirpath):
+    path = (dirpath + "/" if dirpath else "") + "script.json"
+    data = fetch_bytes(raw_url(full_name, branch, path), 256 * 1024)
+    obj = json.loads(data.decode("utf-8", errors="ignore"))
+    return obj if is_project_json(obj) else None
+
+
+def apply_project_files(full_name, branch, files, dest_root, expected):
+    """把项目目录里的文件抓下来。返回实际写入（或计划写入）的文件数。"""
+    total = 0
+    written = 0
+    for rel in files[:MAX_FILES_PER_PROJECT]:
+        dest = os.path.join(dest_root, rel)
+        if os.path.exists(dest):
+            expected.add(os.path.abspath(dest))
+            written += 1
+            continue
+        try:
+            data = fetch_bytes(raw_url(full_name, branch, rel), MAX_FILE_BYTES)
+        except RateLimited:
+            raise
+        except Exception as e:
+            print("  跳过文件 {} {}: {}".format(full_name, rel, e))
+            continue
+        total += len(data)
+        if total > MAX_REPO_BYTES:
+            print("  {} 超过单仓库体积上限，停止".format(full_name))
+            break
+        if DRY_RUN:
+            written += 1
+            continue
+        parent = os.path.dirname(dest)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(dest, "wb") as f:
+            f.write(data)
+        expected.add(os.path.abspath(dest))
+        written += 1
+    return written
+
+
+def scan_repo(full_name, item):
+    """处理单个仓库：源码树 + 最新 release，两路都过 script.json 校验。"""
     owner, repo = full_name.split("/", 1)
-    key = (safe(owner), safe(repo))
-    base = os.path.join(STORE, safe(owner), safe(repo))
+    key = (safe_name(owner), safe_name(repo))
     expected = EXPECTED_FILES.setdefault(key, set())
-    entries = []
+    branch = item.get("default_branch") or "main"
+    projects = {}
+    errors = 0
+
+    # ---- 1. 源码树 ----
+    blobs = []
     try:
-        releases = api(f"https://api.github.com/repos/{full_name}/releases?per_page={MAX_RELEASES}")
-        RELEASES_OK.add(key)
+        url = "https://api.github.com/repos/{}/git/trees/{}?recursive=1".format(
+            full_name, urllib.parse.quote(branch, safe=""))
+        tree = api(url)
+        blobs = [t.get("path", "") for t in tree.get("tree", []) if t.get("type") == "blob"]
+        if tree.get("truncated"):
+            print("  {} 源码树被截断，只处理可见部分".format(full_name))
+    except RateLimited:
+        raise
     except Exception as e:
-        # Release 获取失败时不清理该仓库已有文件，避免因临时错误误删
-        print(f"获取 {full_name} 的 Release 失败，保留已有文件：{e}")
-        releases = []
-    for rel in releases:
-        tag = safe(rel.get("tag_name") or "untagged")
-        for asset in rel.get("assets", []):
-            name = asset.get("name", "")
-            # 跳过不在允许列表中的文件类型
-            if not name.lower().endswith(ALLOWED_EXT):
+        errors += 1
+        print("  {} 读取源码树失败: {}".format(full_name, e))
+
+    if blobs:
+        groups = group_project_files(blobs)
+        for dirpath, files in list(groups.items())[:MAX_PROJECTS_PER_REPO]:
+            try:
+                meta = read_remote_project_json(full_name, branch, dirpath)
+            except RateLimited:
+                raise
+            except Exception as e:
+                errors += 1
+                print("  读取 {}/script.json 失败: {}".format(dirpath or ".", e))
                 continue
-            dest = os.path.join(base, "releases", tag, safe(name))
-            # 文件已存在则跳过重复下载，但仍视为有效文件
-            if os.path.exists(dest):
-                entries.append(dest)
-                expected.add(os.path.abspath(dest))
+            if meta is None:
+                continue
+            fallback = dirpath.split("/")[-1] if dirpath else repo
+            name = pick_zh_name(meta, fallback)
+            dest_root = os.path.join(STORE, key[0], key[1], "projects", safe_name(dirpath or fallback))
+            count = apply_project_files(full_name, branch, files, dest_root, expected)
+            if count == 0:
+                continue
+            projects[name.lower()] = {
+                "name": name,
+                "version": str(meta.get("version") or ""),
+                "icon": meta.get("icon") if isinstance(meta.get("icon"), str) else None,
+                "description": clean_text(pick_description(meta)),
+                "entry": (meta.get("entry") if isinstance(meta.get("entry"), str) else "index.tsx"),
+                "dir": os.path.relpath(dest_root, ROOT),
+                "files": count,
+                "source": "tree",
+            }
+
+    # ---- 2. 最新 release（只取一个版本，避免同一脚本存 5 份）----
+    rel = None
+    try:
+        rel = api("https://api.github.com/repos/{}/releases/latest".format(full_name))
+    except urllib.error.HTTPError as e:
+        if e.code != 404:
+            errors += 1
+            print("  {} 获取 release 失败: HTTP {}".format(full_name, e.code))
+    except RateLimited:
+        raise
+    except Exception as e:
+        errors += 1
+        print("  {} 获取 release 失败: {}".format(full_name, e))
+
+    if rel:
+        tag = safe_name(rel.get("tag_name") or "untagged")
+        for asset in rel.get("assets", []):
+            aname = asset.get("name") or ""
+            if not aname.lower().endswith(".zip"):
                 continue
             try:
-                if download(asset["browser_download_url"], dest):
-                    entries.append(dest)
-                    expected.add(os.path.abspath(dest))
+                size = int(asset.get("size") or 0)
+            except Exception:
+                size = 0
+            if size > MAX_ZIP_BYTES:
+                continue
+            stem = aname[:-4].lower()
+            if stem in projects:
+                continue
+            dest = os.path.join(STORE, key[0], key[1], "releases", tag, safe_name(aname))
+            try:
+                if os.path.exists(dest):
+                    meta = zip_project_meta(dest)
+                else:
+                    data = fetch_bytes(asset.get("browser_download_url", ""), MAX_ZIP_BYTES)
+                    meta = zip_project_meta(io.BytesIO(data))
+                    if meta is not None and not DRY_RUN:
+                        os.makedirs(os.path.dirname(dest), exist_ok=True)
+                        with open(dest, "wb") as f:
+                            f.write(data)
+            except RateLimited:
+                raise
             except Exception as e:
-                # 下载失败：该文件不会被记为有效，若磁盘上存在旧残留则会被清理
-                print(f"下载失败 {full_name} {name}：{e}")
+                errors += 1
+                print("  下载 {} {} 失败: {}".format(full_name, aname, e))
+                continue
+            if meta is None:
+                continue
+            expected.add(os.path.abspath(dest))
+            name = pick_zh_name(meta, stem)
+            if name.lower() in projects:
+                continue
+            projects[name.lower()] = {
+                "name": name,
+                "version": str(meta.get("version") or rel.get("tag_name") or ""),
+                "icon": meta.get("icon") if isinstance(meta.get("icon"), str) else None,
+                "description": clean_text(pick_description(meta)),
+                "entry": (meta.get("entry") if isinstance(meta.get("entry"), str) else "index.tsx"),
+                "dir": os.path.relpath(dest, ROOT),
+                "files": 1,
+                "source": "release",
+            }
 
-    desc_en = item.get("description") or ""
-    readme = fetch_readme_snippet(full_name)
-    # 只要简介或 README 中出现中文，或者仓库来自中文关键词搜索，就标记为中文相关
-    has_cn_docs = has_cjk(desc_en) or has_cjk(readme)
-    from_cn_search = any(s.startswith("关键词:") for s in meta["sources"])
+    if projects:
+        STATUS[key] = "ok"
+    elif errors:
+        STATUS[key] = "error"
+    else:
+        STATUS[key] = "empty"
+
+    all_text = "{} {}".format(item.get("description") or "",
+                               " ".join("{} {}".format(p["name"], p["description"]) for p in projects.values()))
     return {
         "repo": full_name,
-        "url": item["html_url"],
-        "name_zh": full_name.split("/", 1)[1],
-        "description_en": desc_en,
-        "description_zh": translate_desc(desc_en),
-        "category": categorize(full_name, desc_en),
-        "has_chinese_docs": has_cn_docs,
-        "chinese_related": has_cn_docs or from_cn_search,
-        "sources": meta["sources"],
+        "url": item.get("html_url") or ("https://github.com/" + full_name),
         "stars": item.get("stargazers_count", 0),
         "language": item.get("language") or "",
-        "files": [os.path.relpath(p, ROOT) for p in entries],
+        "branch": branch,
+        "category": categorize(all_text),
+        "status": STATUS[key],
+        "projects": sorted(projects.values(), key=lambda p: p["name"]),
     }
 
 
-def check_repo_status(full_name):
-    """查询仓库在 GitHub 上的当前状态，返回 (是否应删除, 原因)。
-    只有明确的 404 或仓库不再符合条件时才返回应删除；其他错误（如限流、网络）返回不删除。"""
+def search_repos(query, found):
+    global SEARCH_FAILED
+    q = urllib.parse.quote(query + " fork:false archived:false")
+    url = "https://api.github.com/search/repositories?q={}&sort=updated&per_page={}".format(
+        q, MAX_REPOS_PER_QUERY)
     try:
-        info = api(f"https://api.github.com/repos/{full_name}")
+        items = api(url).get("items", [])
+    except RateLimited:
+        raise
+    except Exception as e:
+        SEARCH_FAILED = True
+        print("搜索 {} 失败: {}".format(query, e))
+        return
+    for item in items:
+        name = item.get("full_name")
+        if name and name not in found:
+            found[name] = item
+
+
+def find_repos():
+    found = {}
+    for query in SEARCH_QUERIES:
+        search_repos(query, found)
+    return found
+
+
+def check_repo_status(full_name):
+    """只对“确定没了”的仓库返回 True。其余情况一律保留，避免误删。"""
+    try:
+        info = api("https://api.github.com/repos/{}".format(full_name))
     except urllib.error.HTTPError as e:
         if e.code == 404:
-            return True, "仓库已在 GitHub 上删除（404）"
-        return False, f"无法确认仓库状态（HTTP {e.code}），本次保留"
+            return True, "仓库已删除（404）"
+        return False, "无法确认状态（HTTP {}）".format(e.code)
+    except RateLimited:
+        raise
     except Exception as e:
-        return False, f"无法确认仓库状态（{e}），本次保留"
+        return False, "无法确认状态（{}）".format(e)
     if info.get("private"):
-        return True, "仓库已改为私有"
+        return True, "仓库已转为私有"
     if info.get("archived"):
         return True, "仓库已归档"
-    if info.get("fork"):
-        return True, "仓库已变为 Fork"
-    return True, "仓库不再符合搜索条件"
+    return False, "仓库仍存在，但本次未产出项目"
 
 
-def prune_files(repo_path, expected, full_name, pruned_log, now):
-    """删除仓库目录中本次不再有效的文件（例如 Release 已删除、资源已移除或下载失败的残留），
-    并删除清理后留下的空目录。"""
+def prune_files(repo_path, expected, pruned_log, now):
     for root, dirs, files in os.walk(repo_path, topdown=False):
         for fn in files:
             p = os.path.abspath(os.path.join(root, fn))
             if p not in expected:
                 os.remove(p)
                 rel = os.path.relpath(p, ROOT)
-                print(f"清理失效文件：{rel}")
-                pruned_log.append({"type": "file", "target": rel, "reason": "Release 资源已失效或下载不完整", "time": now})
+                print("清理失效文件: {}".format(rel))
+                pruned_log.append({"type": "file", "target": rel,
+                                  "reason": "已不在任何有效项目中", "time": now})
         for d in dirs:
             p = os.path.join(root, d)
             if os.path.isdir(p) and not os.listdir(p):
                 os.rmdir(p)
 
 
-def prune(results, pruned_log, now):
-    """自动检查 scripts-store/ 中的内容，清理失效的仓库和文件。
-    安全规则：
-    1. 任一搜索失败时，本次跳过仓库级清理（避免因临时故障误删）。
-    2. 仓库的 Release 获取失败时，保留该仓库已有文件。
-    3. 仓库状态查询出现非 404 错误时，保留该仓库。"""
+def prune(pruned_log, now):
+    """按 STATUS 清理。未扫过的仓库只在确定已删除/私有/归档时才删。"""
     if not os.path.isdir(STORE):
         return
-    if SEARCH_FAILED:
-        print("本次有搜索失败，为安全起见跳过仓库级清理。")
+    if SEARCH_FAILED or RATE_LIMITED:
+        print("本次有搜索失败或限流，为安全起见跳过所有清理。")
         return
-    keep = {(safe(r["repo"].split("/", 1)[0]), safe(r["repo"].split("/", 1)[1])) for r in results}
-
     for owner_dir in sorted(os.listdir(STORE)):
         owner_path = os.path.join(STORE, owner_dir)
         if not os.path.isdir(owner_path):
@@ -365,50 +515,85 @@ def prune(results, pruned_log, now):
             if not os.path.isdir(repo_path):
                 continue
             key = (owner_dir, repo_dir)
-            full_name = f"{owner_dir}/{repo_dir}"
-            if key not in keep:
-                should_delete, reason = check_repo_status(full_name)
-                if should_delete:
-                    shutil.rmtree(repo_path)
-                    print(f"移除仓库：{full_name}，原因：{reason}")
-                    pruned_log.append({"type": "repo", "target": full_name, "reason": reason, "time": now})
+            full_name = "{}/{}".format(owner_dir, repo_dir)
+            status = STATUS.get(key)
+
+            if status is None:
+                gone, reason = check_repo_status(full_name)
+                if gone:
+                    if not DRY_RUN:
+                        shutil.rmtree(repo_path)
+                    print("移除仓库: {} ({})".format(full_name, reason))
+                    pruned_log.append({"type": "repo", "target": full_name,
+                                       "reason": reason, "time": now})
                 else:
-                    print(f"保留仓库：{full_name}，{reason}")
-            elif key not in RELEASES_OK:
-                print(f"保留仓库：{full_name}，本次 Release 获取失败")
+                    print("保留仓库: {} ({})".format(full_name, reason))
+            elif status == "error":
+                print("保留仓库: {}（本次抓取失败）".format(full_name))
+            elif status == "empty":
+                if not DRY_RUN:
+                    shutil.rmtree(repo_path)
+                print("移除仓库: {}（未发现 Scripting 项目）".format(full_name))
+                pruned_log.append({"type": "repo", "target": full_name,
+                                   "reason": "未发现合法 script.json 项目", "time": now})
             else:
-                prune_files(repo_path, EXPECTED_FILES.get(key, set()), full_name, pruned_log, now)
+                prune_files(repo_path, EXPECTED_FILES.get(key, set()), pruned_log, now)
         if os.path.isdir(owner_path) and not os.listdir(owner_path):
             os.rmdir(owner_path)
 
 
-def build_catalog(results, updated_at, pruned_log):
-    """生成中文 Markdown 目录，按是否与中文相关、再按类别分组，并按 Star 数排序。"""
-    lines = ["# 脚本中心目录", "", f"最近同步时间：{updated_at}", ""]
-    lines.append("> 说明：中文简介为基于词典的参考译文，可能不够通顺；原文简介保留在表格的「原文简介」列中。")
+def build_index(published, now):
+    repos = []
+    for r in published:
+        repos.append({
+            "repo": r["repo"],
+            "url": r["url"],
+            "stars": r["stars"],
+            "language": r["language"],
+            "branch": r["branch"],
+            "category": r["category"],
+            "projects": [
+                {"name": p["name"], "version": p["version"], "description": p["description"],
+                 "dir": p["dir"], "entry": p["entry"], "files": p["files"],
+                 "icon": p["icon"], "source": p["source"]}
+                for p in r["projects"]
+            ],
+        })
+    repos.sort(key=lambda r: (-r["stars"], r["repo"].lower()))
+    return {
+        "updated_at": now,
+        "count": len(repos),
+        "project_count": sum(len(r["projects"]) for r in repos),
+        "repos": repos,
+    }
+
+
+def build_catalog(index, pruned_log, now):
+    lines = ["# 脚本中心目录", "", "最近同步时间：{}".format(now), ""]
+    lines.append("收录 {} 个仓库 / {} 个可导入的 Scripting 项目。".format(
+        index["count"], index["project_count"]))
     lines.append("")
-    groups = [("中文相关仓库", [r for r in results if r["chinese_related"]]),
-              ("其他仓库", [r for r in results if not r["chinese_related"]])]
-    for title, items in groups:
-        lines.append(f"## {title}（{len(items)}）")
+    lines.append("> 只收录包含合法 `script.json` 的 Scripting App 项目；"
+                 "说明文字优先取自脚本自带的 description。")
+    lines.append("")
+
+    by_cat = {}
+    for r in index["repos"]:
+        by_cat.setdefault(r["category"], []).append(r)
+
+    for cat in sorted(by_cat):
+        items = by_cat[cat]
+        lines.append("### {}（{}）".format(cat, sum(len(r["projects"]) for r in items)))
         lines.append("")
-        if not items:
-            lines.append("暂无。")
-            lines.append("")
-            continue
-        categories = sorted({r["category"] for r in items})
-        for cat in categories:
-            cat_items = sorted([r for r in items if r["category"] == cat], key=lambda r: -r["stars"])
-            lines.append(f"### {cat}（{len(cat_items)}）")
-            lines.append("")
-            lines.append("| 仓库 | 中文简介 | 原文简介 | 中文文档 | Star | 文件数 |")
-            lines.append("|---|---|---|---|---|---|")
-            for r in cat_items:
-                zh = (r["description_zh"] or "（无简介）").replace("|", "/")
-                en = (r["description_en"] or "").replace("|", "/")
-                docs = "有" if r["has_chinese_docs"] else "无"
-                lines.append(f"| [{r['repo']}]({r['url']}) | {zh} | {en} | {docs} | {r['stars']} | {len(r['files'])} |")
-            lines.append("")
+        lines.append("| 脚本 | 版本 | 说明 | 仓库 | Star | 来源 |")
+        lines.append("|---|---|---|---|---|---|")
+        for r in items:
+            for p in r["projects"]:
+                desc = (p["description"] or "—").replace("|", "/")
+                lines.append("| {} | {} | {} | [{}]({}) | {} | {} |".format(
+                    p["name"].replace("|", "/"), p["version"] or "—", desc,
+                    r["repo"], r["url"], r["stars"], p["source"]))
+        lines.append("")
 
     lines.append("## 清理记录")
     lines.append("")
@@ -418,41 +603,117 @@ def build_catalog(results, updated_at, pruned_log):
         lines.append("| 时间 | 类型 | 对象 | 原因 |")
         lines.append("|---|---|---|---|")
         for p in pruned_log:
-            kind = "仓库" if p["type"] == "repo" else "文件"
-            lines.append(f"| {p['time']} | {kind} | {p['target']} | {p['reason']} |")
+            lines.append("| {} | {} | {} | {} |".format(
+                p["time"], p["type"], p["target"], p["reason"]))
     lines.append("")
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines)
+
+
+def build_summary(index, pruned_log):
+    """生成 Actions 步骤摘要（Markdown）。"""
+    removed_repos = [p for p in pruned_log if p["type"] == "repo"]
+    removed_files = [p for p in pruned_log if p["type"] == "file"]
+    lines = ["## 脚本中心同步结果", ""]
+    lines.append("| 指标 | 数值 |")
+    lines.append("|---|---|")
+    lines.append("| 收录仓库 | {} |".format(index["count"]))
+    lines.append("| 可导入项目 | {} |".format(index["project_count"]))
+    lines.append("| 移除仓库 | {} |".format(len(removed_repos)))
+    lines.append("| 清理文件 | {} |".format(len(removed_files)))
+    lines.append("")
+
+    if index["repos"]:
+        lines.append("<details><summary>项目数最多的仓库</summary>")
+        lines.append("")
+        lines.append("| 仓库 | 项目数 | Star |")
+        lines.append("|---|---|---|")
+        top = sorted(index["repos"], key=lambda r: -len(r["projects"]))[:10]
+        for r in top:
+            lines.append("| {} | {} | {} |".format(r["repo"], len(r["projects"]), r["stars"]))
+        lines.append("")
+        lines.append("</details>")
+        lines.append("")
+
+    if removed_repos:
+        lines.append("### 已移除的仓库")
+        lines.append("")
+        for p in removed_repos[:15]:
+            lines.append("- `{}` — {}".format(p["target"], p["reason"]))
+        if len(removed_repos) > 15:
+            lines.append("- …另有 {} 个".format(len(removed_repos) - 15))
+        lines.append("")
+
+    if DRY_RUN:
+        lines.append("> ⚠️ 本次为 DRY_RUN，未写入任何文件。")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def write_step_summary(index, pruned_log):
+    """在 GitHub Actions 中把摘要写到步骤页面；非 Actions 环境自动跳过。"""
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not path:
+        return False
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(build_summary(index, pruned_log))
+        return True
+    except Exception as e:
+        print("写入 Actions 摘要失败: {}".format(e))
+        return False
 
 
 def main():
-    """主流程：搜索仓库 -> 同步文件 -> 自动清理失效内容 -> 写入 index.json 与 CATALOG.md。"""
-    os.makedirs(STORE, exist_ok=True)
-    repos = find_repos()
-    results = []
-    for full_name, meta in sorted(repos.items()):
-        results.append(sync_repo(full_name, meta))
+    global RATE_LIMITED, SEARCH_FAILED
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    print("开始同步（DRY_RUN={}）".format(DRY_RUN))
 
-    updated_at = datetime.now(timezone.utc).isoformat()
+    try:
+        found = find_repos()
+    except RateLimited:
+        print("搜索阶段就限流了，本次退出，不做任何修改。")
+        return 1
+
+    print("候选仓库 {} 个".format(len(found)))
+    published = []
     pruned_log = []
-    prune(results, pruned_log, updated_at)
 
-    index = {
-        "updated_at": updated_at,
-        "count": len(results),
-        "chinese_related_count": sum(1 for r in results if r["chinese_related"]),
-        "pruned_count": len(pruned_log),
-        "pruned": pruned_log,
-        "repos": results,
-    }
-    # 写入机器可读的 JSON 索引
-    with open(os.path.join(ROOT, "index.json"), "w", encoding="utf-8") as f:
-        json.dump(index, f, indent=2, ensure_ascii=False)
+    for full_name in sorted(found):
+        try:
+            rec = scan_repo(full_name, found[full_name])
+        except RateLimited:
+            RATE_LIMITED = True
+            SEARCH_FAILED = True
+            print("扫描中限流，停止。已完成 {} 个仓库。".format(len(STATUS)))
+            break
+        except Exception as e:
+            owner, _, repo = full_name.partition("/")
+            STATUS[(safe_name(owner), safe_name(repo))] = "error"
+            print("{} 处理失败: {}".format(full_name, e))
+            continue
+        if rec["status"] == "ok":
+            published.append(rec)
+            print("✓ {}：{} 个项目".format(full_name, len(rec["projects"])))
 
-    # 写入中文 Markdown 目录
-    with open(os.path.join(ROOT, "CATALOG.md"), "w", encoding="utf-8") as f:
-        f.write(build_catalog(results, updated_at, pruned_log))
-    print(f"共同步 {len(results)} 个仓库，其中中文相关 {index['chinese_related_count']} 个，清理 {len(pruned_log)} 项。")
+    prune(pruned_log, now)
+    index = build_index(published, now)
+    write_step_summary(index, pruned_log)
+
+    if DRY_RUN:
+        print("\n[DRY_RUN] 将收录 {} 个仓库 / {} 个项目".format(
+            index["count"], index["project_count"]))
+        for r in index["repos"]:
+            print("  {} ({})".format(r["repo"], len(r["projects"])))
+        return 0
+
+    with open(INDEX_PATH, "w", encoding="utf-8") as f:
+        json.dump(index, f, ensure_ascii=False, indent=2)
+    with open(CATALOG_PATH, "w", encoding="utf-8") as f:
+        f.write(build_catalog(index, pruned_log, now))
+
+    print("完成：{} 个仓库 / {} 个项目".format(index["count"], index["project_count"]))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
