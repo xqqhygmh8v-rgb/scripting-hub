@@ -10,10 +10,13 @@
 4. 分类：原版子串匹配，"ai" 会命中 email / trainer。本版 ASCII 关键词按词边界匹配。
 5. 简介：原版用 60 词条词典逐词替换（with -> 配合）。本版直接取 script.json 里的真实中文描述。
 6. 清理：保留原版的安全策略（搜索失败跳过清理、非 404 不删、抓取失败保留旧文件）。
+7. 安全：敏感文件名直接跳过；文本内容中的疑似密钥替换为 [REDACTED_SECRET]；
+   含疑似密钥的 release 压缩包整包不收录。所有处理记录在运行摘要中。
 
 运行环境：GitHub Actions，仅依赖标准库。设置 GITHUB_TOKEN 可把 API 限额提到 5000/小时。
 设置 DRY_RUN=1 可只看结果不落盘。
 """
+import fnmatch
 import io
 import json
 import os
@@ -58,6 +61,34 @@ ALLOWED_EXT = (
 
 SKIP_DIRS = {".git", ".github", "node_modules", ".vscode", "__pycache__", ".idea", "dist", "build"}
 
+# 敏感文件名（按文件名小写匹配，不看目录）。命中则整个文件不保存。
+SENSITIVE_NAME_GLOBS = [
+    ".env*", "*credential*", "*secret*", "*token*", "*password*", "*passwd*",
+    "*.pem", "*.key", "*.p12", "*.pfx", "*.keystore", "*.mobileprovision",
+    "id_rsa*", "id_ed25519*", "*auth*",
+]
+
+# 疑似密钥的高置信度模式。命中的内容替换为 REDACTED，而不是保存原文。
+SECRET_PATTERNS = [re.compile(p) for p in (
+    # 私钥整块（先匹配整段，避免只留下头尾）
+    "-----BEGIN [A-Z ]*PRIVATE KEY-----[^-]*-----END [A-Z ]*PRIVATE KEY-----",
+    # GitHub 令牌：ghp_ / gho_ / ghu_ / ghs_ / ghr_
+    "gh[pousr]_[A-Za-z0-9]{36}",
+    # GitHub 细粒度令牌
+    "github_pat_[A-Za-z0-9_]{82}",
+    # OpenAI / Anthropic 等 sk- 开头的密钥
+    "sk-[A-Za-z0-9_-]{20,}",
+    # AWS 访问密钥 ID
+    "AKIA[0-9A-Z]{16}",
+    # Telegram Bot Token：数字:35 位字符
+    "(?<![0-9])[0-9]{8,10}:[A-Za-z0-9_-]{35}(?![A-Za-z0-9_-])",
+    # Slack 令牌
+    "xox[baprs]-[A-Za-z0-9-]{10,}",
+    # Google API Key
+    "AIza[0-9A-Za-z_-]{35}",
+)]
+REDACTED = "[REDACTED_SECRET]"
+
 # 分类规则：ASCII 关键词按词边界匹配，中文关键词按子串匹配。
 CATEGORY_RULES = [
     ("小组件", ["widget", "widgets", "小组件"]),
@@ -80,12 +111,45 @@ ILLEGAL_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 # 运行状态
 STATUS = {}          # (owner, repo) -> "ok" | "empty" | "error"
 EXPECTED_FILES = {}  # (owner, repo) -> set(绝对路径)
+SECURITY_LOG = []    # 敏感文件跳过、密钥脱敏、压缩包跳过的记录
 SEARCH_FAILED = False
 RATE_LIMITED = False
 
 
 def has_cjk(text):
     return bool(text) and bool(CJK_RE.search(text))
+
+
+def scrub_text(text):
+    """把疑似密钥替换为 REDACTED。返回 (新文本, 替换处数)。"""
+    count = 0
+    for pat in SECRET_PATTERNS:
+        text, n = pat.subn(REDACTED, text)
+        count += n
+    return text, count
+
+
+def sanitize_bytes(data):
+    """对可按 UTF-8 解码的内容做脱敏。二进制文件原样返回。返回 (字节, 替换处数)。"""
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return data, 0
+    new_text, n = scrub_text(text)
+    if n == 0:
+        return data, 0
+    return new_text.encode("utf-8"), n
+
+
+def is_sensitive_name(path):
+    base = os.path.basename(path).lower()
+    return any(fnmatch.fnmatch(base, g) for g in SENSITIVE_NAME_GLOBS)
+
+
+def security_log(target, reason):
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    SECURITY_LOG.append({"target": target, "reason": reason, "time": now})
+    print("安全过滤: {}（{}）".format(target, reason))
 
 
 def strip_html(text):
@@ -99,10 +163,10 @@ def strip_html(text):
 
 
 def clean_text(text, limit=240):
-    """压平空白、去 HTML、截断。"""
+    """压平空白、去 HTML、脱敏、截断。"""
     if not text:
         return ""
-    text = strip_html(str(text))
+    text = scrub_text(strip_html(str(text)))[0]
     if len(text) > limit:
         text = text[:limit].rstrip() + "…"
     return text
@@ -241,6 +305,23 @@ def raw_url(full_name, branch, path):
     )
 
 
+def zip_is_clean(src):
+    """压缩包内任一成员文件名敏感或内容含疑似密钥，则整包不收录。返回 (是否通过, 原因)。"""
+    try:
+        z = zipfile.ZipFile(src)
+        for n in z.namelist():
+            if n.endswith("/"):
+                continue
+            if is_sensitive_name(n):
+                return False, "压缩包内含敏感文件名 " + n
+            _, count = sanitize_bytes(z.read(n))
+            if count:
+                return False, "压缩包内含疑似密钥：" + n
+        return True, ""
+    except Exception as e:
+        return False, "压缩包无法安全检查（{}）".format(e)
+
+
 def zip_project_meta(src):
     """校验 zip 内是否含合法 script.json。src 可传 bytes 或已存在的文件路径。"""
     try:
@@ -267,12 +348,24 @@ def read_remote_project_json(full_name, branch, dirpath):
 
 
 def apply_project_files(full_name, branch, files, dest_root, expected):
-    """把项目目录里的文件抓下来。返回实际写入（或计划写入）的文件数。"""
+    """把项目目录里的文件抓下来。先过文件名过滤，再过内容脱敏。返回写入（或计划写入）的文件数。"""
     total = 0
     written = 0
     for rel in files[:MAX_FILES_PER_PROJECT]:
+        target = full_name + "/" + rel
+        if is_sensitive_name(rel):
+            security_log(target, "文件名命中敏感规则，未保存")
+            continue
         dest = os.path.join(dest_root, rel)
         if os.path.exists(dest):
+            with open(dest, "rb") as f:
+                local = f.read()
+            clean, count = sanitize_bytes(local)
+            if count:
+                security_log(target, "已有文件含疑似密钥，已脱敏（{} 处）".format(count))
+                if not DRY_RUN:
+                    with open(dest, "wb") as f:
+                        f.write(clean)
             expected.add(os.path.abspath(dest))
             written += 1
             continue
@@ -283,6 +376,9 @@ def apply_project_files(full_name, branch, files, dest_root, expected):
         except Exception as e:
             print("  跳过文件 {} {}: {}".format(full_name, rel, e))
             continue
+        data, count = sanitize_bytes(data)
+        if count:
+            security_log(target, "疑似密钥，已脱敏（{} 处）".format(count))
         total += len(data)
         if total > MAX_REPO_BYTES:
             print("  {} 超过单仓库体积上限，停止".format(full_name))
@@ -383,12 +479,24 @@ def scan_repo(full_name, item):
             stem = aname[:-4].lower()
             if stem in projects:
                 continue
+            target = full_name + "/" + aname
+            if is_sensitive_name(aname):
+                security_log(target, "文件名命中敏感规则，未保存")
+                continue
             dest = os.path.join(STORE, key[0], key[1], "releases", tag, safe_name(aname))
             try:
                 if os.path.exists(dest):
+                    ok, why = zip_is_clean(dest)
+                    if not ok:
+                        security_log(target, why)
+                        continue
                     meta = zip_project_meta(dest)
                 else:
                     data = fetch_bytes(asset.get("browser_download_url", ""), MAX_ZIP_BYTES)
+                    ok, why = zip_is_clean(io.BytesIO(data))
+                    if not ok:
+                        security_log(target, why)
+                        continue
                     meta = zip_project_meta(io.BytesIO(data))
                     if meta is not None and not DRY_RUN:
                         os.makedirs(os.path.dirname(dest), exist_ok=True)
@@ -488,14 +596,15 @@ def prune_files(repo_path, expected, pruned_log, now):
         for fn in files:
             p = os.path.abspath(os.path.join(root, fn))
             if p not in expected:
-                os.remove(p)
                 rel = os.path.relpath(p, ROOT)
                 print("清理失效文件: {}".format(rel))
+                if not DRY_RUN:
+                    os.remove(p)
                 pruned_log.append({"type": "file", "target": rel,
                                   "reason": "已不在任何有效项目中", "time": now})
         for d in dirs:
             p = os.path.join(root, d)
-            if os.path.isdir(p) and not os.listdir(p):
+            if not DRY_RUN and os.path.isdir(p) and not os.listdir(p):
                 os.rmdir(p)
 
 
@@ -538,7 +647,7 @@ def prune(pruned_log, now):
                                    "reason": "未发现合法 script.json 项目", "time": now})
             else:
                 prune_files(repo_path, EXPECTED_FILES.get(key, set()), pruned_log, now)
-        if os.path.isdir(owner_path) and not os.listdir(owner_path):
+        if os.path.isdir(owner_path) and not DRY_RUN and not os.listdir(owner_path):
             os.rmdir(owner_path)
 
 
@@ -620,6 +729,7 @@ def build_summary(index, pruned_log):
     lines.append("| 可导入项目 | {} |".format(index["project_count"]))
     lines.append("| 移除仓库 | {} |".format(len(removed_repos)))
     lines.append("| 清理文件 | {} |".format(len(removed_files)))
+    lines.append("| 安全过滤 | {} |".format(len(SECURITY_LOG)))
     lines.append("")
 
     if index["repos"]:
@@ -632,6 +742,15 @@ def build_summary(index, pruned_log):
             lines.append("| {} | {} | {} |".format(r["repo"], len(r["projects"]), r["stars"]))
         lines.append("")
         lines.append("</details>")
+        lines.append("")
+
+    if SECURITY_LOG:
+        lines.append("### 安全过滤记录")
+        lines.append("")
+        for s in SECURITY_LOG[:20]:
+            lines.append("- `{}` — {}".format(s["target"], s["reason"]))
+        if len(SECURITY_LOG) > 20:
+            lines.append("- …另有 {} 个".format(len(SECURITY_LOG) - 20))
         lines.append("")
 
     if removed_repos:
@@ -711,7 +830,8 @@ def main():
     with open(CATALOG_PATH, "w", encoding="utf-8") as f:
         f.write(build_catalog(index, pruned_log, now))
 
-    print("完成：{} 个仓库 / {} 个项目".format(index["count"], index["project_count"]))
+    print("完成：{} 个仓库 / {} 个项目，安全过滤 {} 条".format(
+        index["count"], index["project_count"], len(SECURITY_LOG)))
     return 0
 
 
