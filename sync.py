@@ -2,11 +2,13 @@
 """同步带有 Scripting / Scriptable 相关主题或中文关键词的 GitHub 仓库：
 下载 Release 中的脚本与资源文件，按 作者/仓库 分类保存；
 检测仓库是否有中文文档，为英文简介生成中文参考译文（词典方式），
-并生成 index.json（机器可读索引）和 CATALOG.md（中文目录）。"""
+自动清理已失效的仓库和文件，并生成 index.json（机器可读索引）和 CATALOG.md（中文目录）。"""
 import base64
 import json
 import os
 import re
+import shutil
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -135,9 +137,14 @@ CATEGORY_RULES = [
 ]
 DEFAULT_CATEGORY = "其他"
 
+# 运行过程中的状态（用于判断清理是否安全）
+SEARCH_FAILED = False  # 任一搜索失败时，为避免误删，本次跳过仓库级清理
+EXPECTED_FILES = {}  # (作者目录, 仓库目录) -> 本次应保留的文件绝对路径集合
+RELEASES_OK = set()  # 本次成功获取 Release 列表的 (作者目录, 仓库目录)
+
 
 def api(url, accept="application/vnd.github+json"):
-    """调用 GitHub REST API，并返回解析后的 JSON 数据。"""
+    """调用 GitHub REST API，并返回解析后的 JSON 数据。HTTP 错误会抛出异常。"""
     headers = {"Accept": accept, "User-Agent": "scripting-hub-sync"}
     if TOKEN:
         headers["Authorization"] = f"Bearer {TOKEN}"
@@ -212,12 +219,15 @@ def fetch_readme_snippet(full_name):
 
 
 def search_repos(query, label, found):
-    """执行一次仓库搜索，把结果合并进 found（按完整名称去重，并记录来源）。"""
+    """执行一次仓库搜索，把结果合并进 found（按完整名称去重，并记录来源）。
+    搜索失败时设置 SEARCH_FAILED，以便后续跳过仓库级清理。"""
+    global SEARCH_FAILED
     q = urllib.parse.quote(f"{query} fork:false archived:false")
     url = f"https://api.github.com/search/repositories?q={q}&sort=updated&per_page={MAX_REPOS_PER_QUERY}"
     try:
         items = api(url).get("items", [])
     except Exception as e:
+        SEARCH_FAILED = True
         print(f"搜索 {query} 失败：{e}")
         return
     for item in items:
@@ -239,15 +249,20 @@ def find_repos():
 
 
 def sync_repo(full_name, meta):
-    """处理单个仓库：获取最近的 Release，下载符合扩展名的资源文件，并生成中文信息。"""
+    """处理单个仓库：获取最近的 Release，下载符合扩展名的资源文件，并生成中文信息。
+    同时记录本次应保留的文件，供后续清理使用。"""
     item = meta["item"]
     owner, repo = full_name.split("/", 1)
+    key = (safe(owner), safe(repo))
     base = os.path.join(STORE, safe(owner), safe(repo))
+    expected = EXPECTED_FILES.setdefault(key, set())
     entries = []
     try:
         releases = api(f"https://api.github.com/repos/{full_name}/releases?per_page={MAX_RELEASES}")
+        RELEASES_OK.add(key)
     except Exception as e:
-        print(f"获取 {full_name} 的 Release 失败：{e}")
+        # Release 获取失败时不清理该仓库已有文件，避免因临时错误误删
+        print(f"获取 {full_name} 的 Release 失败，保留已有文件：{e}")
         releases = []
     for rel in releases:
         tag = safe(rel.get("tag_name") or "untagged")
@@ -257,14 +272,17 @@ def sync_repo(full_name, meta):
             if not name.lower().endswith(ALLOWED_EXT):
                 continue
             dest = os.path.join(base, "releases", tag, safe(name))
-            # 文件已存在则跳过重复下载
+            # 文件已存在则跳过重复下载，但仍视为有效文件
             if os.path.exists(dest):
                 entries.append(dest)
+                expected.add(os.path.abspath(dest))
                 continue
             try:
                 if download(asset["browser_download_url"], dest):
                     entries.append(dest)
+                    expected.add(os.path.abspath(dest))
             except Exception as e:
+                # 下载失败：该文件不会被记为有效，若磁盘上存在旧残留则会被清理
                 print(f"下载失败 {full_name} {name}：{e}")
 
     desc_en = item.get("description") or ""
@@ -288,7 +306,83 @@ def sync_repo(full_name, meta):
     }
 
 
-def build_catalog(results, updated_at):
+def check_repo_status(full_name):
+    """查询仓库在 GitHub 上的当前状态，返回 (是否应删除, 原因)。
+    只有明确的 404 或仓库不再符合条件时才返回应删除；其他错误（如限流、网络）返回不删除。"""
+    try:
+        info = api(f"https://api.github.com/repos/{full_name}")
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return True, "仓库已在 GitHub 上删除（404）"
+        return False, f"无法确认仓库状态（HTTP {e.code}），本次保留"
+    except Exception as e:
+        return False, f"无法确认仓库状态（{e}），本次保留"
+    if info.get("private"):
+        return True, "仓库已改为私有"
+    if info.get("archived"):
+        return True, "仓库已归档"
+    if info.get("fork"):
+        return True, "仓库已变为 Fork"
+    return True, "仓库不再符合搜索条件"
+
+
+def prune_files(repo_path, expected, full_name, pruned_log, now):
+    """删除仓库目录中本次不再有效的文件（例如 Release 已删除、资源已移除或下载失败的残留），
+    并删除清理后留下的空目录。"""
+    for root, dirs, files in os.walk(repo_path, topdown=False):
+        for fn in files:
+            p = os.path.abspath(os.path.join(root, fn))
+            if p not in expected:
+                os.remove(p)
+                rel = os.path.relpath(p, ROOT)
+                print(f"清理失效文件：{rel}")
+                pruned_log.append({"type": "file", "target": rel, "reason": "Release 资源已失效或下载不完整", "time": now})
+        for d in dirs:
+            p = os.path.join(root, d)
+            if os.path.isdir(p) and not os.listdir(p):
+                os.rmdir(p)
+
+
+def prune(results, pruned_log, now):
+    """自动检查 scripts-store/ 中的内容，清理失效的仓库和文件。
+    安全规则：
+    1. 任一搜索失败时，本次跳过仓库级清理（避免因临时故障误删）。
+    2. 仓库的 Release 获取失败时，保留该仓库已有文件。
+    3. 仓库状态查询出现非 404 错误时，保留该仓库。"""
+    if not os.path.isdir(STORE):
+        return
+    if SEARCH_FAILED:
+        print("本次有搜索失败，为安全起见跳过仓库级清理。")
+        return
+    keep = {(safe(r["repo"].split("/", 1)[0]), safe(r["repo"].split("/", 1)[1])) for r in results}
+
+    for owner_dir in sorted(os.listdir(STORE)):
+        owner_path = os.path.join(STORE, owner_dir)
+        if not os.path.isdir(owner_path):
+            continue
+        for repo_dir in sorted(os.listdir(owner_path)):
+            repo_path = os.path.join(owner_path, repo_dir)
+            if not os.path.isdir(repo_path):
+                continue
+            key = (owner_dir, repo_dir)
+            full_name = f"{owner_dir}/{repo_dir}"
+            if key not in keep:
+                should_delete, reason = check_repo_status(full_name)
+                if should_delete:
+                    shutil.rmtree(repo_path)
+                    print(f"移除仓库：{full_name}，原因：{reason}")
+                    pruned_log.append({"type": "repo", "target": full_name, "reason": reason, "time": now})
+                else:
+                    print(f"保留仓库：{full_name}，{reason}")
+            elif key not in RELEASES_OK:
+                print(f"保留仓库：{full_name}，本次 Release 获取失败")
+            else:
+                prune_files(repo_path, EXPECTED_FILES.get(key, set()), full_name, pruned_log, now)
+        if os.path.isdir(owner_path) and not os.listdir(owner_path):
+            os.rmdir(owner_path)
+
+
+def build_catalog(results, updated_at, pruned_log):
     """生成中文 Markdown 目录，按是否与中文相关、再按类别分组，并按 Star 数排序。"""
     lines = ["# 脚本中心目录", "", f"最近同步时间：{updated_at}", ""]
     lines.append("> 说明：中文简介为基于词典的参考译文，可能不够通顺；原文简介保留在表格的「原文简介」列中。")
@@ -315,11 +409,23 @@ def build_catalog(results, updated_at):
                 docs = "有" if r["has_chinese_docs"] else "无"
                 lines.append(f"| [{r['repo']}]({r['url']}) | {zh} | {en} | {docs} | {r['stars']} | {len(r['files'])} |")
             lines.append("")
+
+    lines.append("## 清理记录")
+    lines.append("")
+    if not pruned_log:
+        lines.append("本次没有需要清理的内容。")
+    else:
+        lines.append("| 时间 | 类型 | 对象 | 原因 |")
+        lines.append("|---|---|---|---|")
+        for p in pruned_log:
+            kind = "仓库" if p["type"] == "repo" else "文件"
+            lines.append(f"| {p['time']} | {kind} | {p['target']} | {p['reason']} |")
+    lines.append("")
     return "\n".join(lines) + "\n"
 
 
 def main():
-    """主流程：搜索仓库 -> 同步文件 -> 写入 index.json 与 CATALOG.md。"""
+    """主流程：搜索仓库 -> 同步文件 -> 自动清理失效内容 -> 写入 index.json 与 CATALOG.md。"""
     os.makedirs(STORE, exist_ok=True)
     repos = find_repos()
     results = []
@@ -327,10 +433,15 @@ def main():
         results.append(sync_repo(full_name, meta))
 
     updated_at = datetime.now(timezone.utc).isoformat()
+    pruned_log = []
+    prune(results, pruned_log, updated_at)
+
     index = {
         "updated_at": updated_at,
         "count": len(results),
         "chinese_related_count": sum(1 for r in results if r["chinese_related"]),
+        "pruned_count": len(pruned_log),
+        "pruned": pruned_log,
         "repos": results,
     }
     # 写入机器可读的 JSON 索引
@@ -339,8 +450,8 @@ def main():
 
     # 写入中文 Markdown 目录
     with open(os.path.join(ROOT, "CATALOG.md"), "w", encoding="utf-8") as f:
-        f.write(build_catalog(results, updated_at))
-    print(f"共同步 {len(results)} 个仓库，其中中文相关 {index['chinese_related_count']} 个。")
+        f.write(build_catalog(results, updated_at, pruned_log))
+    print(f"共同步 {len(results)} 个仓库，其中中文相关 {index['chinese_related_count']} 个，清理 {len(pruned_log)} 项。")
 
 
 if __name__ == "__main__":
