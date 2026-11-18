@@ -1,0 +1,587 @@
+{
+  "updated_at": "2026-11-18T07:12:44.695798+00:00",
+  "count": 60,
+  "repos": [
+    {
+      "repo": "Anshul46xfa/runtime-outside-studio",
+      "url": "https://github.com/Anshul46xfa/runtime-outside-studio",
+      "description": "Lumora 2026: Ultimate Luau Runtime Engine for Roblox-Style Scripts Outside Studio",
+      "topic": "scripting",
+      "stars": 68,
+      "language": "HTML",
+      "files": []
+    },
+    {
+      "repo": "Apirz-AI/claude-usage-monitor",
+      "url": "https://github.com/Apirz-AI/claude-usage-monitor",
+      "description": "Tiny 90s-style desk monitor that shows your Claude usage limits: 5-hour session, weekly limit, reset countdown. ESP32-S3, 3D-printed case, no soldering, about €35. iPhone widget included. English + Deutsch.",
+      "topic": "scriptable",
+      "stars": 0,
+      "language": "HTML",
+      "files": []
+    },
+    {
+      "repo": "Apirz-AI/claude-usage-monitor-lite",
+      "url": "https://github.com/Apirz-AI/claude-usage-monitor-lite",
+      "description": "Budget version without battery: tiny 90s CRT-style desk monitor that shows your Claude usage limits: 5-hour session, weekly limit, reset countdown. ESP32 \"Cheap Yellow Display\" 2.8\" touch, 3D-printed case, no soldering, about €16. iPhone widget included. English + Deutsch.",
+      "topic": "scriptable",
+      "stars": 0,
+      "language": "HTML",
+      "files": []
+    },
+    {
+      "repo": "BrandonRoehl/dotfiles",
+      "url": "https://github.com/BrandonRoehl/dotfiles",
+      "description": "My personal dot files and vim folder",
+      "topic": "scripting",
+      "stars": 2,
+      "language": "Lua",
+      "files": []
+    },
+    {
+      "repo": "BuriXon-code/BuriXon-code",
+      "url": "https://github.com/BuriXon-code/BuriXon-code",
+      "description": "Config files for my GitHub profile.",
+      "topic": "scripting",
+      "stars": 2,
+      "language": "",
+      "files": []
+    },
+    {
+      "repo": "CaseyCZ/Scriptable",
+      "url": "https://github.com/CaseyCZ/Scriptable",
+      "description": "Scriptable apps for iPhone — LockScreen Generator, Football Info, Live Scores & a curated community catalog.",
+      "topic": "scriptable",
+      "stars": 4,
+      "language": "JavaScript",
+      "files": []
+    },
+    {
+      "repo": "DarthQuintus/ScriptSCAD-Suite",
+      "url": "https://github.com/DarthQuintus/ScriptSCAD-Suite",
+      "description": "Parametric 3D CAD (OpenSCAD) and slicer for iPad – runs in Scriptable, offline",
+      "topic": "scriptable",
+      "stars": 3,
+      "language": "JavaScript",
+      "files": [
+        "scripts-store/DarthQuintus/ScriptSCAD-Suite/releases/v10o.2/ScriptSCAD-10o.2-update.zip",
+        "scripts-store/DarthQuintus/ScriptSCAD-Suite/releases/v10o.2/ScriptSCAD-10o.2.zip"
+      ]
+    },
+    {
+      "repo": "DarthQuintus/scriptable-kcal-widget",
+      "url": "https://github.com/DarthQuintus/scriptable-kcal-widget",
+      "description": "iOS home screen widget (Scriptable + Apple Shortcuts) showing your 7-day calorie deficit and macro ratings from Apple Health",
+      "topic": "scriptable",
+      "stars": 5,
+      "language": "JavaScript",
+      "files": []
+    },
+    {
+      "repo": "Gubna-Tech/RuneScape",
+      "url": "https://github.com/Gubna-Tech/RuneScape",
+      "description": "Free, open-source AutoHotkey framework and script-building toolkit for RuneScape 3 EoC, built to make creating powerful automation and quality-of-life tools faster, easier, and more flexible.",
+      "topic": "scripting",
+      "stars": 43,
+      "language": "AutoHotkey",
+      "files": []
+    },
+    {
+      "repo": "Ko0ler/HomeLab",
+      "url": "https://github.com/Ko0ler/HomeLab",
+      "description": "My playground homelab - GNS3 cybersecurity & Active Directory pentesting lab with Cisco ASAv, DMZ, and Kali/Exegol",
+      "topic": "scripting",
+      "stars": 12,
+      "language": "Shell",
+      "files": []
+    },
+    {
+      "repo": "LASCAMPIA67/CTS-Dashboard",
+      "url": "https://github.com/LASCAMPIA67/CTS-Dashboard",
+      "description": "Widget iPhone pour les conducteurs CTS : la carte d'agent PDF déposée dans iCloud devient le service du jour sur l'écran d'accueil — import, sélection et archivage automatiques, affichage hors ligne.",
+      "topic": "scriptable",
+      "stars": 1,
+      "language": "JavaScript",
+      "files": []
+    },
+    {
+      "repo": "MasterCruelty/eMerger",
+      "url": "https://github.com/MasterCruelty/eMerger",
+      "description": "An elegant tool which update your system by a single universal command",
+      "topic": "scripting",
+      "stars": 12,
+      "language": "Shell",
+      "files": []
+    },
+    {
+      "repo": "Mika-Sibinkic/aperture-vision",
+      "url": "https://github.com/Mika-Sibinkic/aperture-vision",
+      "description": "Logs food-donation weights from a camera instead of a scale. A volunteer taps an old iPad, it pulls a frame from the dock camera, a vision model on NVIDIA NIM estimates pounds, and n8n writes a Google Sheet row and a Farmbrite draft. Built for a Nashville nonprofit. The weights are estimates and not yet checked against a scale.",
+      "topic": "scriptable",
+      "stars": 0,
+      "language": "Python",
+      "files": []
+    },
+    {
+      "repo": "Mqdd27/widgets",
+      "url": "https://github.com/Mqdd27/widgets",
+      "description": "My Scriptable Widgets",
+      "topic": "scriptable",
+      "stars": 0,
+      "language": "JavaScript",
+      "files": []
+    },
+    {
+      "repo": "ShiningRay/tessell-mruby",
+      "url": "https://github.com/ShiningRay/tessell-mruby",
+      "description": "Optional mruby scripting layer for Tessell: plan & design (experimental, phase 0)",
+      "topic": "scripting",
+      "stars": 0,
+      "language": "Crystal",
+      "files": []
+    },
+    {
+      "repo": "Teriks/dgenerate",
+      "url": "https://github.com/Teriks/dgenerate",
+      "description": "dgenerate is a scriptable command line tool (and library) for generating images and animation sequences using stable diffusion and related techniques, with an accompanying GUI scripting environment.",
+      "topic": "scriptable",
+      "stars": 45,
+      "language": "Python",
+      "files": []
+    },
+    {
+      "repo": "TriliumNext/Trilium",
+      "url": "https://github.com/TriliumNext/Trilium",
+      "description": "Build your personal knowledge base with Trilium Notes",
+      "topic": "scriptable",
+      "stars": 38982,
+      "language": "TypeScript",
+      "files": [
+        "scripts-store/TriliumNext/Trilium/releases/web-clipper-v1.2.0-rc1/trilium-web-clipper-1.1.90-chrome.zip",
+        "scripts-store/TriliumNext/Trilium/releases/web-clipper-v1.2.0-rc1/triliumnextweb-clipper-1.1.90-sources.zip"
+      ]
+    },
+    {
+      "repo": "UsernameYann/Sunflower-Land-Widget-for-iOS",
+      "url": "https://github.com/UsernameYann/Sunflower-Land-Widget-for-iOS",
+      "description": "iOS widget to track all your Sunflower Land elements directly on your home screen.",
+      "topic": "scriptable",
+      "stars": 5,
+      "language": "JavaScript",
+      "files": []
+    },
+    {
+      "repo": "abdul0320/devex-velocity-benchmark",
+      "url": "https://github.com/abdul0320/devex-velocity-benchmark",
+      "description": "🚀 Ultimate DevEx Speed Test Kit 2026 - Free Boilerplate & Tools",
+      "topic": "scripting",
+      "stars": 0,
+      "language": "HTML",
+      "files": []
+    },
+    {
+      "repo": "amaynez/telcel-widget-agy",
+      "url": "https://github.com/amaynez/telcel-widget-agy",
+      "description": "Widgets para iOS y Android (WidgetKit/SwiftUI y Scriptable) de consumo de datos móviles en tiempo real (Plan + Promo, ritmo diario y fecha de corte) para Telcel, Bait, Movistar y AT&T.",
+      "topic": "scriptable",
+      "stars": 36,
+      "language": "JavaScript",
+      "files": []
+    },
+    {
+      "repo": "azarucha/Kaderplaner",
+      "url": "https://github.com/azarucha/Kaderplaner",
+      "description": "Unofficial helper for Kickbase. It works out how much money every rival in your league has, who can still outbid you, and which lineup gets the most expected points. Web app and iPhone widget",
+      "topic": "scriptable",
+      "stars": 0,
+      "language": "JavaScript",
+      "files": []
+    },
+    {
+      "repo": "bearyjd/gv-mark-read",
+      "url": "https://github.com/bearyjd/gv-mark-read",
+      "description": "Bulk-mark unread Google Voice voicemails as read via Playwright browser automation",
+      "topic": "scripting",
+      "stars": 0,
+      "language": "JavaScript",
+      "files": []
+    },
+    {
+      "repo": "cablehead/http-nu",
+      "url": "https://github.com/cablehead/http-nu",
+      "description": "The surprisingly performant, Nushell-scriptable, cross.stream-powered, Datastar-ready HTTP server that fits in your back pocket. 🐘💫🚀💜",
+      "topic": "scripting",
+      "stars": 168,
+      "language": "Rust",
+      "files": []
+    },
+    {
+      "repo": "cablehead/xs",
+      "url": "https://github.com/cablehead/xs",
+      "description": "crossing the streams",
+      "topic": "scripting",
+      "stars": 233,
+      "language": "Rust",
+      "files": []
+    },
+    {
+      "repo": "dipsonbasnet49-droid/bhop-browser-game",
+      "url": "https://github.com/dipsonbasnet49-droid/bhop-browser-game",
+      "description": "Bhop Browser Game - Forge Your Own Bunny Hop Legends",
+      "topic": "scripting",
+      "stars": 153,
+      "language": "TypeScript",
+      "files": []
+    },
+    {
+      "repo": "doersino/scriptable-widgets",
+      "url": "https://github.com/doersino/scriptable-widgets",
+      "description": "A collection of Scriptable widgets I've built.",
+      "topic": "scriptable",
+      "stars": 59,
+      "language": "JavaScript",
+      "files": []
+    },
+    {
+      "repo": "dropbox/dbxcli",
+      "url": "https://github.com/dropbox/dbxcli",
+      "description": "A scriptable Dropbox CLI for files, shared links, teams, and automation workflows",
+      "topic": "scripting",
+      "stars": 1175,
+      "language": "Go",
+      "files": [
+        "scripts-store/dropbox/dbxcli/releases/v3.8.2/dbxcli_3.8.2_windows_amd64.zip",
+        "scripts-store/dropbox/dbxcli/releases/v3.8.0/dbxcli_3.8.0_windows_amd64.zip",
+        "scripts-store/dropbox/dbxcli/releases/v3.7.4/dbxcli_3.7.4_windows_amd64.zip",
+        "scripts-store/dropbox/dbxcli/releases/v3.7.3/dbxcli_3.7.3_windows_amd64.zip",
+        "scripts-store/dropbox/dbxcli/releases/v3.7.2/dbxcli_3.7.2_windows_amd64.zip"
+      ]
+    },
+    {
+      "repo": "dynacylabs/scriptable-fordpass",
+      "url": "https://github.com/dynacylabs/scriptable-fordpass",
+      "description": "Unofficial Ford/Lincoln vehicle widget for Scriptable (iOS). Single file, no server, no account of ours.",
+      "topic": "scriptable",
+      "stars": 0,
+      "language": "JavaScript",
+      "files": []
+    },
+    {
+      "repo": "fleetdm/fleet",
+      "url": "https://github.com/fleetdm/fleet",
+      "description": "Open device management",
+      "topic": "scripting",
+      "stars": 7230,
+      "language": "Go",
+      "files": [
+        "scripts-store/fleetdm/fleet/releases/fleet-v4.95.0/fleetctl_v4.95.0_linux_amd64.zip",
+        "scripts-store/fleetdm/fleet/releases/fleet-v4.95.0/fleetctl_v4.95.0_linux_arm64.zip",
+        "scripts-store/fleetdm/fleet/releases/fleet-v4.95.0/fleetctl_v4.95.0_windows_amd64.zip",
+        "scripts-store/fleetdm/fleet/releases/fleet-v4.95.0/fleetctl_v4.95.0_windows_arm64.zip",
+        "scripts-store/fleetdm/fleet/releases/fleet-v4.94.0/fleetctl_v4.94.0_linux_amd64.zip",
+        "scripts-store/fleetdm/fleet/releases/fleet-v4.94.0/fleetctl_v4.94.0_linux_arm64.zip",
+        "scripts-store/fleetdm/fleet/releases/fleet-v4.94.0/fleetctl_v4.94.0_windows_amd64.zip",
+        "scripts-store/fleetdm/fleet/releases/fleet-v4.94.0/fleetctl_v4.94.0_windows_arm64.zip",
+        "scripts-store/fleetdm/fleet/releases/fleet-v4.93.2/fleetctl_v4.93.2_linux_amd64.zip",
+        "scripts-store/fleetdm/fleet/releases/fleet-v4.93.2/fleetctl_v4.93.2_linux_arm64.zip",
+        "scripts-store/fleetdm/fleet/releases/fleet-v4.93.2/fleetctl_v4.93.2_windows_amd64.zip",
+        "scripts-store/fleetdm/fleet/releases/fleet-v4.93.2/fleetctl_v4.93.2_windows_arm64.zip",
+        "scripts-store/fleetdm/fleet/releases/fleet-v4.93.1/fleetctl_v4.93.1_linux_amd64.zip",
+        "scripts-store/fleetdm/fleet/releases/fleet-v4.93.1/fleetctl_v4.93.1_linux_arm64.zip",
+        "scripts-store/fleetdm/fleet/releases/fleet-v4.93.1/fleetctl_v4.93.1_windows_amd64.zip",
+        "scripts-store/fleetdm/fleet/releases/fleet-v4.93.1/fleetctl_v4.93.1_windows_arm64.zip",
+        "scripts-store/fleetdm/fleet/releases/fleet-v4.93.0/fleetctl_v4.93.0_linux_amd64.zip",
+        "scripts-store/fleetdm/fleet/releases/fleet-v4.93.0/fleetctl_v4.93.0_linux_arm64.zip",
+        "scripts-store/fleetdm/fleet/releases/fleet-v4.93.0/fleetctl_v4.93.0_windows_amd64.zip",
+        "scripts-store/fleetdm/fleet/releases/fleet-v4.93.0/fleetctl_v4.93.0_windows_arm64.zip"
+      ]
+    },
+    {
+      "repo": "gadominas/Frontly",
+      "url": "https://github.com/gadominas/Frontly",
+      "description": "Answer. Note. Book. A virtual receptionist demo for Scriptable on iPhone: call a dental clinic, Reva screens you by voice, and you book the visit as the front desk. AI is optional, with your own Claude or OpenAI key.",
+      "topic": "scriptable",
+      "stars": 0,
+      "language": "JavaScript",
+      "files": []
+    },
+    {
+      "repo": "gadominas/Go2FGym",
+      "url": "https://github.com/gadominas/Go2FGym",
+      "description": "Pick. Lift. Log. An iPhone app for Scriptable where you pick the muscles to train, see how each exercise is done, log your sets with a rest timer, and let an optional AI coach build your next workout.",
+      "topic": "scriptable",
+      "stars": 0,
+      "language": "JavaScript",
+      "files": []
+    },
+    {
+      "repo": "gadominas/Reading-Stars",
+      "url": "https://github.com/gadominas/Reading-Stars",
+      "description": "Read. Match. Shine. A picture-and-word reading game for kids on iPhone, in Lithuanian, English and Spanish, built for Scriptable, where first-try answers earn tokens a parent can swap for real pocket money.",
+      "topic": "scriptable",
+      "stars": 1,
+      "language": "JavaScript",
+      "files": []
+    },
+    {
+      "repo": "gadominas/StockIt",
+      "url": "https://github.com/gadominas/StockIt",
+      "description": "Track. Read. Decide. An iPhone app for Scriptable with your portfolio, watchlist, key numbers in plain English, the headlines around your stocks and an optional AI briefing you can listen to; not financial advice.",
+      "topic": "scriptable",
+      "stars": 0,
+      "language": "JavaScript",
+      "files": []
+    },
+    {
+      "repo": "gadominas/StravaFeed",
+      "url": "https://github.com/gadominas/StravaFeed",
+      "description": "Catch up. Cheer. Move on. An iPhone app for Scriptable that turns your Strava following feed into one page per day, grouped by athlete, with one-tap kudos, AI comment ideas, the day as a comic and a kudos widget.",
+      "topic": "scriptable",
+      "stars": 0,
+      "language": "JavaScript",
+      "files": []
+    },
+    {
+      "repo": "gadominas/Tamo-",
+      "url": "https://github.com/gadominas/Tamo-",
+      "description": "Messages. Homework. Calm. An iPhone app for Scriptable that shows your child's TAMO dienynas, the Lithuanian school e-diary, as one calm page of today's lessons, homework, messages and grades, with a widget and an AI chat about the week.",
+      "topic": "scriptable",
+      "stars": 0,
+      "language": "JavaScript",
+      "files": []
+    },
+    {
+      "repo": "gadominas/Vintly",
+      "url": "https://github.com/gadominas/Vintly",
+      "description": "Snap. Price. Sell. Turn phone photos into Vinted listings with AI: sorted into items, cleaned, written, priced and posted with one tap. Free, for iPhone and iPad. A Scriptable app.",
+      "topic": "scriptable",
+      "stars": 1,
+      "language": "JavaScript",
+      "files": []
+    },
+    {
+      "repo": "hoax-289875superber/Dragon-s-Dogma-2-Method-Library",
+      "url": "https://github.com/hoax-289875superber/Dragon-s-Dogma-2-Method-Library",
+      "description": "Expand scriptable control over materials, prefab paths, and color correction.",
+      "topic": "scripting",
+      "stars": 0,
+      "language": "",
+      "files": []
+    },
+    {
+      "repo": "horizzon3507/yuzuha",
+      "url": "https://github.com/horizzon3507/yuzuha",
+      "description": "TypeScript framework for Fluxer bots with native commands and optional Forge-style scripts.",
+      "topic": "scripting",
+      "stars": 1,
+      "language": "TypeScript",
+      "files": []
+    },
+    {
+      "repo": "jerry98998/loan",
+      "url": "https://github.com/jerry98998/loan",
+      "description": "在 iPhone 上看房贷的网页看板 + Scriptable 桌面小组件（不装 App、不做小程序）",
+      "topic": "scriptable",
+      "stars": 0,
+      "language": "JavaScript",
+      "files": []
+    },
+    {
+      "repo": "justin-walzengineering/Eplan-Scripting-GUI-Examples",
+      "url": "https://github.com/justin-walzengineering/Eplan-Scripting-GUI-Examples",
+      "description": "Reusable Eplan Electric P8 (2025/2026) scripting examples: dialogs, grids, progress windows, ribbon tools and more. Commented C# for engineers learning Eplan automation. Unofficial community resource.",
+      "topic": "scripting",
+      "stars": 1,
+      "language": "PowerShell",
+      "files": []
+    },
+    {
+      "repo": "kayneshakim-bit/luau-workflow-runner",
+      "url": "https://github.com/kayneshakim-bit/luau-workflow-runner",
+      "description": "Automated Luau Script Testing for Roblox CI Workflows 2026",
+      "topic": "scripting",
+      "stars": 70,
+      "language": "HTML",
+      "files": []
+    },
+    {
+      "repo": "khairudinfahmi/khairudinfahmi",
+      "url": "https://github.com/khairudinfahmi/khairudinfahmi",
+      "description": "SysAdmin & AI-Augmented Software Engineer | PowerShell & Python Automation Scripter | IT Infrastructure & Internal Tools Developer",
+      "topic": "scripting",
+      "stars": 0,
+      "language": "Python",
+      "files": []
+    },
+    {
+      "repo": "lenathea913/stay-quiet",
+      "url": "https://github.com/lenathea913/stay-quiet",
+      "description": "Alat Windows (Python + batch) untuk membuat 1-10 commit otomatis ke aktivitas.txt, lalu push sekali ke GitHub — tanpa kredensial di repo, lengkap dengan dry-run dan jeda antar-commit.",
+      "topic": "scripting",
+      "stars": 0,
+      "language": "Python",
+      "files": []
+    },
+    {
+      "repo": "marcjulianschwarz/telekom-data-usage-widget",
+      "url": "https://github.com/marcjulianschwarz/telekom-data-usage-widget",
+      "description": "Telekom Datennutzung Widget für iOS 14 ",
+      "topic": "scriptable",
+      "stars": 64,
+      "language": "JavaScript",
+      "files": []
+    },
+    {
+      "repo": "ndenissov/ndenissov",
+      "url": "https://github.com/ndenissov/ndenissov",
+      "description": "I am a Senior Software Engineer and GaTech OMSCS student specializing in high-load backend architecture and open-source development. My portfolio showcases a diverse collection of high-performance Python and Go utilities, automated scrapers, cross-platform applications, and advanced CLI tools built for maximum efficiency and scalability.",
+      "topic": "scripting",
+      "stars": 1,
+      "language": "Python",
+      "files": []
+    },
+    {
+      "repo": "new92/php",
+      "url": "https://github.com/new92/php",
+      "description": "A repo containing personal php scripts / projects.",
+      "topic": "scripting",
+      "stars": 2,
+      "language": "PHP",
+      "files": []
+    },
+    {
+      "repo": "osakka/hibr",
+      "url": "https://github.com/osakka/hibr",
+      "description": "hibr is a shell that finally behaves the way you already expect a shell to behave. ",
+      "topic": "scripting",
+      "stars": 1,
+      "language": "C",
+      "files": []
+    },
+    {
+      "repo": "piyushkushwah0123/Sky-Study-Lounge",
+      "url": "https://github.com/piyushkushwah0123/Sky-Study-Lounge",
+      "description": "Sky-Hub 2026: Educational Cloud Learning Platform for Students and Developers",
+      "topic": "scripting",
+      "stars": 70,
+      "language": "HTML",
+      "files": []
+    },
+    {
+      "repo": "python-cmd2/cmd2",
+      "url": "https://github.com/python-cmd2/cmd2",
+      "description": "cmd2 - quickly build feature-rich and user-friendly interactive command line applications in Python",
+      "topic": "scripting",
+      "stars": 694,
+      "language": "Python",
+      "files": []
+    },
+    {
+      "repo": "ravindusj/ClashLog",
+      "url": "https://github.com/ravindusj/ClashLog",
+      "description": "Clash of Clans upgrade timers as iPhone widgets, built with Scriptable. Free open source project, not affiliated with Supercell.",
+      "topic": "scriptable",
+      "stars": 0,
+      "language": "JavaScript",
+      "files": []
+    },
+    {
+      "repo": "sammcentee/dublin-dashboard",
+      "url": "https://github.com/sammcentee/dublin-dashboard",
+      "description": "A Scriptable iPhone dashboard for Dublin weather, daylight, trains and Luas, updated from GitHub.",
+      "topic": "scriptable",
+      "stars": 0,
+      "language": "JavaScript",
+      "files": []
+    },
+    {
+      "repo": "shadowmoontarzan67/Adventure-Game-Studio-Ags",
+      "url": "https://github.com/shadowmoontarzan67/Adventure-Game-Studio-Ags",
+      "description": "Adventure Game Studio (AGS) is a versatile utility for Windows that allows you to create point-and-click adventure games with features like room design and character customization, all in a free version.",
+      "topic": "scripting",
+      "stars": 0,
+      "language": "",
+      "files": []
+    },
+    {
+      "repo": "spyweb-app/spyweb",
+      "url": "https://github.com/spyweb-app/spyweb",
+      "description": "Tiny web monitoring, scraping & browser automation engine with Lua scripting, built-in storage, dedup, scheduler, hot reload, programmable API server, test runner and desktop/webhook alerts. ~8MB cross-platform self-contained binary with <10MB idle RAM.",
+      "topic": "scriptable",
+      "stars": 45,
+      "language": "Rust",
+      "files": []
+    },
+    {
+      "repo": "steel-nebula-63/pdq-inventory-desktop",
+      "url": "https://github.com/steel-nebula-63/pdq-inventory-desktop",
+      "description": "PDQ Inventory 2026 desktop setup with full inventory module suite, offline runtime and portable mode for Windows 11 x64 hosts.",
+      "topic": "scripting",
+      "stars": 150,
+      "language": "C++",
+      "files": []
+    },
+    {
+      "repo": "thechelsuk/app.scriptable",
+      "url": "https://github.com/thechelsuk/app.scriptable",
+      "description": "Scriptable App - a repository for scriptable JavaScript files that provide little snippets of information, widgets, or automations  that can be used via Siri or shortcuts.",
+      "topic": "scriptable",
+      "stars": 40,
+      "language": "JavaScript",
+      "files": []
+    },
+    {
+      "repo": "thecount12/lux",
+      "url": "https://github.com/thecount12/lux",
+      "description": "",
+      "topic": "scripting",
+      "stars": 2,
+      "language": "C",
+      "files": []
+    },
+    {
+      "repo": "tyouhyou/imprint",
+      "url": "https://github.com/tyouhyou/imprint",
+      "description": "Tiny, dependency-free, software-rendered C++17 GUI framework - one UI source tree for Windows, Linux, macOS, WebAssembly and the Nintendo DS",
+      "topic": "scriptable",
+      "stars": 2,
+      "language": "C++",
+      "files": [
+        "scripts-store/tyouhyou/imprint/releases/v0.1.1/imprint-showcase-v0.1.1-win-x64.zip",
+        "scripts-store/tyouhyou/imprint/releases/v0.1/imprint-showcase-v0.1-win-x64.zip"
+      ]
+    },
+    {
+      "repo": "veritatron/words2widget",
+      "url": "https://github.com/veritatron/words2widget",
+      "description": "Words in, iPhone widget out. Describe a home screen widget, let any AI build it for Scriptable.",
+      "topic": "scriptable",
+      "stars": 4,
+      "language": "JavaScript",
+      "files": [
+        "scripts-store/veritatron/words2widget/releases/v0.2.0/scriptable-widget.zip",
+        "scripts-store/veritatron/words2widget/releases/v0.2.0/Widget.Installer.js",
+        "scripts-store/veritatron/words2widget/releases/v0.1.0/scriptable-widget.zip",
+        "scripts-store/veritatron/words2widget/releases/v0.1.0/Widget.Installer.js"
+      ]
+    },
+    {
+      "repo": "wegamekinglc/Derivatives-Algorithms-Lib",
+      "url": "https://github.com/wegamekinglc/Derivatives-Algorithms-Lib",
+      "description": " AAD enabled and scripting included derivatives modeling.",
+      "topic": "scripting",
+      "stars": 27,
+      "language": "C++",
+      "files": []
+    },
+    {
+      "repo": "yi-nology/shellkit",
+      "url": "https://github.com/yi-nology/shellkit",
+      "description": "Bash 库 + 脚手架生成器 + CLI 框架：写运维 shell 的起点。基线 Bash 3.2+，stdout 只给数据，日志一律 stderr。",
+      "topic": "scripting",
+      "stars": 0,
+      "language": "Shell",
+      "files": []
+    }
+  ]
+}
