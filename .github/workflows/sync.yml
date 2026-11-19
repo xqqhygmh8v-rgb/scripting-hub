@@ -59,7 +59,26 @@ jobs:
             exit 0
           fi
           git commit -m "同步脚本中心 $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          git push
+          # 运行期间 main 可能已有新提交（例如手动修改）。先抓取并变基到最新 main，
+          # 再推送；被拒绝时重新抓取变基并重试。从不使用强制推送。
+          for attempt in 1 2 3; do
+            git fetch origin main
+            if ! git rebase origin/main; then
+              # 变基冲突（多见于 index.json / CATALOG.md）：放弃并报错，
+              # 不做自动覆盖，下一次定时运行会基于最新 main 重新生成。
+              git rebase --abort || true
+              echo "变基时出现冲突，本次未推送。请查看 main 的最新提交。"
+              exit 1
+            fi
+            if git push origin HEAD:refs/heads/main; then
+              echo "推送成功（第 $attempt 次尝试）。"
+              exit 0
+            fi
+            echo "推送被拒绝，第 $attempt 次失败，稍后重试。"
+            sleep $((attempt * 5))
+          done
+          echo "多次推送仍失败，本次未推送。"
+          exit 1
 
       - name: 预览模式提示
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
