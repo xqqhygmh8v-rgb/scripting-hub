@@ -1,0 +1,172 @@
+import {
+  Button,
+  Form,
+  HStack,
+  Image,
+  Navigation,
+  NavigationStack,
+  Section,
+  Spacer,
+  Text,
+  Toggle,
+} from "scripting"
+
+import {
+  formatDateTime,
+} from "../utils/alarm_runtime"
+import { CenterRowButton } from "./CenterRowButton"
+import { PageGradientBackground } from "./PageGradientBackground"
+
+function MetricRow(props: {
+  icon: string
+  title: string
+  value: string
+  tint?: string
+}) {
+  const tint = (props.tint ?? "#FF9500") as any
+  return (
+    <HStack spacing={12}>
+      <Image
+        systemName={props.icon}
+        foregroundStyle={tint}
+        frame={{ width: 20, alignment: "center" as any }}
+      />
+      <Text frame={{ maxWidth: "infinity", alignment: "leading" as any }}>
+        {props.title}
+      </Text>
+      <Text foregroundStyle="secondaryLabel">{props.value}</Text>
+    </HStack>
+  )
+}
+
+export function StatusView(props: {
+  logicalAlarmCount: number
+  enabledCount: number
+  managedInstanceCount: number
+  cleanupCandidateCount: number
+  availableSoundCount: number
+  currentHolidayTitle: string
+  syncedHolidayCount: number
+  currentMonthTotalOffCount: number
+  currentMonthRemainingOffCount: number
+  currentMonthTotalWorkCount: number
+  currentMonthRemainingWorkCount: number
+  lastSyncedAt: number | null
+  alarmCardGradientEnabled: boolean
+  pageGradientEnabled: boolean
+  onOpenSoundSettings?: () => void
+  onAlarmCardGradientEnabledChange?: (enabled: boolean) => void
+  onPageGradientEnabledChange?: (enabled: boolean) => void
+  embedded?: boolean
+}) {
+  const dismiss = Navigation.useDismiss()
+  const content = (
+    <Form
+      navigationTitle="状态"
+      navigationBarTitleDisplayMode="inline"
+      formStyle="grouped"
+      background={props.pageGradientEnabled ? <PageGradientBackground /> : undefined}
+      scrollContentBackground={props.pageGradientEnabled ? "hidden" : "automatic"}
+    >
+      <Section
+        header={<Text>闹钟</Text>}
+        footer={
+          <Text>
+            注册到系统闹钟：当前仍登记在系统中的闹钟实例
+            {"\n"}
+            残留闹钟：首页删除后由于意外错误仍残留在系统中的闹钟实例
+            {"\n"}
+            声音：点击声音行可进入声音管理，导入、编辑或删除自定义闹钟声音
+          </Text>
+        }
+      >
+        <MetricRow icon="alarm.fill" title="逻辑闹钟" value={String(props.logicalAlarmCount)} />
+        <MetricRow icon="checkmark.circle.fill" title="已启用" value={String(props.enabledCount)} tint="#16A34A" />
+        <MetricRow icon="bell.and.waves.left.and.right.fill" title="注册到系统闹钟" value={String(props.managedInstanceCount)} />
+        <MetricRow icon="exclamationmark.triangle.fill" title="残留闹钟" value={String(props.cleanupCandidateCount)} tint="#DC2626" />
+        <Button
+          buttonStyle="plain"
+          frame={{ maxWidth: "infinity" }}
+          action={() => props.onOpenSoundSettings?.()}
+        >
+          <HStack
+            spacing={12}
+            frame={{ width: "100%" as any, alignment: "leading" as any }}
+            background={"rgba(0,0,0,0.001)"}
+          >
+            <Image
+              systemName="speaker.wave.2.fill"
+              foregroundStyle={"#F59E0B" as any}
+              frame={{ width: 20, alignment: "center" as any }}
+            />
+            <Text>声音</Text>
+            <Spacer />
+            <Text foregroundStyle="secondaryLabel">{String(props.availableSoundCount)}</Text>
+          </HStack>
+        </Button>
+      </Section>
+
+      <Section header={<Text>节假日日历</Text>}>
+        <MetricRow icon="calendar" title="当前日历" value={props.currentHolidayTitle || "未配置"} />
+        <MetricRow icon="flag.fill" title="已同步节假日" value={String(props.syncedHolidayCount)} tint="#EA580C" />
+        <MetricRow icon="clock.arrow.circlepath" title="上次同步" value={props.lastSyncedAt ? formatDateTime(props.lastSyncedAt) : "尚未同步"} />
+      </Section>
+
+      <Section header={<Text>本月信息</Text>}>
+        <MetricRow icon="calendar.badge.clock" title="总休假天数" value={String(props.currentMonthTotalOffCount)} tint="#F97316" />
+        <MetricRow icon="sun.max.fill" title="可休假天数" value={String(props.currentMonthRemainingOffCount)} tint="#EA580C" />
+        <MetricRow icon="calendar.badge.exclamationmark" title="总调班天数" value={String(props.currentMonthTotalWorkCount)} tint="#3B82F6" />
+        <MetricRow icon="briefcase.fill" title="剩余调班天数" value={String(props.currentMonthRemainingWorkCount)} tint="#2563EB" />
+      </Section>
+
+      <Section header={<Text>页面显示</Text>}>
+        <HStack spacing={12}>
+          <Image
+            systemName="rectangle.fill"
+            foregroundStyle={"#4F96AD" as any}
+            frame={{ width: 20, alignment: "center" as any }}
+          />
+          <Text frame={{ maxWidth: "infinity", alignment: "leading" as any }}>
+            页面渐变背景
+          </Text>
+          <Toggle
+            title=""
+            value={props.pageGradientEnabled}
+            onChanged={(value: boolean) => props.onPageGradientEnabledChange?.(value)}
+            toggleStyle="switch"
+          />
+        </HStack>
+        <HStack spacing={12}>
+          <Image
+            systemName="paintpalette.fill"
+            foregroundStyle={"#FF9500" as any}
+            frame={{ width: 20, alignment: "center" as any }}
+          />
+          <Text frame={{ maxWidth: "infinity", alignment: "leading" as any }}>
+            闹钟渐变颜色
+          </Text>
+          <Toggle
+            title=""
+            value={props.alarmCardGradientEnabled}
+            onChanged={(value: boolean) => props.onAlarmCardGradientEnabledChange?.(value)}
+            toggleStyle="switch"
+          />
+        </HStack>
+      </Section>
+
+      {!props.embedded && (
+        <Section>
+          <CenterRowButton title="完成" onPress={() => dismiss()} />
+        </Section>
+      )}
+    </Form>
+  )
+
+  if (props.embedded) return content
+
+  return (
+    <NavigationStack>
+      {content}
+    </NavigationStack>
+  )
+}

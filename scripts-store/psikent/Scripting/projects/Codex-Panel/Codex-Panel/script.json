@@ -1,0 +1,46 @@
+{
+  "author" : null,
+  "intentInputTypes" : [
+
+  ],
+  "localizedDescriptions" : {
+    "it" : "",
+    "ja" : "",
+    "pt" : "",
+    "fr" : "",
+    "en" : "",
+    "zh" : "",
+    "de" : "",
+    "es" : "",
+    "ru" : ""
+  },
+  "color" : "rgba(0, 198, 165,1)",
+  "contributors" : [
+
+  ],
+  "description" : null,
+  "icon" : "bolt.fill",
+  "remoteResource" : {
+    "url" : "https:\/\/raw.githubusercontent.com\/psikent\/Scripting\/main\/Codex-Panel\/Codex%20Panel.scripting",
+    "hash" : "cabb5de60e42e5a6ffb13aa6daae1ab9",
+    "autoUpdateInterval" : 1800
+  },
+  "localizedNames" : {
+    "es" : "",
+    "fr" : "",
+    "de" : "",
+    "pt" : "",
+    "ja" : "",
+    "ru" : "",
+    "zh" : "",
+    "it" : "",
+    "en" : ""
+  },
+  "name" : "Codex Panel",
+  "permissions" : null,
+  "iconImage" : null,
+  "runInApp" : false,
+  "remoteDefinitionId" : null,
+  "entry" : "index.tsx",
+  "version" : null
+}

@@ -1,0 +1,16 @@
+{
+  "name": "AliyunCDT",
+  "localizedNames": {
+    "zh": "阿里云 CDT 监控",
+    "en": "Aliyun CDT Monitor"
+  },
+  "icon": "cloud.fill",
+  "color": "rgba(10, 132, 255, 1.00)",
+  "version": "1.6.5",
+  "runInApp": true,
+  "description": "阿里云 CDT 用量、账单与 ECS 状态只读看板；不连接或控制 VPS，也不执行 ECS 开机、关机或重启。",
+  "localizedDescriptions": {
+    "zh": "阿里云 CDT 用量、账单与 ECS 状态只读看板；不连接或控制 VPS，也不执行 ECS 开机、关机或重启。",
+    "en": "Read-only Alibaba Cloud CDT usage, billing, and ECS status dashboard. Does not connect to or control VPS hosts, or start, stop, or reboot ECS instances."
+  }
+}

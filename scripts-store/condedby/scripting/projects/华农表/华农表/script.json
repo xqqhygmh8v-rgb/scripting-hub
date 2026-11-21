@@ -1,0 +1,33 @@
+{
+  "author": null,
+  "color": "#46708F",
+  "contributors": [],
+  "description": "SCAU timetable: sign-in schedule plus the official academic calendar (holidays and makeup days override the timetable), semester progress, editable courses, and Home / Lock Screen widgets.",
+  "entry": "index.tsx",
+  "icon": "calendar",
+  "iconImage": "",
+  "intentInputTypes": [],
+  "localizedDescriptions": {
+    "en": "SCAU timetable + official academic calendar: holidays and makeup days override classes, build your own courses on a blank grid, dark mode, semester progress, and Home / Lock Screen widgets.",
+    "zh": "华南农业大学课表：登录教务看每周课表；校历放假/调休自动同步（放假不上课、调休按次周上课）；空白课表加课（选周次→点格子→填名字）。支持深色模式、月历校历、学期进度条与主屏小组件"
+  },
+  "localizedNames": {
+    "de": "",
+    "en": "SCAU Table",
+    "es": "",
+    "fr": "",
+    "it": "",
+    "ja": "",
+    "pt": "",
+    "ru": "",
+    "zh": "华农表"
+  },
+  "name": "华农表",
+  "permissions": null,
+  "remoteResource": {
+    "autoUpdateInterval": 3600,
+    "url": "https://github.com/condedby/scripting/tree/main/华农表"
+  },
+  "runInApp": true,
+  "version": "1.6.4"
+}

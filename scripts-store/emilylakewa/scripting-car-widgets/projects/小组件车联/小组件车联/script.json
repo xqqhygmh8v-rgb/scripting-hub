@@ -1,0 +1,23 @@
+{
+  "name": "小组件车联",
+  "iconImage": "",
+  "author": null,
+  "entry": "index.tsx",
+  "color": "#1F3A5F",
+  "version": "3.10.10",
+  "description": "基于群内大佬「飛」的版本进行少许修改，感谢「飛」的分享与贡献。",
+  "intentInputTypes": [],
+  "contributors": [],
+  "localizedNames": {
+    "zh": "小组件车联",
+    "en": "CarLink"
+  },
+  "localizedDescriptions": {
+    "zh": "自动识别奥智联与奥捷智行 Token，统一车辆小组件与控车功能",
+    "en": "Unified vehicle widget with automatic provider detection"
+  },
+  "runInApp": false,
+  "icon": "car.fill",
+  "permissions": null,
+  "remoteResource": null
+}

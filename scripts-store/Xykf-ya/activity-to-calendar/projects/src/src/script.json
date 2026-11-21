@@ -1,0 +1,14 @@
+{
+  "name": "活动转日历",
+  "version": "0.1.6",
+  "description": "粘贴活动通知，直接识别并添加到 iPhone 日历。缺少开始时间时记为全天。",
+  "icon": "calendar.badge.plus",
+  "color": "#3478F6",
+  "runInApp": true,
+  "intentInputTypes": [],
+  "contributors": [],
+  "author": null,
+  "localizedNames": null,
+  "localizedDescriptions": null,
+  "remoteResource": null
+}

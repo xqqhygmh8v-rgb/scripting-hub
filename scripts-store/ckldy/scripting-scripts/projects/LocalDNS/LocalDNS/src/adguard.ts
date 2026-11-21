@@ -1,0 +1,286 @@
+import { Store } from './store';
+import type { AdGuardRuleSource } from './types';
+
+async function fetchRuleWithFallback(url: string): Promise<string> {
+  const candidateUrls: string[] = [url];
+  // If GitHub raw URL, add high-speed mirror candidate
+  if (url.includes('raw.githubusercontent.com')) {
+    candidateUrls.push(url.replace('raw.githubusercontent.com', 'raw.gitmirror.com'));
+    candidateUrls.push(`https://ghproxy.net/${url}`);
+  }
+
+  let lastError: any = null;
+  for (const u of candidateUrls) {
+    try {
+      const resp = await fetch(u, {
+        headers: { 'User-Agent': 'LocalDNS/FJMOS' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (resp.ok) {
+        return await resp.text();
+      }
+      lastError = new Error(`HTTP ${resp.status} ${resp.statusText}`);
+    } catch (e: any) {
+      lastError = e;
+    }
+  }
+  throw lastError || new Error('All download attempts failed');
+}
+
+const BUILTIN_AD_RULES = `
+! Builtin High-frequency Mobile Ads & Tracking Filters
+! YouTube & Google Ads / Tracking
+! 保留 s.youtube.com 与 video-stats 放行（直接走放行或代理），避免切片时报“有中断问题”及无限转圈卡死
+! ||s.youtube.com^
+! ||s2.youtube.com^
+||ads.youtube.com^
+||ytads.google.com^
+! ||video-stats.l.google.com^
+! ||video-stats.youtube.com^
+! ||stats_check.youtube.com^
+||adservice.google.com^
+||pagead2.googlesyndication.com^
+||pagead.l.doubleclick.net^
+||googleads.g.doubleclick.net^
+||pubads.g.doubleclick.net^
+||securepubads.g.doubleclick.net^
+||static.doubleclick.net^
+||ad.doubleclick.net^
+||doubleclick.net^
+||g.doubleclick.net^
+||partnerad.l.google.com^
+||adwords.google.com^
+||admob.com^
+||googletagservices.com^
+||googletagmanager.com^
+||google-analytics.com^
+||analytics.google.com^
+||ads.google.com^
+
+! Domestic Ads & Tracking
+||mobads.baidu.com^
+||mobads-logs.baidu.com^
+||pos.baidu.com^
+||cpro.baidu.com^
+||adash.m.taobao.com^
+||adashx.m.taobao.com^
+||alimama.com^
+||tanx.com^
+||pgdt.gtimg.cn^
+||adnet.qq.com^
+||e.qq.com^
+||mi.gdt.qq.com^
+||tmead.y.qq.com^
+||ad.tencent.com^
+||pangolin-sdk-toutiao.com^
+||pglstatp-toutiao.com^
+||toblog.ctobsnssdk.com^
+||ads.tiktok.com^
+||analytics.tiktok.com^
+||e.kuaishou.com^
+||corp.kuaishou.com^
+||ad.xiaohongshu.com^
+||track.uc.cn^
+||umeng.com^
+||talkingdata.net^
+||sensorsdata.cn^
+||growingio.com^
+||tracking.example.com^
+`;
+
+export class AdGuardEngine {
+  private static instance: AdGuardEngine;
+
+  private blockedDomains = new Set<string>();
+  private blockedSuffixes = new Set<string>();
+  private whitelistDomains = new Set<string>();
+  private whitelistSuffixes = new Set<string>();
+
+  private ruleCount = 0;
+  private isUpdating = false;
+
+  private constructor() {
+    this.rebuildFromStore();
+  }
+
+  static get(): AdGuardEngine {
+    if (!AdGuardEngine.instance) {
+      AdGuardEngine.instance = new AdGuardEngine();
+    }
+    return AdGuardEngine.instance;
+  }
+
+  getRuleCount(): number {
+    return this.ruleCount;
+  }
+
+  rebuildFromStore(): void {
+    this.blockedDomains.clear();
+    this.blockedSuffixes.clear();
+    this.whitelistDomains.clear();
+    this.whitelistSuffixes.clear();
+
+    // 1. Load built-in high-frequency ad rules first (guarantees out-of-the-box blocking!)
+    let total = this.parseRules(BUILTIN_AD_RULES);
+
+    // 2. Load stored subscription rules from Store
+    const sources = Store.get().getAdguardSources();
+    let sourcesChanged = false;
+    for (const source of sources) {
+      if (!source.enabled) continue;
+      const rawText = Store.get().getRule(`adguard_source_${source.id}`);
+      if (rawText) {
+        const c = this.parseRules(rawText);
+        if (source.rule_count !== c) {
+          source.rule_count = c;
+          sourcesChanged = true;
+        }
+        total += c;
+      }
+    }
+    if (sourcesChanged) {
+      Store.get().setAdguardSources(sources);
+    }
+    this.ruleCount = total;
+  }
+
+  parseRules(text: string): number {
+    const lines = text.split('\n');
+    let count = 0;
+
+    for (let line of lines) {
+      line = line.trim();
+      if (!line || line.startsWith('!') || line.startsWith('#')) continue;
+
+      // Whitelist
+      if (line.startsWith('@@')) {
+        const pattern = line.slice(2);
+        if (pattern.startsWith('||') && pattern.endsWith('^')) {
+          this.whitelistSuffixes.add(pattern.slice(2, -1).toLowerCase());
+        } else if (pattern.startsWith('||')) {
+          this.whitelistSuffixes.add(pattern.slice(2).toLowerCase());
+        } else {
+          this.whitelistDomains.add(pattern.toLowerCase());
+        }
+        count++;
+        continue;
+      }
+
+      // Hosts format: 0.0.0.0 domain.com or 127.0.0.1 domain.com
+      const hostsMatch = line.match(/^(?:0\.0\.0\.0|127\.0\.0\.1)\s+([a-zA-Z0-9.\-_]+)/);
+      if (hostsMatch) {
+        this.blockedDomains.add(hostsMatch[1].toLowerCase());
+        count++;
+        continue;
+      }
+
+      // AdGuard format: ||domain.com^
+      if (line.startsWith('||') && line.endsWith('^')) {
+        this.blockedSuffixes.add(line.slice(2, -1).toLowerCase());
+        count++;
+        continue;
+      }
+
+      if (line.startsWith('||')) {
+        this.blockedSuffixes.add(line.slice(2).toLowerCase());
+        count++;
+        continue;
+      }
+
+      // Simple domain
+      if (/^[a-zA-Z0-9.\-_]+$/.test(line)) {
+        this.blockedDomains.add(line.toLowerCase());
+        count++;
+      }
+    }
+    return count;
+  }
+
+  isBlocked(domain: string): boolean {
+    const d = domain.toLowerCase().replace(/\.$/, '');
+
+    // 1. Check whitelist exact & suffix (O(k) 常数级哈希查找)
+    if (this.whitelistDomains.has(d) || this.whitelistSuffixes.has(d)) return false;
+    let idx = d.indexOf('.');
+    while (idx !== -1) {
+      const parent = d.slice(idx + 1);
+      if (this.whitelistSuffixes.has(parent)) return false;
+      idx = d.indexOf('.', idx + 1);
+    }
+
+    // 2. Check blocked exact & suffix (O(k) 常数级哈希查找)
+    if (this.blockedDomains.has(d) || this.blockedSuffixes.has(d)) return true;
+    idx = d.indexOf('.');
+    while (idx !== -1) {
+      const parent = d.slice(idx + 1);
+      if (this.blockedSuffixes.has(parent)) return true;
+      idx = d.indexOf('.', idx + 1);
+    }
+
+    return false;
+  }
+
+  async updateSource(id: string): Promise<{ success: boolean; ruleCount: number; error?: string }> {
+    const sources = Store.get().getAdguardSources();
+    const source = sources.find(s => s.id === id);
+    if (!source) throw new Error(`Source ${id} not found`);
+
+    try {
+      const text = await fetchRuleWithFallback(source.url);
+      Store.get().setRule(`adguard_source_${source.id}`, text);
+
+      source.last_updated = new Date().toISOString();
+      source.last_error = null;
+      Store.get().setAdguardSources(sources);
+
+      this.rebuildFromStore();
+      const updatedSource = Store.get().getAdguardSources().find(s => s.id === id);
+      return { success: true, ruleCount: updatedSource?.rule_count || 0 };
+    } catch (err: any) {
+      source.last_error = err.message || String(err);
+      Store.get().setAdguardSources(sources);
+      return { success: false, ruleCount: 0, error: source.last_error || undefined };
+    }
+  }
+
+  async updateAll(): Promise<{ updated_sources: number; errors: Array<{ name: string; error: string }> }> {
+    if (this.isUpdating) return { updated_sources: 0, errors: [] };
+    this.isUpdating = true;
+    try {
+      const sources = Store.get().getAdguardSources();
+      const activeSources = sources.filter(s => s.enabled);
+      let updated = 0;
+      const errors: Array<{ name: string; error: string }> = [];
+
+      // 阶段 1：多线程并发抓取全部订阅源（同时进行）
+      const results = await Promise.allSettled(
+        activeSources.map(async (s) => {
+          const text = await fetchRuleWithFallback(s.url);
+          Store.get().setRule(`adguard_source_${s.id}`, text);
+          s.last_updated = new Date().toISOString();
+          s.last_error = null;
+          return s;
+        })
+      );
+
+      for (let i = 0; i < activeSources.length; i++) {
+        const s = activeSources[i];
+        const res = results[i];
+        if (res.status === 'fulfilled') {
+          updated++;
+        } else {
+          const err = res.reason?.message || String(res.reason);
+          s.last_error = err;
+          errors.push({ name: s.name, error: err });
+        }
+      }
+
+      Store.get().setAdguardSources(sources);
+      // 阶段 2：统一全量构建一次内存缓存（最后统一）
+      this.rebuildFromStore();
+      return { updated_sources: updated, errors };
+    } finally {
+      this.isUpdating = false;
+    }
+  }
+}

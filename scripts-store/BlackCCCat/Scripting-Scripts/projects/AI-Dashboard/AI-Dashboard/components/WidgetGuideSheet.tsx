@@ -1,0 +1,239 @@
+import {
+  Button,
+  Device,
+  Markdown,
+  NavigationStack,
+  ScrollView,
+  type MarkdownProps,
+  type PresentationDetent,
+} from "scripting"
+import { getDashboardLanguage, localize } from "../utils/localization"
+
+const WIDGET_GUIDE_MARKDOWN = `
+# 桌面小组件使用指南
+
+欢迎使用 AI 额度看板桌面小组件！小组件原生支持 iOS / iPadOS 系统的 **小号 (Small)**、**中号 (Medium)**、**大号 (Large)** 以及 iPad 专属的 **超大号 (Extra Large)** 四种尺寸，让您无需打开应用即可随时洞察所有 AI 供应商的额度水位与限流重置倒计时。
+
+---
+
+## 快速上手：如何在桌面添加与编辑
+
+1. **添加小组件**：返回 iPhone/iPad 桌面，长按空白处进入抖动编辑模式，点击左上角「\`+\`」号。
+2. **选择 Scripting**：在组件库中搜索并轻点「\`Scripting\`」，选择「AI Dashboard」脚本。
+3. **选择所需尺寸**：左右滑动选择您心仪的尺寸（小/中/大/特大），点击「添加小组件」。
+4. **编辑入参（可选）**：长按已添加到桌面的小组件，在弹出菜单中点击「**编辑小组件**」，在「**参数 (Parameter)**」输入框中填入目标供应商名称或留空。
+
+---
+
+## 参数配置规则 (Parameter)
+
+### 1. 留空（不传参数）
+- **默认行为**：严格按照您在应用内「AI 额度看板」中设定的账号排列顺序（可在看板左上角点击「编辑」按钮自由拖拽排序）自动提取展示前 N 个账号。
+  - **小号**：展示排在第 1 位的账号；
+  - **中号**：展示排在第 1 位的账号（或自动合并的前 2 个单配额账号）；
+  - **大号**：垂直拼接展示排名前 2 位的账号卡片；
+  - **超大号**：垂直拼接展示排名前 3 位的账号卡片。
+
+### 2. 传入参数（指定供应商）
+- **支持的内容**：
+  - **供应商 ID**：如 \`deepseek\`、\`codex\`、\`claude\`、\`workbuddy\`、\`antigravity\`、\`volcengine\`、\`minimax\`、\`newapi\` 等。
+  - **供应商名称/别名**：如 \`OpenAI\`、\`ChatGPT\`、\`Anthropic\`、\`Gemini\`、\`方舟\`、\`百炼\` 等（英文不区分大小写）。
+- **多参数写法**：
+  - 支持使用 **逗号**（\`,\` 或 \`，\`）或 **空格** 分隔多个供应商。
+  - **大号小组件**：支持传入 2 个参数（如 \`deepseek, codex\` 或 \`claude minimax\`），分别展示对应的中号卡片。
+  - **超大号小组件**：支持传入 3 个参数（如 \`deepseek, codex, claude\`），分别展示对应的 3 个中号卡片。
+
+---
+
+## 各种尺寸小组件规格详解
+
+### 1. 小号小组件 (System Small, 1x1)
+- **多配额/主模型供应商（如 Codex、Antigravity、Claude 等）**：
+  - 核心展示 82pt 宽幅**环形仪表盘**，动态呈现剩余额度占比与具体点数/积分（例如 \`640/1000 积分\`）。
+  - 下方显示主模型重置倒计时、重置卡余量或钱包余额。
+- **单配额多账号供应商（如 WorkBuddy）**：
+  - 自动检测并合并该供应商的**前 2 个账号**，采用紧凑双进度条呈现，顶部展示账号脱敏身份，直观对比双号剩余积分。
+- **纯钱包/按量计费供应商（如 DeepSeek、SiliconFlow）**：
+  - 居中突出展示可用余额总额（¥/\\$），附带充值金、赠送金与健康状态标记。
+
+### 2. 中号小组件 (System Medium, 2x1)
+- **标准卡片视图**：
+  - 顶部左侧展示供应商图标、名称、地域节点胶囊及当前订阅套餐类型；
+  - 顶部右侧显示当前账号身份（隐私遮罩）、重置卡次数、额度状态圆点以及带交互刷新能力的更新时间；
+  - 中部完整展示多模型限流窗口进度条（例如 5 小时限流、周配额）、具体点数与剩余百分比。
+- **单配额多账号合并**：
+  - 针对同一供应商仅有一个配额项的账号（如 WorkBuddy），中号小组件自动合并展示**前 2 个账号**的双进度条卡片。
+
+### 3. 大号小组件 (System Large, 2x2)
+- **设计布局**：采用 **2 个中号卡片垂直拼接** 的原生极简结构，规整对称、信息密度极高，首张卡片右上角集成刷新时间与交互热区。
+- **两参数指定**：当在小组件参数中填入 2 个供应商（如 \`deepseek, codex\`）时，分别将两者渲染为独立的中号卡片垂直拼接。
+- **未填参数**：默认自动将看板中排序排在前 2 位的账号拼接展示。
+- **单参数多账号（如填入 \`workbuddy\`）**：
+  - 自动聚合提取该供应商在看板中的**前 4 个账号**，两两合并为 2 个双账号中号卡片垂直拼接展示！
+
+### 4. 超大号小组件 (Extra Large / Extra Large Portrait - iPad 专属)
+- **设计布局**：针对 iPadOS 宽屏深度适配，采用 **3 个中号卡片垂直拼接**，各卡片高度、进度条宽度与字体字号严格对齐标准中号组件，首张卡片右上角集成刷新时间与交互热区。
+- **三参数指定**：在小组件参数中填入 3 个供应商（如 \`deepseek, codex, claude\`），分别渲染 3 个供应商的中号卡片。
+- **未填参数**：默认自动拼接看板中排名前 3 位的账号。
+- **单参数多账号（如填入 \`workbuddy\`）**：
+  - 自动聚合提取该供应商在看板中的**前 6 个账号**，两两合并为 3 个双账号中号卡片垂直拼接展示！
+
+---
+
+## 高级特性与实用技巧
+
+### 1. 桌面一键交互刷新（大热区极速反馈）
+- **轻量触达**：小组件顶栏的「更新于 HH:mm / 状态文本 + 旋转图标」构成完整的交互按钮大热区；
+- **0.1 秒即时反馈**：在桌面点击该区域，小组件立即呈现高亮蓝色的「**正在刷新...**」反馈状态；
+- **展示卡片优先极速同步**：后台优先并发拉取当前小组件正在展示的核心卡片，**1~2 秒内极速原地更新**，无需频繁跳转打开主 App。
+
+### 2. 同一供应商多账号排序（小组件序号）
+- 若您拥有多个同一平台的账号（如 4 个以上 WorkBuddy 账号）：
+- 在看板点击该账号卡片 -> 点击右上角「设置」进入账号详情编辑页；
+- 在「**小组件序号 (可选)**」中填入自定义数字序号（例如 1、2、3、4…）；
+- 小组件合并时将严格**按序号由小到大排序**优先合并（小号/中号合并前 2 个，大号合并前 4 个，超大号合并前 6 个）。
+
+### 3. 小组件账号隐私保护
+- 在「设置」页面中，开启「**小组件账号隐私保护**」开关；
+- 当小组件渲染账号信息时，所有邮箱、用户名等敏感标识均会自动进行星号脱敏（如 \`d***r@gmail.com\`），即使锁屏或公开桌面也无需担心泄露。
+
+### 4. 用量标识适配透明模式
+- 在「设置」-「桌面小组件」中开启「**用量标识适配透明模式**」；
+- **未开启开关时**：圆点尺寸始终保持固定统一大小，仅通过颜色变化标明用量等级（绿/黄/橙/红/灰）；
+- **开启该开关后**：圆点改为通过尺寸大小体现用量变化，且**最大圆点（余量充足 61%~100%）与未开启开关时的圆点完全一样大**，随着余量减少圆点依次收缩（中圆点适中、小圆点偏低、微型点告急、空心环耗尽），在透明或单色桌面下直观确认额度健康。
+
+### 5. 小组件后台调度与 5 分钟高频时间线
+- **iOS 系统机制**：Apple WidgetKit 出于能耗与发热管理，未提供滑屏实时进入事件，小组件呈现由系统按时间线在后台预先渲染的快照；
+- **高频刷新支持**：可在「设置」-「桌面小组件」中选择刷新间隔（支持 **5 分钟 (高频推荐)**、15 分钟、30 分钟、1 小时、2 小时、6 小时）；
+- **唤醒即活刷新**：WidgetKit 在后台唤醒小组件时，只要展示卡片数据**超过 3 分钟**未更新，会自动发起后台并发网络拉取（配备 8.5s 安全超时与平滑降级，杜绝白屏与超时被杀）；
+- **退出应用实时同步**：在主应用中查看、添加账号或刷新后，一旦**滑回桌面离开 App**，系统会立即自动触发一次小组件即时数据同步；
+- **异常状态即时警示**：若后台刷新遭遇接口限流（429）、网络失败、凭据失效或数据超过 6 小时未更新，小组件更新时间位置将自动呈现醒目的状态警告（「数据较旧」、「刷新失败」、「接口限流」、「授权已失效」），并平滑保留已有历史快照。
+
+### 6. 快捷指令自动化定时拉取（进阶推荐）
+- 脚本根目录内置了意图入口 \`intent.tsx\`；
+- 您可在 iOS「快捷指令」App 的「自动化」标签页中新建个人自动化：
+  - 触发条件可选择「特定时间」（如每天每小时）或「关闭 App 时」；
+  - 添加操作选择「**运行意图脚本**」-> 脚本选择「**AI Dashboard**」；
+- 脚本将在后台静默拉取所有启用账号最新额度并原地重载小组件，实现全天候无感的自动化更新。
+`
+
+const WIDGET_GUIDE_MARKDOWN_EN = `
+# Home Screen Widget Guide
+
+AI Dashboard supports Small, Medium, and Large widgets on iPhone and iPad, plus Extra Large widgets on iPad. View provider quotas, wallet balances, and reset countdowns without opening the app.
+
+---
+
+## Get Started
+
+1. Touch and hold an empty area on the Home Screen, tap **Add Widget**, and choose **Scripting**.
+2. Select the **AI Dashboard** script and a widget size, then add it.
+3. Optionally, touch and hold the widget, choose **Edit Widget**, and enter provider IDs in **Parameters**.
+
+## Widget Parameters
+
+Leave Parameters blank to follow the account order on the dashboard. Small and Medium show the first account; Large shows the first two; Extra Large shows the first three.
+
+You can enter provider IDs such as \`deepseek\`, \`codex\`, \`claude\`, \`workbuddy\`, \`antigravity\`, \`volcengine\`, \`minimax\`, or \`newapi\`. Provider names and aliases are also supported. Separate multiple providers with commas or spaces.
+
+Large widgets accept two provider IDs. Extra Large widgets accept three. If you enter one provider with several accounts, Large can combine up to four accounts and Extra Large up to six.
+
+## Widget Sizes
+
+### Small
+
+- Multi-quota providers show a quota ring, remaining amount, and reset information.
+- Providers with multiple single-quota accounts can combine the first two accounts.
+- Wallet providers show the available balance and its status.
+
+### Medium
+
+- Shows the provider, plan, account identity, reset status, and quota bars.
+- Multiple single-quota accounts from one provider can share a card.
+
+### Large and Extra Large
+
+- Stack two or three Medium cards vertically.
+- Set provider IDs in Parameters to choose which cards appear.
+- Accounts from one provider are combined in widget order when supported.
+
+## Refresh and Account Order
+
+Tap the update time or status at the top of a widget to refresh. The widget shows an immediate refresh state, then updates the displayed accounts first.
+
+To order accounts from the same provider, open the account card, tap **Settings**, and set an optional **Widget Order** number. Lower numbers appear first.
+
+## Privacy
+
+Turn on **Hide Account Details in Widgets** in Settings to mask email addresses and usernames when a widget shows multiple accounts from one provider. Dashboard account masking is controlled separately.
+
+## Transparent Backgrounds
+
+The **Adapt Usage Indicators for Transparent Backgrounds** setting changes status dot size as quota decreases. The largest dot represents healthy quota; smaller dots indicate lower quota, and an outlined ring indicates depletion.
+
+## Refresh Schedule
+
+Choose a refresh interval in Settings. WidgetKit may adjust the actual schedule to meet iOS energy and network budgets. The app also reloads widgets after account or quota data changes.
+
+## Shortcuts Automation
+
+The project includes an intent entry point for refreshing all enabled accounts. In the Shortcuts app, create a personal automation and add **Run Intent Script**, then choose **AI Dashboard**. You can run it at a time of day or when closing an app.
+`
+
+export function WidgetGuideSheet(props: {
+  theme?: MarkdownProps["theme"]
+  detents?: PresentationDetent[]
+  embedded?: boolean
+  navigationTransition?: { type: "zoom"; sourceID: string | number; namespace: any }
+  onDismiss: () => void
+}) {
+  const useGlassPresentation =
+    Number.parseInt(Device.systemVersion, 10) >= 26
+
+  const content = (
+    <ScrollView
+      background="clear"
+      scrollContentBackground="hidden"
+      navigationTitle={localize("小组件使用说明")}
+      navigationBarTitleDisplayMode="inline"
+      toolbarBackgroundVisibility="hidden"
+      presentationDragIndicator="visible"
+      presentationDetents={props.detents ?? ["large"]}
+      presentationBackground={useGlassPresentation ? "clear" : undefined}
+      navigationTransition={props.navigationTransition}
+      padding={{ top: 20, leading: 18, bottom: 20, trailing: 18 }}
+      toolbar={{
+        topBarTrailing: (
+          <Button
+            title={localize("完成")}
+            action={props.onDismiss}
+          />
+        ),
+      }}
+    >
+      <Markdown
+        content={
+          getDashboardLanguage() === "en"
+            ? WIDGET_GUIDE_MARKDOWN_EN.trim()
+            : WIDGET_GUIDE_MARKDOWN.trim()
+        }
+        theme={props.theme ?? "basic"}
+        useDefaultHighlighterTheme={true}
+        scrollable={false}
+        background="clear"
+      />
+    </ScrollView>
+  )
+
+  if (props.embedded) {
+    return content
+  }
+
+  return (
+    <NavigationStack
+      presentationBackground={useGlassPresentation ? "clear" : undefined}
+    >
+      {content}
+    </NavigationStack>
+  )
+}

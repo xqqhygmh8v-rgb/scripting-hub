@@ -1,0 +1,33 @@
+{
+  "contributors" : [
+
+  ],
+  "runInApp" : false,
+  "color" : "rgba(0, 146, 255,1)",
+  "localizedDescriptions" : {
+    "zh" : "查看南方电网余额、欠费、当月用电与最新日用电信息。",
+    "en" : "View balance, arrears, monthly usage, and latest daily usage from China Southern Power Grid."
+  },
+  "permissions" : null,
+  "localizedNames" : {
+    "zh" : "南方电网",
+    "en" : "China Southern Power Grid"
+  },
+  "iconImage" : null,
+  "description" : "南方电网电费与用电量桌面小组件，支持扫码登录和缴费号配置。",
+  "entry" : "index.tsx",
+  "intentInputTypes" : [
+
+  ],
+  "author" : {
+    "name" : "小六"
+  },
+  "icon" : "bolt.house.fill",
+  "version" : "1.2.2",
+  "remoteResource" : {
+    "autoUpdateInterval" : null,
+    "url" : "https:\/\/github.com\/ScriptingApp\/Community-Scripts\/raw\/refs\/heads\/main\/南方电网.scripting",
+    "hash" : "03d8c521053ff866cd6bd331a1724924"
+  },
+  "name" : "南方电网"
+}

@@ -1,0 +1,2708 @@
+// File: components/HomeView.tsx
+import {
+  Button,
+  Device,
+  Editor,
+  GeometryReader,
+  Image,
+  List,
+  Menu,
+  Navigation,
+  NavigationLink,
+  NavigationStack,
+  Script,
+  Rectangle,
+  RoundedRectangle,
+  Section,
+  Divider,
+  Spacer,
+  Text,
+  HStack,
+  VStack,
+  ScrollView,
+  ScrollViewReader,
+  ProgressView,
+  useColorScheme,
+  useEffect,
+  useObservable,
+  useRef,
+  useState,
+  Path,
+  type ShapeStyle,
+} from "scripting";
+
+import {
+  loadConfig,
+  type AppConfig,
+  type HomeSectionKey,
+  type ProSchemeKey,
+  PRO_KEYS,
+} from "../utils/config";
+import { SettingsView } from "./SettingsView";
+import { AdaptiveHomeTabView } from "./AdaptiveHomeTabView";
+import {
+  MarkdownReleaseNotesSheet,
+  useMarkdownReleaseNotesSheet,
+} from "./MarkdownReleaseNotesSheet";
+import { loadMetaAsync, type MetaBundle } from "../utils/meta";
+import {
+  detectRimeDir,
+  verifyInstallPathAccess,
+  collectRimeCandidates,
+} from "../utils/hamster";
+import {
+  getCheckCacheKey,
+  loadSharedCheckCache,
+  saveSharedCheckCache,
+} from "../utils/check_cache";
+import {
+  checkAllUpdates,
+  updateScheme,
+  updateDict,
+  updateModel,
+  autoUpdateAll,
+  deployInputMethod,
+  type AllUpdateResult,
+} from "../utils/update_tasks";
+import { clearWanxiangTempFiles } from "../utils/cache_cleanup";
+import { normalizePath, sleep } from "../utils/common";
+import {
+  formatChinaTime,
+  isModelUpdateAvailable,
+  modelDisplayMark,
+} from "../utils/model_mark";
+
+const FULLSCREEN_SYMBOL =
+  "arrow.up.left.and.down.right.and.arrow.up.right.and.down.left";
+
+function clamp01(v: number) {
+  return Math.max(0, Math.min(1, v));
+}
+
+function readFraction(x: any): number | undefined {
+  const toNum = (v: any) => {
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (typeof v === "string") {
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
+    return undefined;
+  };
+
+  const direct = toNum(x);
+  if (direct !== undefined) return direct;
+
+  const p1 = toNum(x?.percent);
+  if (p1 !== undefined) return p1;
+
+  const p2 = toNum(x?.fractionCompleted);
+  if (p2 !== undefined) return p2;
+
+  const p3 = toNum(x?.progress?.fractionCompleted);
+  if (p3 !== undefined) return p3;
+
+  return undefined;
+}
+
+function pctFromFraction(f?: number) {
+  const v = typeof f === "number" && Number.isFinite(f) ? clamp01(f) : 0;
+  return `${(v * 100).toFixed(2)}%`;
+}
+
+function selectedSchemeFromConfig(cfg: AppConfig): string {
+  if (cfg.schemeEdition === "base") return "base";
+  if (cfg.schemeEdition === "pure") return "pure";
+  if (cfg.schemeEdition === "lite") return "lite";
+  return `pro (${cfg.proSchemeKey})`;
+}
+
+function normalizeMetaScheme(
+  metaScheme: MetaBundle["scheme"],
+  fallback: AppConfig,
+): {
+  selected: string;
+  schemeEdition?: AppConfig["schemeEdition"];
+  proSchemeKey?: ProSchemeKey;
+} {
+  if (!metaScheme) return { selected: selectedSchemeFromConfig(fallback) };
+  const edition = metaScheme.schemeEdition;
+  const proKey = metaScheme.proSchemeKey;
+  const validProKey =
+    proKey && (PRO_KEYS as string[]).includes(proKey) ? proKey : undefined;
+  const selected =
+    metaScheme.selectedScheme ??
+    (edition === "base"
+      ? "base"
+      : edition === "pure"
+        ? "pure"
+        : edition === "lite"
+          ? "lite"
+          : edition === "pro"
+            ? `pro (${validProKey ?? fallback.proSchemeKey})`
+            : selectedSchemeFromConfig(fallback));
+  return {
+    selected,
+    schemeEdition: edition,
+    proSchemeKey:
+      edition === "pro" ? (validProKey ?? fallback.proSchemeKey) : undefined,
+  };
+}
+
+function ActionButton(props: {
+  icon: string;
+  title: string;
+  color?: ShapeStyle;
+  disabled?: boolean;
+  size: number;
+  useGlass: boolean;
+  onPress: () => void;
+}) {
+  const tintColor: ShapeStyle = props.disabled ? "secondaryLabel" : (props.color ?? "systemBlue");
+
+  return (
+    <Button
+      action={() => {
+        try { (globalThis as any).HapticFeedback?.mediumImpact?.(); } catch {}
+        props.onPress();
+      }}
+      disabled={props.disabled}
+      buttonStyle="plain"
+      accessibilityLabel={props.title}
+      frame={{ width: props.size, height: props.size }}
+    >
+      <VStack
+        frame={{ width: props.size, height: props.size, alignment: "center" as any }}
+        glassEffect={props.useGlass ? { type: "rect", cornerRadius: 12 } : undefined}
+        background={props.useGlass ? undefined : {
+          style: "tertiarySystemFill",
+          shape: { type: "rect", cornerRadius: 12 },
+        }}
+      >
+        <Image
+          systemName={props.icon}
+          font="title2"
+          foregroundStyle={tintColor}
+        />
+      </VStack>
+    </Button>
+  );
+}
+
+function compactRemoteMarker(value: string) {
+  const text = String(value ?? "").trim();
+  const isDate = /^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$/.test(text);
+  if (isDate || text.length <= 18) return text;
+  return `${text.slice(0, 8)}...${text.slice(-6)}`;
+}
+
+function wrapFullMarker(value: string) {
+  const text = String(value ?? "").trim();
+  if (text.length <= 32) return text;
+  return text.match(/.{1,32}/g)?.join("\n") ?? text;
+}
+
+function RowKV(props: {
+  k: string;
+  v: string;
+  valueColor?: string;
+  compactMarker?: boolean;
+  onTap?: () => void;
+}) {
+  const value = props.compactMarker ? compactRemoteMarker(props.v) : props.v;
+  return (
+    <HStack
+      frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+      contentShape={{ kind: "interaction", shape: { type: "rect" } } as any}
+      onTapGesture={props.onTap}
+    >
+      <Text>{props.k}</Text>
+      <Spacer />
+      <Text
+        foregroundStyle={(props.valueColor ?? "label") as any}
+        lineLimit={props.compactMarker ? 1 : undefined}
+      >
+        {value}
+      </Text>
+    </HStack>
+  );
+}
+
+type AlertNode = any;
+type AlertState = {
+  title: string;
+  isPresented: boolean;
+  message: AlertNode;
+  actions: AlertNode;
+};
+
+type LogLevel = "INFO" | "WARN" | "ERROR" | "SUCCESS";
+type LogScope =
+  | "SYSTEM"
+  | "CHECK"
+  | "SCHEME"
+  | "DICT"
+  | "MODEL"
+  | "AUTO"
+  | "DEPLOY"
+  | "PATH";
+
+type LogEntry = {
+  id: string;
+  at: string;
+  level: LogLevel;
+  scope: LogScope;
+  message: string;
+};
+
+type UpdateDecision = {
+  scheme: boolean;
+  dict: boolean;
+  model: boolean;
+};
+
+type HomeSessionState = {
+  remoteSchemeVer: string;
+  remoteDictMark: string;
+  remoteModelMark: string;
+  notes: string;
+  lastCheck: AllUpdateResult | null;
+  lastCheckDecision: UpdateDecision | null;
+  hasSchemeUpdateNotes: boolean;
+  lastCheckKey: string;
+  logs: LogEntry[];
+};
+
+const MAIN_TAB = 1;
+
+type FileBrowserEntry = {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+};
+
+const DEFAULT_HOME_SESSION_STATE: HomeSessionState = {
+  remoteSchemeVer: "请检查更新",
+  remoteDictMark: "请检查更新",
+  remoteModelMark: "请检查更新",
+  notes: "请检查更新",
+  lastCheck: null,
+  lastCheckDecision: null,
+  hasSchemeUpdateNotes: false,
+  lastCheckKey: "",
+  logs: [],
+};
+
+let homeSessionState: HomeSessionState = { ...DEFAULT_HOME_SESSION_STATE };
+let launchAutoCheckHandled = false;
+let lastHandledLaunchActionKey = "";
+
+function nowTimeLabel(date = new Date()) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function makeLogEntry(
+  level: LogLevel,
+  scope: LogScope,
+  message: string,
+): LogEntry {
+  return {
+    id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    at: nowTimeLabel(),
+    level,
+    scope,
+    message: String(message ?? "").trim(),
+  };
+}
+
+function formatLogEntry(entry: LogEntry): string {
+  return `${entry.at} [${entry.level}] [${entry.scope}] ${entry.message}`;
+}
+
+function replacePathPrefix(message: string, rootPath: string): string {
+  const root = String(rootPath ?? "")
+    .trim()
+    .replace(/\/+$/, "");
+  if (!root) return message;
+  const slash = root.lastIndexOf("/");
+  const rootName = slash >= 0 ? root.slice(slash + 1) : root;
+  if (!rootName) return message;
+  const variants = new Set<string>([root]);
+  if (root.startsWith("/private/")) variants.add(root.slice("/private".length));
+  else if (root.startsWith("/")) variants.add(`/private${root}`);
+  let out = message;
+  for (const variant of variants) {
+    out = out.split(variant).join(rootName);
+  }
+  return out;
+}
+
+function normalizeMark(value: string | undefined): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+function schemeRemoteDisplayMark(
+  cfg: AppConfig,
+  remote: AllUpdateResult["scheme"] | null | undefined,
+): string {
+  return String(
+    (cfg.usePrereleaseScheme
+      ? (remote?.remoteIdOrSha ?? remote?.tag ?? remote?.name)
+      : (remote?.tag ?? remote?.name)) ?? "",
+  ).trim();
+}
+
+function schemeLocalDisplayMark(
+  cfg: AppConfig,
+  metaScheme: MetaBundle["scheme"] | undefined,
+): string {
+  return String(
+    (cfg.usePrereleaseScheme
+      ? metaScheme?.remoteIdOrSha
+      : metaScheme?.remoteTagOrName) ?? "",
+  ).trim();
+}
+
+function schemeStoredDisplayMark(
+  metaScheme: MetaBundle["scheme"] | undefined,
+): string {
+  return String(
+    (metaScheme?.usePrereleaseScheme
+      ? metaScheme?.remoteIdOrSha
+      : metaScheme?.remoteTagOrName) ??
+      metaScheme?.remoteTagOrName ??
+      metaScheme?.remoteIdOrSha ??
+      "",
+  ).trim();
+}
+
+function schemeDetailMark(
+  cfg: AppConfig,
+  metaScheme: MetaBundle["scheme"] | undefined,
+): string {
+  return (
+    schemeLocalDisplayMark(cfg, metaScheme) ||
+    schemeStoredDisplayMark(metaScheme) ||
+    "暂无法获取"
+  );
+}
+
+function remoteUpdatedAt(asset: AllUpdateResult["scheme"] | undefined): string {
+  return formatChinaTime(asset?.updatedAt) || "暂无法获取";
+}
+
+function remoteSchemePublishedAt(asset: AllUpdateResult["scheme"] | undefined): string {
+  return formatChinaTime(asset?.publishedAt ?? asset?.updatedAt) || "暂无法获取";
+}
+
+function remoteDetailMark(asset: AllUpdateResult["scheme"] | undefined): string {
+  return String(asset?.remoteIdOrSha ?? asset?.tag ?? asset?.name ?? "暂无法获取").trim();
+}
+
+function remoteSchemeDetailMark(
+  cfg: AppConfig,
+  asset: AllUpdateResult["scheme"] | undefined,
+): string {
+  return schemeRemoteDisplayMark(cfg, asset) || "暂无法获取";
+}
+
+function buildUpdateDecision(
+  localMeta: MetaBundle | undefined,
+  remote: AllUpdateResult,
+  cfg: AppConfig,
+): UpdateDecision {
+  const schemeRemoteMark = normalizeMark(
+    schemeRemoteDisplayMark(cfg, remote.scheme),
+  );
+  const dictRemoteMark = normalizeMark(remote.dict?.remoteIdOrSha);
+  return {
+    scheme: !!(
+      schemeRemoteMark &&
+      normalizeMark(schemeLocalDisplayMark(cfg, localMeta?.scheme)) !==
+        schemeRemoteMark
+    ),
+    dict: !!(
+      dictRemoteMark &&
+      normalizeMark(localMeta?.dict?.remoteIdOrSha) !== dictRemoteMark
+    ),
+    model: cfg.downloadModel && isModelUpdateAvailable(localMeta?.model, remote.model),
+  };
+}
+
+function decorateLogMessage(message: string): string {
+  const text = String(message ?? "").trim();
+  if (!text) return text;
+  if (/^(🟢|🌐|⬇️|🗑️|📝|⏭️|🚀|⏱️|❌|✅|🔎|ℹ️)\s/u.test(text)) return text;
+  if (text.includes("可更新") || text.includes("有可用更新"))
+    return `🟢 ${text}`;
+  if (text.includes("远程")) return `🌐 ${text}`;
+  if (
+    text.includes("下载地址") ||
+    text.includes("下载中") ||
+    text.includes("资产")
+  )
+    return `⬇️ ${text}`;
+  if (text.includes("删除") || text.includes("清理")) return `🗑️ ${text}`;
+  if (text.includes("写入") || text.includes("整理")) return `📝 ${text}`;
+  if (text.includes("跳过排除文件")) return `⏭️ ${text}`;
+  if (text.includes("部署")) return `🚀 ${text}`;
+  if (text.includes("超时")) return `⏱️ ${text}`;
+  if (text.includes("失败") || text.includes("错误")) return `❌ ${text}`;
+  if (text.includes("完成")) return `✅ ${text}`;
+  if (text.includes("检查")) return `🔎 ${text}`;
+  return `ℹ️ ${text}`;
+}
+
+function logLevelColor(level: LogLevel) {
+  if (level === "SUCCESS") return "systemGreen";
+  if (level === "WARN") return "systemOrange";
+  if (level === "ERROR") return "systemRed";
+  return "systemBlue";
+}
+
+function logScopeColor(scope: LogScope) {
+  if (scope === "CHECK") return "systemBlue";
+  if (scope === "AUTO") return "systemPurple";
+  if (scope === "SCHEME") return "systemGreen";
+  if (scope === "DICT") return "systemOrange";
+  if (scope === "MODEL") return "systemPink";
+  if (scope === "DEPLOY") return "systemPink";
+  if (scope === "PATH") return "systemOrange";
+  return "secondaryLabel";
+}
+
+function LogEntryRow(props: { entry: LogEntry; insetLeft?: number }) {
+  const insetLeft = Math.max(0, Number(props.insetLeft ?? 0));
+  const highlightUpdate = props.entry.message.endsWith("可更新");
+  const updatePrefix = highlightUpdate
+    ? props.entry.message.slice(0, -3).trimEnd()
+    : props.entry.message;
+  return (
+    <HStack
+      key={props.entry.id}
+      spacing={0}
+      frame={{ maxWidth: "infinity", alignment: "topLeading" as any }}
+    >
+      {insetLeft > 0 ? (
+        <Rectangle
+          foregroundStyle="clear"
+          frame={{ width: insetLeft, height: 1 }}
+        />
+      ) : null}
+      <VStack
+        spacing={2}
+        padding={{ top: 1, bottom: 1 }}
+        frame={{ maxWidth: "infinity", alignment: "topLeading" as any }}
+      >
+        <HStack
+          spacing={8}
+          frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+        >
+          <Text
+            font="footnote"
+            foregroundStyle="secondaryLabel"
+            frame={{ alignment: "leading" as any }}
+          >
+            {props.entry.at}
+          </Text>
+          <Text
+            font="footnote"
+            foregroundStyle={logLevelColor(props.entry.level)}
+            frame={{ alignment: "leading" as any }}
+          >
+            [{props.entry.level}]
+          </Text>
+          <Text
+            font="footnote"
+            foregroundStyle={logScopeColor(props.entry.scope)}
+            frame={{ alignment: "leading" as any }}
+          >
+            [{props.entry.scope}]
+          </Text>
+          <Spacer />
+        </HStack>
+        {highlightUpdate ? (
+          <HStack
+            spacing={4}
+            frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+          >
+            <Text
+              font="body"
+              frame={{ alignment: "leading" as any }}
+              multilineTextAlignment="leading"
+              selectionDisabled={false}
+            >
+              {updatePrefix}
+            </Text>
+            <Text
+              font="body"
+              foregroundStyle="systemGreen"
+              frame={{ alignment: "leading" as any }}
+            >
+              可更新
+            </Text>
+            <Spacer />
+          </HStack>
+        ) : (
+          <Text
+            font="body"
+            frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+            multilineTextAlignment="leading"
+            selectionDisabled={false}
+          >
+            {props.entry.message}
+          </Text>
+        )}
+      </VStack>
+    </HStack>
+  );
+}
+
+function FullscreenLogView(props: { logs: LogEntry[] }) {
+  const dismiss = Navigation.useDismiss();
+  const [visibleLogs, setVisibleLogs] = useState<LogEntry[] | null>(null);
+  const copyAllLogs = () => {
+    try {
+      (globalThis as any).Clipboard?.copyText?.(
+        props.logs.map(formatLogEntry).join("\n"),
+      );
+      (globalThis as any).HapticFeedback?.mediumImpact?.();
+    } catch {}
+  };
+
+  useEffect(() => {
+    setVisibleLogs(null);
+    const timer = setTimeout(() => {
+      setVisibleLogs(props.logs);
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [props.logs]);
+
+  return (
+    <NavigationStack>
+      <VStack
+        navigationTitle={"详细日志"}
+        navigationBarTitleDisplayMode={"inline"}
+        toolbar={{
+          topBarLeading: (
+            <Button
+              title=""
+              systemImage="xmark"
+              action={() => {
+                try {
+                  (globalThis as any).HapticFeedback?.mediumImpact?.();
+                } catch {}
+                dismiss();
+              }}
+            />
+          ),
+          topBarTrailing: (
+            <Button title="" systemImage="doc.on.doc" action={copyAllLogs} />
+          ),
+        }}
+      >
+        <ScrollView
+          frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+          padding={{ top: 8, bottom: 8, leading: 18, trailing: 14 }}
+        >
+          <VStack
+            spacing={2}
+            frame={{ maxWidth: "infinity", alignment: "topLeading" as any }}
+          >
+            {visibleLogs == null ? (
+              <VStack
+                spacing={10}
+                frame={{
+                  maxWidth: "infinity",
+                  maxHeight: "infinity",
+                  alignment: "center" as any,
+                }}
+                padding={{ top: 20, bottom: 20 }}
+              >
+                <ProgressView />
+                <Text font="footnote" foregroundStyle="secondaryLabel">
+                  加载日志中...
+                </Text>
+              </VStack>
+            ) : visibleLogs.length ? (
+              visibleLogs.map((entry) => (
+                <LogEntryRow key={entry.id} entry={entry} insetLeft={18} />
+              ))
+            ) : (
+              <HStack
+                spacing={0}
+                frame={{ maxWidth: "infinity", alignment: "topLeading" as any }}
+              >
+                <Rectangle
+                  foregroundStyle="clear"
+                  frame={{ width: 18, height: 1 }}
+                />
+                <Text
+                  font="footnote"
+                  foregroundStyle="secondaryLabel"
+                  frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+                  multilineTextAlignment="leading"
+                  selectionDisabled={false}
+                >
+                  暂无详细日志
+                </Text>
+              </HStack>
+            )}
+          </VStack>
+        </ScrollView>
+      </VStack>
+    </NavigationStack>
+  );
+}
+
+function UsageGuideRow(props: {
+  icon: string;
+  title: string;
+  detail: string;
+  color?: string;
+}) {
+  return (
+    <HStack
+      spacing={14}
+      padding={{ top: 10, bottom: 10, leading: 2, trailing: 2 }}
+      frame={{ maxWidth: "infinity", alignment: "topLeading" as any }}
+    >
+      <VStack
+        frame={{ width: 34, height: 34, alignment: "center" as any }}
+        background={{
+          style: "tertiarySystemBackground",
+          shape: { type: "rect", cornerRadius: 10 },
+        }}
+      >
+        <Image
+          systemName={props.icon}
+          font="title3"
+          foregroundStyle={(props.color ?? "systemBlue") as any}
+        />
+      </VStack>
+      <VStack
+        spacing={4}
+        frame={{ maxWidth: "infinity", alignment: "topLeading" as any }}
+      >
+        <Text
+          font="headline"
+          frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+          multilineTextAlignment="leading"
+        >
+          {props.title}
+        </Text>
+        <Text
+          font="footnote"
+          foregroundStyle="secondaryLabel"
+          multilineTextAlignment="leading"
+          frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+        >
+          {props.detail}
+        </Text>
+      </VStack>
+    </HStack>
+  );
+}
+
+function UsageGuideSection(props: {
+  icon: string;
+  title: string;
+  detail: string;
+  color?: string;
+  children: any;
+}) {
+  return (
+    <VStack
+      spacing={10}
+      padding={{ top: 14, bottom: 14, leading: 14, trailing: 14 }}
+      frame={{ maxWidth: "infinity", alignment: "topLeading" as any }}
+      background={{
+        style: "secondarySystemBackground",
+        shape: { type: "rect", cornerRadius: 16 },
+      }}
+    >
+      <UsageGuideRow
+        icon={props.icon}
+        title={props.title}
+        detail={props.detail}
+        color={props.color}
+      />
+      <Divider />
+      {props.children}
+    </VStack>
+  );
+}
+
+function UsageGuideView() {
+  const dismiss = Navigation.useDismiss();
+
+  return (
+    <NavigationStack>
+      <VStack
+        navigationTitle={"使用说明"}
+        navigationBarTitleDisplayMode={"inline"}
+        toolbar={{
+          topBarLeading: (
+            <Button
+              title=""
+              systemImage="xmark"
+              action={() => {
+                try {
+                  (globalThis as any).HapticFeedback?.mediumImpact?.();
+                } catch {}
+                dismiss();
+              }}
+            />
+          ),
+        }}
+      >
+        <ScrollView
+          frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+          padding={{ top: 16, bottom: 24, leading: 16, trailing: 16 }}
+        >
+          <VStack spacing={16} frame={{ maxWidth: "infinity" }}>
+            <UsageGuideSection
+              icon="square.grid.3x2"
+              title="操作区块"
+              detail="六个按钮从左到右依次是方案、词库、模型、部署、检查和自动。可在设置中调整区块位置。"
+              color="systemBlue"
+            >
+              <UsageGuideRow
+                icon="doc.text"
+                title="方案"
+                detail="重新下载并写入当前设置中选择的方案包。"
+                color="systemBlue"
+              />
+              <UsageGuideRow
+                icon="books.vertical"
+                title="词库"
+                detail="重新下载并写入当前方案对应的词库文件。"
+                color="systemBlue"
+              />
+              <UsageGuideRow
+                icon="shippingbox"
+                title="模型"
+                detail="开启“下载模型”后可点击，重新下载并写入语法模型文件。"
+                color="systemBlue"
+              />
+              <UsageGuideRow
+                icon="paperplane"
+                title="部署"
+                detail="触发当前输入法的部署逻辑。Scripting 输入法需要到工具中手动部署。"
+                color="systemBlue"
+              />
+              <UsageGuideRow
+                icon="arrow.triangle.2.circlepath"
+                title="检查更新"
+                detail="只检查远程方案、词库，以及开启下载模型时的模型信息，并更新可更新状态，不下载文件。"
+                color="systemBlue"
+              />
+              <UsageGuideRow
+                icon="bolt.fill"
+                title="自动更新"
+                detail="根据检查结果自动更新需要更新的内容，并按设置决定是否自动部署。"
+                color="systemBlue"
+              />
+            </UsageGuideSection>
+
+            <Text
+              font="footnote"
+              foregroundStyle="secondaryLabel"
+              frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+              multilineTextAlignment="leading"
+            >
+              提示：有可用更新时，操作区块中的对应按钮和本地信息会显示为绿色。
+            </Text>
+          </VStack>
+        </ScrollView>
+      </VStack>
+    </NavigationStack>
+  );
+}
+
+function progressStageLabel(stage: string): string {
+  const text = String(stage ?? "");
+  if (text.includes("下载中")) return "下载中";
+  if (text.includes("清理旧文件")) return "删除中";
+  if (
+    text.includes("解压") ||
+    text.includes("整理") ||
+    text.includes("写入") ||
+    text.includes("校验")
+  )
+    return "写入中";
+  return "处理中";
+}
+
+async function listFileBrowserEntries(
+  dir: string,
+): Promise<FileBrowserEntry[]> {
+  const fm: any = (globalThis as any).FileManager;
+  if (!fm || !dir) return [];
+  const base = dir.endsWith("/") ? dir : dir + "/";
+  let raw: any[] = [];
+  if (typeof fm.readDirectory === "function") {
+    raw = await fm.readDirectory(dir);
+  } else if (typeof fm.readDirectorySync === "function") {
+    raw = fm.readDirectorySync(dir);
+  } else {
+    return [];
+  }
+  const names = (Array.isArray(raw) ? raw : [])
+    .map(String)
+    .map((p) => (p.startsWith(base) ? p.slice(base.length) : p))
+    .filter((p) => p && p !== "." && p !== "..");
+
+  const entries: FileBrowserEntry[] = [];
+  for (const name of names) {
+    const path = Path.join(dir, name);
+    let isDirectory = false;
+    try {
+      if (typeof fm.isDirectory === "function")
+        isDirectory = !!(await fm.isDirectory(path));
+      else if (typeof fm.isDir === "function")
+        isDirectory = !!(await fm.isDir(path));
+      else if (typeof fm.stat === "function") {
+        const st = await fm.stat(path);
+        isDirectory = String(st?.type ?? "") === "directory";
+      } else if (typeof fm.statSync === "function") {
+        const st = fm.statSync(path);
+        isDirectory = String(st?.type ?? "") === "directory";
+      }
+    } catch {}
+    entries.push({ name, path, isDirectory });
+  }
+  return sortFileBrowserEntries(entries);
+}
+
+function sortFileBrowserEntries(entries: FileBrowserEntry[]) {
+  return [...entries].sort((a, b) => {
+    if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+    return a.name.localeCompare(b.name, "zh-Hans-CN");
+  });
+}
+
+function fileBrowserEntryName(value: any): string {
+  const name = String(value ?? "").trim();
+  if (!name) throw new Error("名称不能为空");
+  if (
+    name === "." ||
+    name === ".." ||
+    name.includes("/") ||
+    name.includes("\\")
+  ) {
+    throw new Error("名称不能包含路径分隔符");
+  }
+  return name;
+}
+
+async function fileBrowserPathExists(path: string): Promise<boolean> {
+  const fm: any = (globalThis as any).FileManager;
+  if (!fm) throw new Error("FileManager 不可用");
+  if (typeof fm.exists === "function") return !!(await fm.exists(path));
+  if (typeof fm.existsSync === "function") return !!fm.existsSync(path);
+  throw new Error("当前 FileManager 不支持检查文件是否存在");
+}
+
+async function createFileBrowserDirectory(path: string) {
+  const fm: any = (globalThis as any).FileManager;
+  if (!fm) throw new Error("FileManager 不可用");
+  if (typeof fm.createDirectory === "function") {
+    await fm.createDirectory(path);
+    return;
+  }
+  if (typeof fm.createDirectorySync === "function") {
+    fm.createDirectorySync(path);
+    return;
+  }
+  throw new Error("当前 FileManager 不支持创建文件夹");
+}
+
+async function createFileBrowserFile(path: string) {
+  const fm: any = (globalThis as any).FileManager;
+  if (!fm) throw new Error("FileManager 不可用");
+  if (typeof fm.writeAsString === "function") {
+    await fm.writeAsString(path, "");
+    return;
+  }
+  if (typeof fm.writeAsStringSync === "function") {
+    fm.writeAsStringSync(path, "");
+    return;
+  }
+  throw new Error("当前 FileManager 不支持创建文件");
+}
+
+async function renameFileBrowserPath(path: string, newPath: string) {
+  const fm: any = (globalThis as any).FileManager;
+  if (!fm) throw new Error("FileManager 不可用");
+  if (typeof fm.rename === "function") {
+    await fm.rename(path, newPath);
+    return;
+  }
+  if (typeof fm.renameSync === "function") {
+    fm.renameSync(path, newPath);
+    return;
+  }
+  throw new Error("当前 FileManager 不支持重命名");
+}
+
+async function deleteFileBrowserPath(path: string) {
+  const fm: any = (globalThis as any).FileManager;
+  if (!fm) throw new Error("FileManager 不可用");
+  if (typeof fm.removeSync === "function") {
+    fm.removeSync(path);
+    return;
+  }
+  if (typeof fm.remove === "function") {
+    await fm.remove(path);
+    return;
+  }
+  if (typeof fm.delete === "function") {
+    await fm.delete(path);
+    return;
+  }
+  throw new Error("当前 FileManager 不支持删除操作");
+}
+
+function FileBrowserRow(props: {
+  entry: FileBrowserEntry;
+  parentPath: string;
+  onOpenFile: (filePath: string) => void;
+  onError: (message: string) => void;
+  onDeleted: (path: string) => void;
+  onRenamed: (path: string, next: FileBrowserEntry) => void;
+}) {
+  async function confirmDeleteEntry() {
+    try {
+      try {
+        (globalThis as any).HapticFeedback?.mediumImpact?.();
+      } catch {}
+      const ok = await Dialog.confirm({
+        title: props.entry.isDirectory ? "删除文件夹" : "删除文件",
+        message: `确定删除“${props.entry.name}”吗？${props.entry.isDirectory ? "\n文件夹内的内容也会被删除。" : ""}`,
+        confirmLabel: "删除",
+        cancelLabel: "取消",
+      });
+      if (!ok) return;
+      await deleteFileBrowserPath(props.entry.path);
+      props.onDeleted(props.entry.path);
+    } catch (error: any) {
+      props.onError(`删除失败：${String(error?.message ?? error)}`);
+    }
+  }
+
+  async function renameEntry() {
+    try {
+      try {
+        (globalThis as any).HapticFeedback?.mediumImpact?.();
+      } catch {}
+      const input = await Dialog.prompt({
+        title: props.entry.isDirectory ? "重命名文件夹" : "重命名文件",
+        message: "请输入新名称。",
+        defaultValue: props.entry.name,
+        confirmLabel: "重命名",
+        cancelLabel: "取消",
+      });
+      if (input == null) return;
+      const name = fileBrowserEntryName(input);
+      if (name === props.entry.name) return;
+      const nextPath = Path.join(props.parentPath, name);
+      if (await fileBrowserPathExists(nextPath)) {
+        throw new Error("当前目录已有同名文件或文件夹");
+      }
+      await renameFileBrowserPath(props.entry.path, nextPath);
+      props.onRenamed(props.entry.path, {
+        ...props.entry,
+        name,
+        path: nextPath,
+      });
+    } catch (error: any) {
+      props.onError(`重命名失败：${String(error?.message ?? error)}`);
+    }
+  }
+
+  const row = (
+    <HStack>
+      <Image
+        systemName={props.entry.isDirectory ? "folder" : "doc.text"}
+        foregroundStyle={
+          props.entry.isDirectory ? "systemBlue" : "secondaryLabel"
+        }
+      />
+      <Text
+        frame={{
+          maxWidth: "infinity",
+          alignment: "leading" as any,
+        }}
+      >
+        {props.entry.name}
+      </Text>
+    </HStack>
+  );
+
+  const swipeActions = {
+    allowsFullSwipe: false,
+    actions: [
+      <Button
+        title="重命名"
+        systemImage="pencil"
+        tint="systemBlue"
+        action={() => {
+          void renameEntry();
+        }}
+      />,
+      <Button
+        title="删除"
+        systemImage="trash"
+        tint="systemRed"
+        action={() => {
+          void confirmDeleteEntry();
+        }}
+      />,
+    ],
+  };
+
+  if (props.entry.isDirectory) {
+    return (
+      <NavigationLink
+        key={props.entry.path}
+        destination={
+          <FileBrowserDirectoryView
+            currentPath={props.entry.path}
+            onOpenFile={props.onOpenFile}
+            onError={props.onError}
+          />
+        }
+        trailingSwipeActions={swipeActions}
+      >
+        {row}
+      </NavigationLink>
+    );
+  }
+
+  return (
+    <Button
+      key={props.entry.path}
+      action={() => {
+        try {
+          (globalThis as any).HapticFeedback?.mediumImpact?.();
+        } catch {}
+        props.onOpenFile(props.entry.path);
+      }}
+      trailingSwipeActions={swipeActions}
+    >
+      {row}
+    </Button>
+  );
+}
+
+function FileBrowserDirectoryView(props: {
+  currentPath: string;
+  onOpenFile: (filePath: string) => void;
+  onError: (message: string) => void;
+  rootToolbar?: any;
+}) {
+  const [entries, setEntries] = useState<FileBrowserEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const title = props.currentPath
+    ? Path.basename(props.currentPath) || "文件"
+    : "文件";
+
+  async function refreshEntries() {
+    if (!props.currentPath) {
+      setEntries([]);
+      return;
+    }
+    setLoading(true);
+    try {
+      setEntries(await listFileBrowserEntries(props.currentPath));
+    } catch {
+      setEntries([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void refreshEntries();
+  }, [props.currentPath]);
+
+  async function createEntry(isDirectory: boolean) {
+    try {
+      if (!props.currentPath) throw new Error("请先选择文件夹");
+      try {
+        (globalThis as any).HapticFeedback?.mediumImpact?.();
+      } catch {}
+      const input = await Dialog.prompt({
+        title: isDirectory ? "添加文件夹" : "添加文件",
+        message: isDirectory
+          ? "请输入文件夹名称。"
+          : "请输入文件名称（包含后缀）。",
+        placeholder: isDirectory ? "新建文件夹" : "example.txt",
+        confirmLabel: "添加",
+        cancelLabel: "取消",
+      });
+      if (input == null) return;
+      const name = fileBrowserEntryName(input);
+      const path = Path.join(props.currentPath, name);
+      if (await fileBrowserPathExists(path)) {
+        throw new Error("当前目录已有同名文件或文件夹");
+      }
+      if (isDirectory) await createFileBrowserDirectory(path);
+      else await createFileBrowserFile(path);
+      setEntries((current) =>
+        sortFileBrowserEntries([...current, { name, path, isDirectory }]),
+      );
+    } catch (error: any) {
+      props.onError(`添加失败：${String(error?.message ?? error)}`);
+    }
+  }
+
+  const addMenu = (
+    <Menu title="" systemImage="plus">
+      <Button
+        title="添加文件夹"
+        systemImage="folder.badge.plus"
+        disabled={!props.currentPath}
+        action={() => {
+          void createEntry(true);
+        }}
+      />
+      <Button
+        title="添加文件"
+        systemImage="doc.badge.plus"
+        disabled={!props.currentPath}
+        action={() => {
+          void createEntry(false);
+        }}
+      />
+    </Menu>
+  );
+
+  const toolbar = {
+    ...(props.rootToolbar ?? {}),
+    topBarTrailing: props.rootToolbar?.topBarTrailing ? (
+      <HStack spacing={8}>
+        {props.rootToolbar.topBarTrailing}
+        {addMenu}
+      </HStack>
+    ) : (
+      addMenu
+    ),
+  };
+
+  const browserList = (
+    <List listStyle={"insetGroup"}>
+      <Section header={<Text>当前目录</Text>}>
+        <Text>{props.currentPath || "未选择文件夹"}</Text>
+      </Section>
+
+      <Section header={<Text>目录内容</Text>}>
+        {!props.currentPath ? (
+          <Text foregroundStyle="secondaryLabel">
+            当前没有可浏览的书签目录。
+          </Text>
+        ) : loading ? (
+          <Text foregroundStyle="secondaryLabel">加载中...</Text>
+        ) : entries.length ? (
+          entries.map((entry) => (
+            <FileBrowserRow
+              key={entry.path}
+              entry={entry}
+              parentPath={props.currentPath}
+              onOpenFile={props.onOpenFile}
+              onError={props.onError}
+              onDeleted={(deletedPath) => {
+                setEntries((current) =>
+                  current.filter((item) => item.path !== deletedPath),
+                );
+              }}
+              onRenamed={(oldPath, next) => {
+                setEntries((current) =>
+                  sortFileBrowserEntries(
+                    current.map((item) =>
+                      item.path === oldPath ? next : item,
+                    ),
+                  ),
+                );
+              }}
+            />
+          ))
+        ) : (
+          <Text foregroundStyle="secondaryLabel">当前目录为空。</Text>
+        )}
+      </Section>
+    </List>
+  );
+
+  return (
+    <VStack
+      navigationTitle={title}
+      navigationBarTitleDisplayMode={"inline"}
+      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+      toolbar={toolbar}
+    >
+      {browserList}
+    </VStack>
+  );
+}
+
+async function resolveEditorRootFromConfig(
+  current: AppConfig,
+): Promise<string> {
+  const fm: any = (globalThis as any).FileManager;
+  let root = String(current.hamsterRootPath ?? "").trim();
+  if (current.hamsterBookmarkName && fm?.bookmarkedPath) {
+    try {
+      const canUseByName = fm?.bookmarkExists
+        ? !!(await fm.bookmarkExists(current.hamsterBookmarkName))
+        : true;
+      if (canUseByName) {
+        const resolved = await fm.bookmarkedPath(current.hamsterBookmarkName);
+        if (resolved) root = String(resolved).trim();
+      }
+    } catch {}
+  }
+  return root;
+}
+
+function FileEditorSheet(props: {
+  title: string;
+  content: string;
+  ext: string;
+}) {
+  const dismiss = Navigation.useDismiss();
+  const [controller] = useState(
+    () =>
+      new EditorController({
+        content: props.content,
+        ext: props.ext as any,
+        readOnly: false,
+      }),
+  );
+
+  useEffect(() => {
+    return () => {
+      controller.dispose();
+    };
+  }, [controller]);
+
+  return (
+    <NavigationStack>
+      <VStack
+        navigationTitle={props.title}
+        navigationBarTitleDisplayMode="inline"
+        presentationDetents={["large"]}
+        presentationDragIndicator="visible"
+        toolbar={{
+          topBarLeading: (
+            <Button title="取消" role="cancel" action={() => dismiss(null)} />
+          ),
+          topBarTrailing: (
+            <Button
+              title="保存"
+              action={() => dismiss(String(controller.content ?? ""))}
+            />
+          ),
+        }}
+      >
+        <Editor
+          controller={controller}
+          searchEnabled
+          ignoresSafeArea={{ regions: "container", edges: "bottom" }}
+        />
+      </VStack>
+    </NavigationStack>
+  );
+}
+
+export function HomeView() {
+  const supportsMinimization =
+    typeof Script.supportsMinimization === "function" &&
+    Script.supportsMinimization();
+  const activeTab = useObservable<number>(MAIN_TAB);
+  const [cfg, setCfg] = useState<AppConfig>(() => loadConfig());
+  const logProxyRef = useRef<any>();
+  const settingsSaveRef = useRef<(() => void) | null>(null);
+  const releaseNotesSheet = useMarkdownReleaseNotesSheet({
+    markdownFile: "changelog.md",
+    storageKey: "wanxiang-helper:release-notes:last-seen-hash",
+    title: "更新内容",
+  });
+  const [showUpdateNotes, setShowUpdateNotes] = useState(false);
+  const [editorRootPath, setEditorRootPath] = useState(() =>
+    String(loadConfig().hamsterRootPath ?? "").trim(),
+  );
+
+  // 本地信息
+  const [localSelectedScheme, setLocalSelectedScheme] = useState("暂无法获取");
+  const [localSchemeVersion, setLocalSchemeVersion] = useState("暂无法获取");
+  const [localDictMark, setLocalDictMark] = useState("暂无法获取");
+  const [localModelMark, setLocalModelMark] = useState("暂无法获取");
+  const [localSchemeDetail, setLocalSchemeDetail] = useState("暂无法获取");
+  const [localDictDetail, setLocalDictDetail] = useState("暂无法获取");
+  const [localModelDetail, setLocalModelDetail] = useState("暂无法获取");
+
+  // 远程信息
+  const [remoteSchemeVer, setRemoteSchemeVer] = useState(
+    () => homeSessionState.remoteSchemeVer,
+  );
+  const [remoteDictMark, setRemoteDictMark] = useState(
+    () => homeSessionState.remoteDictMark,
+  );
+  const [remoteModelMark, setRemoteModelMark] = useState(
+    () => homeSessionState.remoteModelMark,
+  );
+  const [notes, setNotes] = useState(() => homeSessionState.notes);
+  const [lastCheck, setLastCheck] = useState<AllUpdateResult | null>(
+    () => homeSessionState.lastCheck,
+  );
+  const [lastCheckDecision, setLastCheckDecision] =
+    useState<UpdateDecision | null>(() => homeSessionState.lastCheckDecision);
+  const [hasSchemeUpdateNotes, setHasSchemeUpdateNotes] = useState(
+    () => homeSessionState.hasSchemeUpdateNotes,
+  );
+  const [lastCheckKey, setLastCheckKey] = useState(
+    () => homeSessionState.lastCheckKey,
+  );
+  const [logs, setLogs] = useState<LogEntry[]>(() => homeSessionState.logs);
+
+  // 状态
+  const [stage, setStage] = useState("就绪");
+  const [progressPct, setProgressPct] = useState("0.00%");
+  const [progressValue, setProgressValue] = useState<number | undefined>(
+    undefined,
+  );
+  const [busy, setBusy] = useState(false);
+  const [pathUsable, setPathUsable] = useState(false);
+  const [alert, setAlert] = useState<AlertState>({
+    title: "",
+    isPresented: false,
+    message: <Text> </Text>,
+    actions: <Text> </Text>,
+  });
+
+  // ✅ 只在“真正下载”时显示进度
+  const [showProgress, setShowProgress] = useState(false);
+
+  useEffect(() => {
+    let disposed = false;
+    void (async () => {
+      const root = await resolveEditorRootFromConfig(cfg);
+      if (disposed) return;
+      setEditorRootPath(root);
+    })();
+    return () => {
+      disposed = true;
+    };
+  }, [cfg.hamsterRootPath, cfg.hamsterBookmarkName]);
+
+  function resetRemote() {
+    setRemoteSchemeVer(DEFAULT_HOME_SESSION_STATE.remoteSchemeVer);
+    setRemoteDictMark(DEFAULT_HOME_SESSION_STATE.remoteDictMark);
+    setRemoteModelMark(DEFAULT_HOME_SESSION_STATE.remoteModelMark);
+    setNotes(DEFAULT_HOME_SESSION_STATE.notes);
+    setLastCheck(DEFAULT_HOME_SESSION_STATE.lastCheck);
+    setLastCheckDecision(DEFAULT_HOME_SESSION_STATE.lastCheckDecision);
+    setHasSchemeUpdateNotes(DEFAULT_HOME_SESSION_STATE.hasSchemeUpdateNotes);
+    setLastCheckKey(DEFAULT_HOME_SESSION_STATE.lastCheckKey);
+  }
+
+  function checkKey(c: AppConfig) {
+    return getCheckCacheKey(c);
+  }
+
+  function closeAlert() {
+    setAlert((a) => ({ ...a, isPresented: false }));
+  }
+
+  function showInformationPair(
+    title: string,
+    localLabel: string,
+    localValue: string,
+    remoteLabel: string,
+    remoteValue: string,
+  ) {
+    const message = [
+      `${localLabel}：`,
+      wrapFullMarker(localValue) || "暂无法获取",
+      "",
+      `${remoteLabel}：`,
+      wrapFullMarker(remoteValue) || "暂无法获取",
+    ].join("\n");
+    setAlert({
+      title,
+      isPresented: true,
+      message: <Text multilineTextAlignment="leading">{message}</Text>,
+      actions: <Button title="知道了" action={closeAlert} />,
+    });
+  }
+
+  function pushLog(
+    level: LogLevel,
+    scope: LogScope,
+    message: string,
+    targetCfg?: AppConfig,
+  ) {
+    const currentCfg = targetCfg ?? cfg;
+    if (!currentCfg.showVerboseLog) return;
+    let normalizedMessage = String(message ?? "").trim();
+    normalizedMessage = replacePathPrefix(
+      normalizedMessage,
+      currentCfg.hamsterRootPath,
+    );
+    normalizedMessage = decorateLogMessage(normalizedMessage);
+    const entry = makeLogEntry(level, scope, normalizedMessage);
+    setLogs((prev) => {
+      const next = prev.concat(entry);
+      homeSessionState = {
+        ...homeSessionState,
+        logs: next,
+      };
+      return next;
+    });
+  }
+
+  function setStageAndMaybeLog(
+    message: string,
+    scope: LogScope = "SYSTEM",
+    level: LogLevel = "INFO",
+    logIt = false,
+  ) {
+    setStage(message);
+    if (logIt) pushLog(level, scope, message);
+  }
+
+  function wrapStageReporter(scope: LogScope) {
+    return (message: string) => {
+      setStageAndMaybeLog(message, scope, "INFO", true);
+    };
+  }
+
+  function wrapDetailLogger(scope: LogScope, level: LogLevel = "INFO") {
+    return (message: string) => {
+      pushLog(level, scope, message);
+    };
+  }
+
+  function pushCheckResultLog(
+    label: string,
+    remoteMark: string,
+    needUpdate: boolean,
+  ) {
+    pushLog(
+      needUpdate ? "SUCCESS" : "INFO",
+      "CHECK",
+      `远程${label}：${remoteMark}${needUpdate ? "  可更新" : ""}`,
+    );
+  }
+
+  async function guardPathAccess(showPopup: boolean): Promise<boolean> {
+    const current = loadConfig();
+    const r = await verifyInstallPathAccess(current);
+    if (r.ok) {
+      setPathUsable(true);
+      return true;
+    }
+    setPathUsable(false);
+    setStageAndMaybeLog(
+      "路径不可用，请在设置中添加或重新添加书签文件夹。",
+      "PATH",
+      "WARN",
+      true,
+    );
+    if (showPopup) {
+      const msg = r.reason
+        ? `${r.reason}\n请在设置中添加或重新添加书签文件夹。`
+        : "请在设置中添加或重新添加书签文件夹。";
+      setAlert({
+        title: "路径不可用",
+        isPresented: true,
+        message: <Text>{msg}</Text>,
+        actions: (
+          <HStack>
+            <Button
+              title="取消"
+              action={() => {
+                try {
+                  (globalThis as any).HapticFeedback?.mediumImpact?.();
+                } catch {}
+                closeAlert();
+              }}
+            />
+            <Button
+              title="确认"
+              action={() => {
+                try {
+                  (globalThis as any).HapticFeedback?.mediumImpact?.();
+                } catch {}
+                closeAlert();
+                Script.exit();
+              }}
+            />
+          </HStack>
+        ),
+      });
+    }
+    return false;
+  }
+
+  async function findLocalMeta(
+    current: AppConfig,
+  ): Promise<{ meta?: MetaBundle; candidates: string[] }> {
+    const normPath = (s: string) =>
+      String(s ?? "")
+        .trim()
+        .replace(/\/+$/, "");
+    const pushCandidate = (arr: string[], p?: string) => {
+      const x = normPath(String(p ?? ""));
+      if (x) arr.push(x);
+    };
+
+    let installRoot = "";
+    try {
+      const { rimeDir } = await detectRimeDir(current);
+      if (rimeDir) installRoot = rimeDir;
+    } catch {}
+    if (!installRoot) {
+      installRoot = current.hamsterRootPath;
+    }
+
+    const candidates: string[] = [];
+    pushCandidate(candidates, installRoot);
+    if (
+      current.hamsterRootPath &&
+      normPath(current.hamsterRootPath) !== normPath(installRoot)
+    ) {
+      pushCandidate(candidates, current.hamsterRootPath);
+    }
+    if (current.hamsterRootPath) {
+      const rimeCandidates = await collectRimeCandidates(
+        current.hamsterRootPath,
+      );
+      for (const c of rimeCandidates) pushCandidate(candidates, c);
+    }
+
+    try {
+      const fm: any = (globalThis as any).FileManager;
+      if (
+        fm?.bookmarkedPath &&
+        (current.hamsterBookmarkName || current.hamsterRootPath)
+      ) {
+        if (current.hamsterBookmarkName) {
+          const p = fm.bookmarkedPath(current.hamsterBookmarkName);
+          const resolved = p && typeof p.then === "function" ? await p : p;
+          if (resolved) pushCandidate(candidates, String(resolved));
+        }
+      }
+      if (fm?.getAllFileBookmarks) {
+        const r = fm.getAllFileBookmarks();
+        const list = r && typeof r.then === "function" ? await r : r;
+        const arr = Array.isArray(list) ? list : [];
+        if (current.hamsterBookmarkName) {
+          const byName = arr.find(
+            (b: any) => String(b?.name ?? "") === current.hamsterBookmarkName,
+          );
+          if (byName?.path) pushCandidate(candidates, String(byName.path));
+          if (byName?.name && fm?.bookmarkedPath) {
+            const p = fm.bookmarkedPath(byName.name);
+            const resolved = p && typeof p.then === "function" ? await p : p;
+            if (resolved) pushCandidate(candidates, String(resolved));
+          }
+        }
+        if (current.hamsterRootPath) {
+          const target = normPath(String(current.hamsterRootPath));
+          const byPath = arr.find(
+            (b: any) => normPath(String(b?.path ?? "")) === target,
+          );
+          if (byPath?.path) pushCandidate(candidates, String(byPath.path));
+          if (byPath?.name && fm?.bookmarkedPath) {
+            const p = fm.bookmarkedPath(byPath.name);
+            const resolved = p && typeof p.then === "function" ? await p : p;
+            if (resolved) pushCandidate(candidates, String(resolved));
+          }
+        }
+      }
+    } catch {}
+
+    const uniq = Array.from(new Set(candidates.map(normPath).filter(Boolean)));
+    for (const root of uniq) {
+      const m = await loadMetaAsync(root, current.hamsterBookmarkName);
+      if (m.scheme || m.dict || m.model) {
+        return { meta: m, candidates: uniq };
+      }
+    }
+    if (current.hamsterBookmarkName) {
+      try {
+        const byBookmark = await loadMetaAsync("", current.hamsterBookmarkName);
+        if (byBookmark.scheme || byBookmark.dict || byBookmark.model) {
+          return { meta: byBookmark, candidates: uniq };
+        }
+      } catch {}
+    }
+    return { meta: undefined, candidates: uniq };
+  }
+
+  async function refreshLocal(current: AppConfig): Promise<boolean> {
+    const selected = selectedSchemeFromConfig(current);
+    setLocalSelectedScheme(selected);
+
+    const { meta, candidates } = await findLocalMeta(current);
+    if (!candidates.length || !meta) {
+      setLocalSchemeVersion("暂无法获取");
+      setLocalDictMark("暂无法获取");
+      setLocalModelMark(current.downloadModel ? "暂无法获取" : "");
+      setLocalSchemeDetail("暂无法获取");
+      setLocalDictDetail("暂无法获取");
+      setLocalModelDetail("暂无法获取");
+      return false;
+    }
+
+    const localScheme = normalizeMetaScheme(meta.scheme, current);
+    setLocalSelectedScheme(localScheme.selected);
+
+    setLocalSchemeVersion(schemeStoredDisplayMark(meta.scheme) || "暂无法获取");
+    setLocalDictMark(meta.dict?.remoteIdOrSha ?? "暂无法获取");
+    setLocalModelMark(current.downloadModel ? (modelDisplayMark(meta.model) || "暂无法获取") : "");
+    setLocalSchemeDetail(schemeDetailMark(current, meta.scheme));
+    setLocalDictDetail(meta.dict?.remoteIdOrSha ?? "暂无法获取");
+    setLocalModelDetail(current.downloadModel ? (meta.model?.remoteIdOrSha ?? "暂无法获取") : "暂无法获取");
+    return true;
+  }
+
+  async function refreshLastCheckDecision(
+    current: AppConfig,
+    remoteOverride?: AllUpdateResult | null,
+  ) {
+    const remote =
+      remoteOverride ?? (lastCheckKey === checkKey(current) ? lastCheck : null);
+    if (!remote) return;
+    const { meta } = await findLocalMeta(current);
+    const nextDecision = buildUpdateDecision(meta, remote, current);
+    setRemoteModelMark(current.downloadModel ? remoteUpdatedAt(remote.model) : "");
+    setLocalModelMark(current.downloadModel ? (modelDisplayMark(meta?.model, remote.model) || "暂无法获取") : "");
+    setLocalSchemeDetail(schemeDetailMark(current, meta?.scheme));
+    setLocalDictDetail(meta?.dict?.remoteIdOrSha ?? "暂无法获取");
+    setLocalModelDetail(current.downloadModel ? (meta?.model?.remoteIdOrSha ?? "暂无法获取") : "暂无法获取");
+    setLastCheck(remote);
+    setLastCheckDecision(nextDecision);
+    setLastCheckKey(checkKey(current));
+    saveSharedCheckCache(current, remote, nextDecision);
+  }
+
+  async function applySharedCheckCache(current: AppConfig) {
+    const cache = loadSharedCheckCache();
+    if (!cache || cache.key !== checkKey(current)) return false;
+    const { meta } = await findLocalMeta(current);
+    setRemoteSchemeVer(remoteSchemePublishedAt(cache.remote.scheme));
+    setRemoteDictMark(remoteUpdatedAt(cache.remote.dict));
+    setRemoteModelMark(current.downloadModel ? remoteUpdatedAt(cache.remote.model) : "");
+    setLocalModelMark(current.downloadModel ? (modelDisplayMark(meta?.model, cache.remote.model) || "暂无法获取") : "");
+    setLocalSchemeDetail(schemeDetailMark(current, meta?.scheme));
+    setLocalDictDetail(meta?.dict?.remoteIdOrSha ?? "暂无法获取");
+    setLocalModelDetail(current.downloadModel ? (meta?.model?.remoteIdOrSha ?? "暂无法获取") : "暂无法获取");
+    const nextDecision = buildUpdateDecision(meta, cache.remote, current);
+    setNotes(cache.remote.scheme?.body ?? "");
+    setLastCheck(cache.remote);
+    setLastCheckDecision(nextDecision);
+    setLastCheckKey(cache.key);
+    saveSharedCheckCache(current, cache.remote, nextDecision);
+    return true;
+  }
+
+  useEffect(() => {
+    homeSessionState = {
+      remoteSchemeVer,
+      remoteDictMark,
+      remoteModelMark,
+      notes,
+      lastCheck,
+      lastCheckDecision,
+      hasSchemeUpdateNotes,
+      lastCheckKey,
+      logs,
+    };
+  }, [
+    remoteSchemeVer,
+    remoteDictMark,
+    remoteModelMark,
+    notes,
+    lastCheck,
+    lastCheckDecision,
+    hasSchemeUpdateNotes,
+    lastCheckKey,
+    logs,
+  ]);
+
+  useEffect(() => {
+    if (!cfg.showVerboseLog) return;
+    const scrollLatest = () => {
+      try {
+        logProxyRef.current?.scrollTo?.("bottomView", "bottom");
+      } catch {}
+    };
+    scrollLatest();
+    const intervalId = busy
+      ? (globalThis as any).setInterval?.(scrollLatest, 100)
+      : undefined;
+    const finalTimer = setTimeout(scrollLatest, 120);
+    return () => {
+      if (intervalId !== undefined)
+        (globalThis as any).clearInterval?.(intervalId);
+      clearTimeout(finalTimer);
+    };
+  }, [cfg.showVerboseLog, busy, logs.length]);
+
+  useEffect(() => {
+    void (async () => {
+      const current = cfg;
+      await guardPathAccess(true);
+      const found = await refreshLocal(current);
+      if (!found) {
+        await sleep(120);
+        await refreshLocal(loadConfig());
+      }
+      await applySharedCheckCache(current);
+    })();
+  }, [
+    cfg.schemeEdition,
+    cfg.proSchemeKey,
+    cfg.releaseSource,
+    cfg.hamsterRootPath,
+    cfg.hamsterBookmarkName,
+  ]);
+
+  useEffect(() => {
+    const current = loadConfig();
+    if (String(Script.queryParameters?.action ?? "") === "autoUpdate") return;
+    if (current.autoCheckOnLaunch && !launchAutoCheckHandled) {
+      launchAutoCheckHandled = true;
+      void (async () => {
+        if (await guardPathAccess(false)) {
+          await onCheckUpdate();
+        }
+      })();
+    }
+  }, []);
+
+  useEffect(() => {
+    const action = String(Script.queryParameters?.action ?? "");
+    const requestId = String(Script.queryParameters?.requestId ?? "");
+    const actionKey = `${action}:${requestId}`;
+    if (
+      action !== "autoUpdate" ||
+      !requestId ||
+      lastHandledLaunchActionKey === actionKey
+    )
+      return;
+    lastHandledLaunchActionKey = actionKey;
+    launchAutoCheckHandled = true;
+    void (async () => {
+      if (await guardPathAccess(true)) {
+        await onAutoUpdate();
+      }
+    })();
+  }, []);
+
+  async function handleSettingsSaved(newCfg: AppConfig) {
+    const before = loadConfig();
+    const beforeKey = checkKey(before);
+    setCfg(newCfg);
+    await guardPathAccess(false);
+    const hasLocal = await refreshLocal(newCfg);
+    const afterKey = checkKey(newCfg);
+    if (afterKey !== beforeKey) {
+      resetRemote();
+      const pathChanged =
+        newCfg.hamsterRootPath !== before.hamsterRootPath ||
+        newCfg.hamsterBookmarkName !== before.hamsterBookmarkName;
+      if (pathChanged && newCfg.autoCheckOnLaunch && hasLocal) {
+        await onCheckUpdate();
+      }
+    }
+  }
+
+  async function openEditorFile(filePath: string) {
+    try {
+      if (!filePath) return;
+      const ext = Path.extname(filePath).slice(1) || "md";
+      const content = await FileManager.readAsString(filePath, "utf-8");
+      const nextContent = await Navigation.present<string | null>({
+        element: (
+          <FileEditorSheet
+            title={Path.basename(filePath) || "编辑文件"}
+            content={content}
+            ext={ext}
+          />
+        ),
+        modalPresentationStyle: "pageSheet",
+      });
+      if (nextContent != null && nextContent !== content) {
+        await FileManager.writeAsString(filePath, nextContent, "utf-8");
+      }
+    } catch (error: any) {
+      setStageAndMaybeLog(
+        `打开编辑器失败：${String(error?.message ?? error)}`,
+        "SYSTEM",
+        "ERROR",
+        true,
+      );
+    }
+  }
+
+  async function reselectEditorFolder() {
+    try {
+      const initialDirectory =
+        editorRootPath || cfg.hamsterRootPath || undefined;
+      const picked = await (DocumentPicker as any).pickDirectory?.(
+        initialDirectory,
+      );
+      const nextPath = String(picked ?? "").trim();
+      if (!nextPath) return;
+      setEditorRootPath(nextPath);
+    } catch (error: any) {
+      setStageAndMaybeLog(
+        `选择文件夹失败：${String(error?.message ?? error)}`,
+        "SYSTEM",
+        "ERROR",
+        true,
+      );
+    }
+  }
+
+  async function minimizeScript() {
+    if (!supportsMinimization || busy) return;
+    try {
+      (globalThis as any).HapticFeedback?.mediumImpact?.();
+    } catch {}
+    try {
+      await Script.minimize();
+    } catch {}
+  }
+
+  async function cleanupAndExit() {
+    try {
+      await clearWanxiangTempFiles();
+    } catch {}
+    Script.exit();
+  }
+
+  function closeScript() {
+    try {
+      (globalThis as any).HapticFeedback?.mediumImpact?.();
+    } catch {}
+    if (!busy) {
+      void cleanupAndExit();
+      return;
+    }
+    setAlert({
+      title: "退出当前更新？",
+      isPresented: true,
+      message: (
+        <Text>
+          当前有更新任务正在进行，退出后将关闭当前脚本界面。是否继续退出？
+        </Text>
+      ),
+      actions: (
+        <HStack>
+          <Button
+            title="取消"
+            action={() => {
+              try {
+                (globalThis as any).HapticFeedback?.mediumImpact?.();
+              } catch {}
+              closeAlert();
+            }}
+          />
+          <Button
+            title="退出"
+            action={() => {
+              try {
+                (globalThis as any).HapticFeedback?.mediumImpact?.();
+              } catch {}
+              closeAlert();
+              void cleanupAndExit();
+            }}
+          />
+        </HStack>
+      ),
+    });
+  }
+
+  function renderLeadingToolbar() {
+    return (
+      <HStack spacing={8}>
+        <Button
+          title=""
+          systemImage="xmark.circle"
+          foregroundStyle="systemRed"
+          action={closeScript}
+        />
+        {supportsMinimization ? (
+          <Button
+            title=""
+            systemImage="minus.circle"
+            foregroundStyle={busy ? "secondaryLabel" : "systemBlue"}
+            disabled={busy}
+            action={() => {
+              void minimizeScript();
+            }}
+          />
+        ) : null}
+      </HStack>
+    );
+  }
+
+  function renderEditorTrailingToolbar() {
+    return (
+      <Button
+        title=""
+        systemImage="folder.badge.gearshape"
+        action={() => {
+          void reselectEditorFolder();
+        }}
+      />
+    );
+  }
+
+  function renderSettingsTrailingToolbar() {
+    return (
+      <Button
+        title=""
+        systemImage="checkmark"
+        action={() => {
+          try {
+            (globalThis as any).HapticFeedback?.mediumImpact?.();
+          } catch {}
+          settingsSaveRef.current?.();
+        }}
+      />
+    );
+  }
+
+  function renderMainTrailingToolbar() {
+    const usageButton = (
+      <Button
+        key="usage-guide"
+        title=""
+        systemImage="questionmark.circle"
+        action={() => {
+          try {
+            (globalThis as any).HapticFeedback?.mediumImpact?.();
+          } catch {}
+          void openUsageGuide();
+        }}
+      />
+    );
+    if (hasSchemeUpdateNotes) {
+      return [
+        <Button
+          key="update-notes"
+          title=""
+          systemImage="doc.text"
+          action={() => {
+            try {
+              (globalThis as any).HapticFeedback?.mediumImpact?.();
+            } catch {}
+            setShowUpdateNotes(true);
+          }}
+        />,
+        usageButton,
+      ];
+    }
+    return (
+      usageButton
+    );
+  }
+
+  async function openFullscreenLogs() {
+    await Navigation.present({
+      element: <FullscreenLogView logs={logs} />,
+    });
+  }
+
+  async function openUsageGuide() {
+    await Navigation.present({
+      element: <UsageGuideView />,
+    });
+  }
+
+  function applyProgress(p: any) {
+    const toNum = (v: any): number | undefined => {
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+      if (typeof v === "string") {
+        const n = Number(v);
+        if (Number.isFinite(n)) return n;
+      }
+      return undefined;
+    };
+    const received =
+      toNum(
+        p?.received ?? p?.completedUnitCount ?? p?.progress?.completedUnitCount,
+      ) ?? 0;
+    const f = readFraction(
+      p?.percent ?? p?.fractionCompleted ?? p?.progress?.fractionCompleted,
+    );
+    if (received > 0 || (typeof f === "number" && f > 0)) {
+      setShowProgress(true);
+    }
+    if (typeof f === "number") {
+      const v = clamp01(f);
+      setProgressValue(v);
+      setProgressPct(pctFromFraction(v));
+    }
+  }
+
+  // ===== 操作 =====
+
+  async function onCheckUpdate() {
+    if (!(await guardPathAccess(true))) return;
+    setBusy(true);
+    setShowProgress(false); // ✅ 检查更新不显示进度
+    setStageAndMaybeLog("检查更新中…", "CHECK", "INFO", true);
+    setProgressPct("0.00%");
+    setProgressValue(undefined);
+    setRemoteSchemeVer("检查更新中...");
+    setRemoteDictMark("检查更新中...");
+    setRemoteModelMark("检查更新中...");
+    setNotes("检查更新中...");
+    try {
+      const current = loadConfig();
+      const { meta: localMeta } = await findLocalMeta(current);
+      await refreshLocal(current);
+      const effective = loadConfig();
+
+      const r = await checkAllUpdates(effective, (kind, message) => {
+        const label = kind === "scheme" ? "方案" : kind === "dict" ? "词库" : "模型";
+        pushLog("ERROR", "CHECK", `${label}请求失败：${message}`, effective);
+      });
+      const decision = buildUpdateDecision(localMeta, r, effective);
+      if (decision.scheme) setHasSchemeUpdateNotes(true);
+      setRemoteSchemeVer(remoteSchemePublishedAt(r.scheme));
+      setRemoteDictMark(remoteUpdatedAt(r.dict));
+      setRemoteModelMark(effective.downloadModel ? remoteUpdatedAt(r.model) : "");
+      setLocalModelMark(effective.downloadModel ? (modelDisplayMark(localMeta?.model, r.model) || "暂无法获取") : "");
+      setNotes(r.scheme?.body ?? "");
+      setLastCheck(r);
+      setLastCheckDecision(decision);
+      setLastCheckKey(checkKey(effective));
+      saveSharedCheckCache(effective, r, decision);
+
+      pushCheckResultLog(
+        "方案",
+        schemeRemoteDisplayMark(effective, r.scheme) || "暂无法获取",
+        decision.scheme,
+      );
+      pushCheckResultLog(
+        "词库",
+        r.dict?.remoteIdOrSha ?? "暂无法获取",
+        decision.dict,
+      );
+      if (effective.downloadModel) {
+        pushCheckResultLog(
+          "模型",
+          modelDisplayMark(r.model, localMeta?.model) || "暂无法获取",
+          decision.model,
+        );
+      }
+      setStageAndMaybeLog("检查完成", "CHECK", "SUCCESS", true);
+    } catch (e: any) {
+      setStageAndMaybeLog(
+        `检查失败：${String(e?.message ?? e)}`,
+        "CHECK",
+        "ERROR",
+        true,
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onAutoUpdate() {
+    if (!(await guardPathAccess(true))) return;
+    setBusy(true);
+    setShowProgress(false); // ✅ 真正有下载进度后再显示
+    setStageAndMaybeLog("自动更新中…", "AUTO", "INFO", true);
+    setProgressPct("0.00%");
+    setProgressValue(undefined);
+    try {
+      const current = loadConfig();
+      const { meta: localMeta } = await findLocalMeta(current);
+      await refreshLocal(current);
+      const effective = loadConfig();
+
+      const key = checkKey(effective);
+      let pre = lastCheck;
+      let decision = lastCheckDecision;
+      let resolvedKey = lastCheckKey;
+      let precheckFailed = false;
+      const shared = loadSharedCheckCache();
+      if ((!pre || lastCheckKey !== key) && shared && shared.key === key) {
+        pre = shared.remote;
+        decision = buildUpdateDecision(localMeta, shared.remote, effective);
+        resolvedKey = key;
+        setRemoteSchemeVer(remoteSchemePublishedAt(shared.remote.scheme));
+        setRemoteDictMark(remoteUpdatedAt(shared.remote.dict));
+        setRemoteModelMark(effective.downloadModel ? remoteUpdatedAt(shared.remote.model) : "");
+        setLocalModelMark(effective.downloadModel ? (modelDisplayMark(localMeta?.model, shared.remote.model) || "暂无法获取") : "");
+        setNotes(shared.remote.scheme?.body ?? "");
+        setLastCheck(shared.remote);
+        setLastCheckDecision(decision);
+        setLastCheckKey(key);
+        saveSharedCheckCache(effective, shared.remote, decision);
+      }
+      if (!pre || resolvedKey !== key) {
+        // 检查阶段也不显示进度（避免误导）
+        setShowProgress(false);
+        setStageAndMaybeLog("自动更新：检查更新中…", "AUTO", "INFO", true);
+        setRemoteSchemeVer("检查更新中...");
+        setRemoteDictMark("检查更新中...");
+        setRemoteModelMark("检查更新中...");
+        setNotes("检查更新中...");
+        pre = await checkAllUpdates(effective, (kind, message) => {
+          const label = kind === "scheme" ? "方案" : kind === "dict" ? "词库" : "模型";
+          precheckFailed = true;
+          pushLog("ERROR", "AUTO", `${label}请求失败：${message}`, effective);
+        });
+        setRemoteSchemeVer(remoteSchemePublishedAt(pre.scheme));
+        setRemoteDictMark(remoteUpdatedAt(pre.dict));
+        setRemoteModelMark(effective.downloadModel ? remoteUpdatedAt(pre.model) : "");
+        setLocalModelMark(effective.downloadModel ? (modelDisplayMark(localMeta?.model, pre.model) || "暂无法获取") : "");
+        setNotes(pre.scheme?.body ?? "");
+        setLastCheck(pre);
+        decision = buildUpdateDecision(localMeta, pre, effective);
+        setLastCheckDecision(decision);
+        setLastCheckKey(key);
+      }
+      if (pre && !decision) {
+        decision = buildUpdateDecision(localMeta, pre, effective);
+        setLastCheckDecision(decision);
+      }
+
+      if (decision?.scheme) setHasSchemeUpdateNotes(true);
+
+      if (decision?.scheme) pushLog("SUCCESS", "AUTO", "方案有可用更新");
+      if (decision?.dict) pushLog("SUCCESS", "AUTO", "词库有可用更新");
+      if (effective.downloadModel && decision?.model) pushLog("SUCCESS", "AUTO", "模型有可用更新");
+      if (decision && !decision.scheme && !decision.dict && !decision.model) {
+        setStageAndMaybeLog(
+          precheckFailed ? "自动更新完成（部分请求失败，请查看日志）" : "自动更新完成（已是最新，无需更新）",
+          "AUTO",
+          precheckFailed ? "WARN" : "SUCCESS",
+          true,
+        );
+        return;
+      }
+
+      const autoResult = await autoUpdateAll(
+        effective,
+        {
+          onStage: wrapStageReporter("AUTO"),
+          onLog: wrapDetailLogger("AUTO"),
+          onProgress: (p) => applyProgress(p),
+          onAfterModule: async () => {
+            await refreshLocal(effective);
+            await refreshLastCheckDecision(effective, pre);
+          },
+          hasPrecheckFailure: precheckFailed,
+        },
+        pre,
+        decision ?? undefined,
+      );
+
+      await refreshLocal(effective);
+      await refreshLastCheckDecision(effective, autoResult.remote);
+      const hasFailed = precheckFailed || autoResult.failed.scheme || autoResult.failed.dict || autoResult.failed.model;
+      if (!autoResult.didUpdate) {
+        setStageAndMaybeLog(
+          hasFailed ? "自动更新完成（全部更新失败，请查看日志）" : "自动更新完成（已是最新，无需更新）",
+          "AUTO",
+          hasFailed ? "ERROR" : "SUCCESS",
+          true,
+        );
+      } else if (autoResult.didDeploy) {
+        setStageAndMaybeLog(
+          hasFailed ? "自动更新完成（部分失败，已部署）" : "自动更新完成（已部署）",
+          "AUTO",
+          hasFailed ? "WARN" : "SUCCESS",
+          true,
+        );
+      } else {
+        const currentNow = loadConfig();
+        if (currentNow.inputMethod !== "scripting") {
+          setStageAndMaybeLog(
+            hasFailed ? "自动更新完成（部分失败，已跳过部署）" : "自动更新完成（未自动部署）",
+            "AUTO",
+            hasFailed ? "WARN" : "SUCCESS",
+            true,
+          );
+        }
+      }
+    } catch (e: any) {
+      setStageAndMaybeLog(
+        `自动更新失败：${String(e?.message ?? e)}`,
+        "AUTO",
+        "ERROR",
+        true,
+      );
+    } finally {
+      setBusy(false);
+      setShowProgress(false);
+      setProgressValue(undefined);
+    }
+  }
+
+  async function onUpdateScheme() {
+    if (!(await guardPathAccess(true))) return;
+    setBusy(true);
+    setShowProgress(false); // ✅ 真正有下载进度后再显示
+    setStageAndMaybeLog("更新方案中…", "SCHEME", "INFO", true);
+    setProgressPct("0.00%");
+    setProgressValue(undefined);
+    try {
+      const current = loadConfig();
+      await updateScheme(current, {
+        autoDeploy: false,
+        onStage: wrapStageReporter("SCHEME"),
+        onLog: wrapDetailLogger("SCHEME"),
+        onProgress: (p) => applyProgress(p),
+      });
+      await refreshLocal(current);
+      await refreshLastCheckDecision(current);
+      setStageAndMaybeLog("更新方案完成", "SCHEME", "SUCCESS", true);
+    } catch (e: any) {
+      setStageAndMaybeLog(
+        `更新方案失败：${String(e?.message ?? e)}`,
+        "SCHEME",
+        "ERROR",
+        true,
+      );
+    } finally {
+      setBusy(false);
+      setShowProgress(false);
+      setProgressValue(undefined);
+    }
+  }
+
+  async function onUpdateDict() {
+    if (!(await guardPathAccess(true))) return;
+    setBusy(true);
+    setShowProgress(false); // ✅ 真正有下载进度后再显示
+    setStageAndMaybeLog("更新词库中…", "DICT", "INFO", true);
+    setProgressPct("0.00%");
+    setProgressValue(undefined);
+    try {
+      const current = loadConfig();
+      await updateDict(current, {
+        autoDeploy: false,
+        onStage: wrapStageReporter("DICT"),
+        onLog: wrapDetailLogger("DICT"),
+        onProgress: (p) => applyProgress(p),
+      });
+      await refreshLocal(current);
+      await refreshLastCheckDecision(current);
+      setStageAndMaybeLog("更新词库完成", "DICT", "SUCCESS", true);
+    } catch (e: any) {
+      setStageAndMaybeLog(
+        `更新词库失败：${String(e?.message ?? e)}`,
+        "DICT",
+        "ERROR",
+        true,
+      );
+    } finally {
+      setBusy(false);
+      setShowProgress(false);
+      setProgressValue(undefined);
+    }
+  }
+
+  async function onUpdateModel() {
+    if (!(await guardPathAccess(true))) return;
+    const current = loadConfig();
+    if (!current.downloadModel) {
+      setStageAndMaybeLog("设置中未开启下载模型", "MODEL", "WARN", true);
+      return;
+    }
+    setBusy(true);
+    setShowProgress(false); // ✅ 真正有下载进度后再显示
+    setStageAndMaybeLog("更新模型中…", "MODEL", "INFO", true);
+    setProgressPct("0.00%");
+    setProgressValue(undefined);
+    try {
+      await updateModel(current, {
+        autoDeploy: false,
+        onStage: (message) =>
+          setStageAndMaybeLog(message, "MODEL", "INFO", true),
+        onLog: (message) => pushLog("INFO", "MODEL", message),
+        onProgress: (p) => applyProgress(p),
+      });
+      await refreshLocal(current);
+      await refreshLastCheckDecision(current);
+      setStageAndMaybeLog("更新模型完成", "MODEL", "SUCCESS", true);
+    } catch (e: any) {
+      setStageAndMaybeLog(
+        `更新模型失败：${String(e?.message ?? e)}`,
+        "MODEL",
+        "ERROR",
+        true,
+      );
+    } finally {
+      setBusy(false);
+      setShowProgress(false);
+      setProgressValue(undefined);
+    }
+  }
+
+  async function onDeploy() {
+    if (!(await guardPathAccess(true))) return;
+    setBusy(true);
+    setShowProgress(false); // ✅ 部署不显示下载进度
+    setStageAndMaybeLog("部署中…", "DEPLOY", "INFO", true);
+    setProgressPct("0.00%");
+    setProgressValue(undefined);
+    try {
+      const current = loadConfig();
+      await deployInputMethod(
+        current,
+        wrapStageReporter("DEPLOY"),
+        wrapDetailLogger("DEPLOY"),
+      );
+    } catch (e: any) {
+      const msg = String(e?.message ?? e);
+      if (msg === "当前不支持自动部署，请到工具(Tools)-Rime输入法(Rime Input Method)手动部署") {
+        setStageAndMaybeLog(msg, "DEPLOY", "INFO", true);
+        return;
+      }
+      setStageAndMaybeLog(
+        `部署失败：${msg}`,
+        "DEPLOY",
+        "ERROR",
+        true,
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function renderLogEntry(entry: LogEntry) {
+    return <LogEntryRow key={entry.id} entry={entry} />;
+  }
+
+  function renderEditorTab() {
+    return (
+      <NavigationStack>
+        <FileBrowserDirectoryView
+          currentPath={editorRootPath}
+          onOpenFile={(filePath) => {
+            void openEditorFile(filePath);
+          }}
+          onError={(message) => {
+            setStageAndMaybeLog(message, "SYSTEM", "ERROR", true);
+          }}
+          rootToolbar={{
+            topBarLeading: renderLeadingToolbar(),
+            topBarTrailing: renderEditorTrailingToolbar(),
+          }}
+        />
+      </NavigationStack>
+    );
+  }
+
+  function renderActionSection() {
+    const currentCheckReady = lastCheckKey === checkKey(cfg) && !!lastCheckDecision;
+    const modelEnabled = cfg.downloadModel;
+    const hasModelUpdate = modelEnabled && !!lastCheckDecision?.model;
+    const autoUpdateReady =
+      currentCheckReady &&
+      !!(lastCheckDecision?.scheme || lastCheckDecision?.dict || hasModelUpdate);
+    const schemeColor: ShapeStyle = currentCheckReady && lastCheckDecision?.scheme ? "systemGreen" : "systemBlue";
+    const dictColor: ShapeStyle = currentCheckReady && lastCheckDecision?.dict ? "systemGreen" : "systemBlue";
+    const modelColor: ShapeStyle = currentCheckReady && hasModelUpdate ? "systemGreen" : "systemBlue";
+    const autoUpdateColor: ShapeStyle = autoUpdateReady ? "systemGreen" : "systemBlue";
+    const disabled = busy || !pathUsable;
+    const useGlass = Number.parseInt(Device.systemVersion, 10) >= 26;
+
+    return (
+      <Section key="actions" header={<Text>操作</Text>}>
+        <HStack
+          frame={{ maxWidth: "infinity", height: 68 }}
+          listRowInsets={{ top: 4, bottom: 4, leading: 4, trailing: 4 }}
+        >
+          <GeometryReader frame={{ maxWidth: "infinity", height: 68 }}>
+            {(proxy) => {
+              const size = Math.min(56, (proxy.size.width - 15) / 6);
+              return (
+                <HStack spacing={3} frame={{ width: proxy.size.width, height: 68, alignment: "center" as any }}>
+                  <ActionButton icon="doc.text" title="方案" color={schemeColor} disabled={disabled} size={size} useGlass={useGlass} onPress={onUpdateScheme} />
+                  <ActionButton icon="books.vertical" title="词库" color={dictColor} disabled={disabled} size={size} useGlass={useGlass} onPress={onUpdateDict} />
+                  <ActionButton icon="shippingbox" title="模型" color={modelColor} disabled={disabled || !modelEnabled} size={size} useGlass={useGlass} onPress={onUpdateModel} />
+                  <ActionButton icon="paperplane" title="部署" disabled={disabled} size={size} useGlass={useGlass} onPress={onDeploy} />
+                  <ActionButton icon="arrow.triangle.2.circlepath" title="检查" disabled={disabled} size={size} useGlass={useGlass} onPress={onCheckUpdate} />
+                  <ActionButton icon="bolt.fill" title="自动" color={autoUpdateColor} disabled={disabled} size={size} useGlass={useGlass} onPress={onAutoUpdate} />
+                </HStack>
+              );
+            }}
+          </GeometryReader>
+        </HStack>
+      </Section>
+    );
+  }
+
+  function renderSection(key: HomeSectionKey) {
+    if (key === "actions") return renderActionSection();
+    const remoteSchemeDetail = remoteSchemeDetailMark(cfg, lastCheck?.scheme);
+    const remoteDictDetail = remoteDetailMark(lastCheck?.dict);
+    const remoteModelDetail = remoteDetailMark(lastCheck?.model);
+    if (key === "local") {
+      const currentCheckReady = lastCheckKey === checkKey(cfg) && !!lastCheckDecision;
+      const schemeValueColor = currentCheckReady && lastCheckDecision?.scheme ? "systemGreen" : undefined;
+      const dictValueColor = currentCheckReady && lastCheckDecision?.dict ? "systemGreen" : undefined;
+      const modelValueColor = currentCheckReady && cfg.downloadModel && lastCheckDecision?.model ? "systemGreen" : undefined;
+      return (
+        <Section key={key} header={<Text>本地信息</Text>}>
+          <RowKV k="当前选择的方案" v={localSelectedScheme} />
+          <RowKV
+            k="本地方案"
+            v={localSchemeVersion}
+            valueColor={schemeValueColor}
+            compactMarker
+            onTap={() => showInformationPair("方案信息", "本地方案", localSchemeDetail, "远程方案", remoteSchemeDetail)}
+          />
+          <RowKV
+            k="本地词库"
+            v={localDictMark}
+            valueColor={dictValueColor}
+            compactMarker
+            onTap={() => showInformationPair("词库信息", "本地词库", localDictDetail, "远程词库", remoteDictDetail)}
+          />
+          {cfg.downloadModel ? (
+            <RowKV
+              k="本地模型"
+              v={localModelMark}
+              valueColor={modelValueColor}
+              compactMarker
+              onTap={() => showInformationPair("模型信息", "本地模型", localModelDetail, "远程模型", remoteModelDetail)}
+            />
+          ) : null}
+        </Section>
+      );
+    }
+    if (key === "remote") {
+      return (
+        <Section key={key} header={<Text>远程信息</Text>}>
+          <RowKV
+            k="远程方案"
+            v={remoteSchemeVer}
+            onTap={() => showInformationPair("方案信息", "本地方案", localSchemeDetail, "远程方案", remoteSchemeDetail)}
+          />
+          <RowKV
+            k="远程词库"
+            v={remoteDictMark}
+            onTap={() => showInformationPair("词库信息", "本地词库", localDictDetail, "远程词库", remoteDictDetail)}
+          />
+          {cfg.downloadModel ? (
+            <RowKV
+              k="远程模型"
+              v={remoteModelMark}
+              onTap={() => showInformationPair("模型信息", "本地模型", localModelDetail, "远程模型", remoteModelDetail)}
+            />
+          ) : null}
+        </Section>
+      );
+    }
+    if (key !== "status") return null;
+    return (
+      <Section
+        key={key}
+        header={
+          <HStack frame={{ maxWidth: "infinity", alignment: "center" as any }}>
+            <Text>状态</Text>
+            <Spacer />
+            {cfg.showVerboseLog ? (
+              <Button
+                buttonStyle="plain"
+                disabled={busy}
+                action={() => {
+                  try {
+                    (globalThis as any).HapticFeedback?.mediumImpact?.();
+                  } catch {}
+                  void openFullscreenLogs();
+                }}
+              >
+                <Image
+                  systemName={FULLSCREEN_SYMBOL}
+                  foregroundStyle={busy ? "secondaryLabel" : "systemBlue"}
+                />
+              </Button>
+            ) : null}
+          </HStack>
+        }
+      >
+        {cfg.showVerboseLog ? (
+          <VStack
+            frame={{ maxWidth: "infinity", alignment: "topLeading" as any }}
+            spacing={0}
+          >
+            <ScrollViewReader>
+              {(proxy: any) => {
+                logProxyRef.current = proxy;
+                return (
+                  <VStack
+                    frame={{
+                      maxWidth: "infinity",
+                      alignment: "topLeading" as any,
+                    }}
+                    spacing={0}
+                  >
+                    <ScrollView
+                      frame={{ height: busy && showProgress ? 240 : 280, maxWidth: "infinity" as any }}
+                      padding={{ top: 0, bottom: 0, leading: 0, trailing: 0 }}
+                    >
+                      <VStack
+                        spacing={1}
+                        frame={{
+                          maxWidth: "infinity",
+                          alignment: "topLeading" as any,
+                        }}
+                      >
+                        {logs.length ? (
+                          logs.map(renderLogEntry)
+                        ) : (
+                          <Text
+                            font="footnote"
+                            foregroundStyle="secondaryLabel"
+                            frame={{
+                              maxWidth: "infinity",
+                              alignment: "leading" as any,
+                            }}
+                            multilineTextAlignment="leading"
+                          >
+                            暂无详细日志
+                          </Text>
+                        )}
+                        <Rectangle
+                          key="bottomView"
+                          foregroundStyle="clear"
+                          frame={{
+                            maxWidth: "infinity",
+                            alignment: "leading" as any,
+                            height: 0,
+                          }}
+                        />
+                      </VStack>
+                    </ScrollView>
+                  </VStack>
+                );
+              }}
+            </ScrollViewReader>
+
+            {busy && showProgress ? (
+              <VStack spacing={6} frame={{ maxWidth: "infinity", height: 40 }}>
+                <Divider />
+                <HStack alignment="center" spacing={8}>
+                  <Text frame={{ alignment: "leading" as any }}>
+                    {progressStageLabel(stage)}
+                  </Text>
+                  {typeof progressValue === "number" ? (
+                    <ProgressView
+                      value={progressValue}
+                      total={1}
+                      progressViewStyle="linear"
+                      frame={{ maxWidth: "infinity" }}
+                    />
+                  ) : (
+                    <ProgressView
+                      progressViewStyle="linear"
+                      frame={{ maxWidth: "infinity" }}
+                    />
+                  )}
+                  <Text>{progressPct}</Text>
+                </HStack>
+              </VStack>
+            ) : null}
+          </VStack>
+        ) : (
+          <VStack spacing={8} frame={{ maxWidth: "infinity", minHeight: 128 }}>
+            <Text>{stage}</Text>
+
+            {busy && showProgress ? (
+              <HStack alignment="center" spacing={8}>
+                {typeof progressValue === "number" ? (
+                  <ProgressView
+                    value={progressValue}
+                    total={1}
+                    progressViewStyle="linear"
+                    frame={{ maxWidth: "infinity" }}
+                  />
+                ) : (
+                  <ProgressView
+                    progressViewStyle="linear"
+                    frame={{ maxWidth: "infinity" }}
+                  />
+                )}
+                <Text>{progressPct}</Text>
+              </HStack>
+            ) : null}
+          </VStack>
+        )}
+      </Section>
+    );
+  }
+
+  const updateNotesSheet = {
+    isPresented: showUpdateNotes,
+    onChanged: setShowUpdateNotes,
+    content: <MarkdownReleaseNotesSheet content={notes} title="更新说明" />,
+  };
+
+  return (
+    <VStack
+      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+      alert={{
+        title: alert.title,
+        isPresented: alert.isPresented,
+        onChanged: (v) => setAlert((a) => ({ ...a, isPresented: v })),
+        message: alert.message,
+        actions: alert.actions,
+      }}
+      sheet={[releaseNotesSheet, updateNotesSheet]}
+    >
+      <AdaptiveHomeTabView
+        selection={activeTab as any}
+        editor={renderEditorTab()}
+        main={
+          <NavigationStack>
+            <List
+              navigationTitle={"万象工具"}
+              navigationBarTitleDisplayMode={"inline"}
+              listStyle={"insetGroup"}
+              toolbar={{
+                topBarLeading: renderLeadingToolbar(),
+                topBarTrailing: renderMainTrailingToolbar(),
+              }}
+            >
+              {cfg.homeSectionOrder.map(renderSection)}
+            </List>
+          </NavigationStack>
+        }
+        settings={
+          <NavigationStack>
+            <SettingsView
+              initial={cfg}
+              leadingToolbar={renderLeadingToolbar()}
+              trailingToolbar={renderSettingsTrailingToolbar()}
+              registerSaveAction={(fn) => {
+                settingsSaveRef.current = fn;
+              }}
+              onDone={(newCfg) => {
+                void handleSettingsSaved(newCfg);
+              }}
+            />
+          </NavigationStack>
+        }
+      />
+    </VStack>
+  );
+}

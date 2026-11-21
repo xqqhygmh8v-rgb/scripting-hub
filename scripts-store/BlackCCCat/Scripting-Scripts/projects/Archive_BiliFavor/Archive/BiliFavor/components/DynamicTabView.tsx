@@ -1,0 +1,828 @@
+import {
+  Button,
+  EmptyView,
+  Group,
+  HStack,
+  Image,
+  LazyVGrid,
+  List,
+  NavigationStack,
+  ProgressView,
+  ScrollView,
+  ScrollViewReader,
+  type ScrollViewProxy,
+  Section,
+  Spacer,
+  Text,
+  useRef,
+  useState,
+  VStack,
+  ZStack,
+} from "scripting"
+
+import { FollowingsFilterView } from "./FollowingsFilterView"
+import { InlineVideoPlayerPage, stopActiveInlinePlayback } from "./InlineVideoPlayerPage"
+import { CompactVideoCoverImage, VideoCardBackground, VideoCoverImage, useVideoCoverArtwork } from "./VideoCoverArtwork"
+import type {
+  BiliAuthSession,
+  BiliAuthorFilterRule,
+  BiliCardLayoutMode,
+  BiliFollowedAuthor,
+  BiliLoginMode,
+  BiliPlaybackMode,
+  VideoDynamicItem,
+} from "../types"
+
+function statsText(playText: string, danmakuText: string): string {
+  return `播放 ${playText}  ·  弹幕 ${danmakuText}`
+}
+
+function compactMetaText(item: VideoDynamicItem): string {
+  return `播放 ${item.playText} · ${item.publishedLabel || "刚刚"}`
+}
+
+function subtitleText(item: VideoDynamicItem): string {
+  if (item.authorAction && item.publishedLabel) {
+    return `${item.authorAction} · ${item.publishedLabel}`
+  }
+  if (item.authorAction) return item.authorAction
+  return item.publishedLabel || "视频投稿"
+}
+
+const DOUBLE_CARD_COLUMNS = [
+  { size: { type: "flexible" as const, min: 0 }, spacing: 12 },
+  { size: { type: "flexible" as const, min: 0 } },
+]
+
+function resolveVideoUrl(item: VideoDynamicItem): string {
+  const jumpUrl = String(item.jumpUrl ?? "").trim()
+  if (jumpUrl) return jumpUrl
+
+  const bvid = String(item.bvid ?? "").trim()
+  if (bvid) return `https://www.bilibili.com/video/${bvid}`
+
+  const aid = String(item.aid ?? "").trim()
+  if (aid) return `https://www.bilibili.com/video/av${aid}`
+
+  return ""
+}
+
+function resolveAuthorSpaceUrl(item: VideoDynamicItem): string {
+  const mid = String(item.authorMid ?? "").trim()
+  return mid ? `https://space.bilibili.com/${mid}/` : ""
+}
+
+async function openExternalUrl(url: string): Promise<void> {
+  const target = String(url ?? "").trim()
+  if (!target) return
+
+  const runtimeSafari = (globalThis as any).Safari
+
+  if (runtimeSafari?.openURL) {
+    const ok = await runtimeSafari.openURL(target)
+    if (ok) return
+  }
+
+  if (runtimeSafari?.open) {
+    const ok = await runtimeSafari.open(target)
+    if (ok !== false) return
+  }
+
+  const openURL = (globalThis as any).openURL
+  if (typeof openURL === "function") {
+    const ok = await openURL(target)
+    if (ok !== false) return
+  }
+
+  if (runtimeSafari?.present) {
+    await runtimeSafari.present(target, true)
+  }
+}
+
+async function copyToPasteboard(value: string): Promise<void> {
+  const target = String(value ?? "").trim()
+  if (!target) return
+  const runtimePasteboard = (globalThis as any).Pasteboard
+  if (runtimePasteboard?.setString) {
+    await runtimePasteboard.setString(target)
+  }
+}
+
+async function presentShareSheet(value: string): Promise<void> {
+  const target = String(value ?? "").trim()
+  if (!target) return
+  const runtimeShareSheet = (globalThis as any).ShareSheet
+  if (runtimeShareSheet?.present) {
+    await runtimeShareSheet.present([target])
+    return
+  }
+  await copyToPasteboard(target)
+}
+
+function VideoDynamicCard(props: {
+  item: VideoDynamicItem
+  externalUrl: string
+  onOpenAuthorUrl?: () => void
+  onOpenExternalUrl?: () => void
+  onPress?: () => void
+  alternatePlaybackTitle: string
+  alternatePlaybackSystemImage: string
+  onAlternatePlayback: () => void
+  compact?: boolean
+  embedded?: boolean
+  onAppear?: () => void
+}) {
+  const { item } = props
+  const artwork = useVideoCoverArtwork(item.cover)
+  const compact = Boolean(props.compact)
+  const cardCornerRadius = compact ? 16 : 18
+  const cardShape = { type: "rect" as const, cornerRadius: cardCornerRadius, style: "continuous" as const }
+  const avatarSize = compact ? 22 : 38
+  const avatarRadius = compact ? 8 : 10
+  const subtitle = subtitleText(item)
+  const footerStats = compact
+    ? compactMetaText(item)
+    : statsText(item.playText, item.danmakuText)
+
+  async function copyLink() {
+    if (!props.externalUrl) return
+    await copyToPasteboard(props.externalUrl)
+  }
+
+  async function shareLink() {
+    if (!props.externalUrl) return
+    await presentShareSheet(props.externalUrl)
+  }
+
+  const avatarContent = (
+    <Image
+      imageUrl={item.authorFace}
+      resizable={true}
+      scaleToFill={true}
+      frame={{ width: avatarSize, height: avatarSize }}
+      clipShape={{ type: "rect", cornerRadius: avatarRadius }}
+      placeholder={<ProgressView progressViewStyle="circular" />}
+    />
+  )
+
+  const headerContent = (
+    <HStack spacing={10} frame={{ maxWidth: "infinity", alignment: "leading" as any }}>
+      {avatarContent}
+      <VStack spacing={2} frame={{ maxWidth: "infinity", alignment: "topLeading" as any }}>
+        <Text
+          font="subheadline"
+          foregroundStyle="#FB7299"
+          lineLimit={1}
+          frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+        >
+          {item.authorName}
+        </Text>
+        <Text
+          font="caption"
+          foregroundStyle="secondaryLabel"
+          lineLimit={1}
+          frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+        >
+          {subtitle}
+        </Text>
+      </VStack>
+    </HStack>
+  )
+
+  const compactAuthorRow = (
+    <HStack spacing={6} frame={{ maxWidth: "infinity", alignment: "leading" as any }}>
+      {avatarContent}
+      <Text
+        font="caption2"
+        foregroundStyle="#FB7299"
+        lineLimit={1}
+        frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+      >
+        {item.authorName}
+      </Text>
+      <Text
+        font="caption2"
+        foregroundStyle={item.badgeColor as any}
+        lineLimit={1}
+        padding={{ top: 3, bottom: 3, leading: 6, trailing: 6 }}
+        background={{
+          style: item.badgeBackgroundColor as any,
+          shape: { type: "capsule", style: "continuous" },
+        }}
+      >
+        {item.badgeText}
+      </Text>
+    </HStack>
+  )
+
+  const bodyContent = compact ? null : (
+    <HStack spacing={0} frame={{ maxWidth: "infinity", alignment: "top" as any }}>
+      <VStack spacing={14} frame={{ maxWidth: "infinity", alignment: "topLeading" as any }}>
+      <ZStack
+        frame={{ maxWidth: "infinity" }}
+        aspectRatio={{ value: 16 / 9, contentMode: "fit" }}
+      >
+        <VideoCoverImage
+          artwork={artwork}
+          coverUrl={item.cover}
+          cornerRadius={14}
+        />
+        <VStack frame={{ maxWidth: "infinity", maxHeight: "infinity", alignment: "bottomTrailing" as any }} padding={8}>
+          <Text
+            font="caption2"
+            foregroundStyle="white"
+            padding={{ top: 4, bottom: 4, leading: 8, trailing: 8 }}
+            background={{
+              style: "rgba(0,0,0,0.72)",
+              shape: { type: "capsule", style: "continuous" },
+            }}
+          >
+            {item.durationText || "--:--"}
+          </Text>
+        </VStack>
+      </ZStack>
+
+      <VStack spacing={6} frame={{ maxWidth: "infinity", alignment: "topLeading" as any }}>
+        <Text
+          font="headline"
+          lineLimit={2}
+          frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+        >
+          {item.title}
+        </Text>
+
+        <HStack spacing={8} frame={{ maxWidth: "infinity", alignment: "leading" as any }}>
+          <Text
+            font="caption"
+            foregroundStyle={item.badgeColor as any}
+            lineLimit={1}
+            padding={{ top: 4, bottom: 4, leading: 8, trailing: 8 }}
+            background={{
+              style: item.badgeBackgroundColor as any,
+              shape: { type: "capsule", style: "continuous" },
+            }}
+          >
+            {item.badgeText}
+          </Text>
+          <Text font="caption" foregroundStyle="secondaryLabel" lineLimit={1}>
+            {footerStats}
+          </Text>
+          <Spacer />
+        </HStack>
+        </VStack>
+      </VStack>
+    </HStack>
+  )
+
+  const cardContextMenu = {
+    menuItems: <Group>
+      <Button
+        title={props.alternatePlaybackTitle}
+        systemImage={props.alternatePlaybackSystemImage}
+        action={props.onAlternatePlayback}
+      />
+      <Button title="复制链接" systemImage="link" action={() => void copyLink()} />
+      <Button title="分享链接" systemImage="square.and.arrow.up" action={() => void shareLink()} />
+    </Group>,
+  }
+
+  const cardBody = (
+    <ZStack
+      frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+      contentShape={cardShape}
+      clipShape={cardShape}
+      contextMenu={compact && props.embedded ? undefined : cardContextMenu}
+    >
+      <VideoCardBackground dominantColor={artwork.dominantColor} cornerRadius={cardCornerRadius} />
+
+      {compact ? (
+        <VStack spacing={0} frame={{ maxWidth: "infinity", alignment: "topLeading" as any }}>
+          {props.onPress ? (
+            <VStack
+              frame={{ maxWidth: "infinity" }}
+              onTapGesture={props.onPress}
+            >
+              <ZStack
+                frame={{ maxWidth: "infinity" }}
+                aspectRatio={{ value: 16 / 9, contentMode: "fit" }}
+              >
+                <CompactVideoCoverImage
+                  artwork={artwork}
+                  coverUrl={item.cover}
+                />
+                <VStack
+                  frame={{ maxWidth: "infinity", maxHeight: "infinity", alignment: "bottomTrailing" as any }}
+                  padding={6}
+                >
+                  <Text
+                    font="caption2"
+                    foregroundStyle="white"
+                    padding={{ top: 3, bottom: 3, leading: 6, trailing: 6 }}
+                    background={{
+                      style: "rgba(0,0,0,0.72)",
+                      shape: { type: "capsule", style: "continuous" },
+                    }}
+                  >
+                    {item.durationText || "--:--"}
+                  </Text>
+                </VStack>
+              </ZStack>
+            </VStack>
+          ) : props.onOpenExternalUrl ? (
+            <VStack
+              frame={{ maxWidth: "infinity" }}
+              onTapGesture={props.onOpenExternalUrl}
+            >
+              <ZStack
+                frame={{ maxWidth: "infinity" }}
+                aspectRatio={{ value: 16 / 9, contentMode: "fit" }}
+              >
+                <CompactVideoCoverImage
+                  artwork={artwork}
+                  coverUrl={item.cover}
+                />
+                <VStack
+                  frame={{ maxWidth: "infinity", maxHeight: "infinity", alignment: "bottomTrailing" as any }}
+                  padding={6}
+                >
+                  <Text
+                    font="caption2"
+                    foregroundStyle="white"
+                    padding={{ top: 3, bottom: 3, leading: 6, trailing: 6 }}
+                    background={{
+                      style: "rgba(0,0,0,0.72)",
+                      shape: { type: "capsule", style: "continuous" },
+                    }}
+                  >
+                    {item.durationText || "--:--"}
+                  </Text>
+                </VStack>
+              </ZStack>
+            </VStack>
+          ) : (
+            <ZStack
+              frame={{ maxWidth: "infinity" }}
+              aspectRatio={{ value: 16 / 9, contentMode: "fit" }}
+            >
+              <CompactVideoCoverImage
+                artwork={artwork}
+                coverUrl={item.cover}
+              />
+              <VStack
+                frame={{ maxWidth: "infinity", maxHeight: "infinity", alignment: "bottomTrailing" as any }}
+                padding={6}
+              >
+                <Text
+                  font="caption2"
+                  foregroundStyle="white"
+                  padding={{ top: 3, bottom: 3, leading: 6, trailing: 6 }}
+                  background={{
+                    style: "rgba(0,0,0,0.72)",
+                    shape: { type: "capsule", style: "continuous" },
+                  }}
+                >
+                  {item.durationText || "--:--"}
+                </Text>
+              </VStack>
+            </ZStack>
+          )}
+
+          <VStack
+            spacing={6}
+            padding={{ top: 8, bottom: 10, leading: 8, trailing: 8 }}
+            frame={{ maxWidth: "infinity", alignment: "topLeading" as any }}
+          >
+            <Text
+              font="footnote"
+              lineLimit={2}
+              frame={{ maxWidth: "infinity", minHeight: 34, alignment: "topLeading" as any }}
+            >
+              {item.title}
+            </Text>
+
+            {props.onOpenAuthorUrl ? (
+              <HStack
+                spacing={0}
+                frame={{ maxWidth: "infinity" }}
+                onTapGesture={props.onOpenAuthorUrl}
+              >
+                {compactAuthorRow}
+              </HStack>
+            ) : compactAuthorRow}
+
+            <Text
+              font="caption2"
+              foregroundStyle="secondaryLabel"
+              lineLimit={1}
+              frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+            >
+              {footerStats}
+            </Text>
+          </VStack>
+        </VStack>
+      ) : (
+        <VStack
+          spacing={14}
+          padding={{ top: 14, bottom: 14, leading: 14, trailing: 14 }}
+          frame={{ maxWidth: "infinity", maxHeight: "infinity", alignment: "topLeading" as any }}
+        >
+          <HStack spacing={10} frame={{ maxWidth: "infinity" as any }}>
+            {props.onOpenAuthorUrl ? (
+              <HStack
+                spacing={0}
+                frame={{ maxWidth: "infinity" }}
+                onTapGesture={props.onOpenAuthorUrl}
+              >
+                {headerContent}
+              </HStack>
+            ) : (
+              headerContent
+            )}
+            <Text font="caption" foregroundStyle="secondaryLabel" lineLimit={1}>
+              {item.publishedLabel || "刚刚"}
+            </Text>
+          </HStack>
+
+          {props.onPress ? (
+            <VStack
+              frame={{ maxWidth: "infinity" }}
+              onTapGesture={props.onPress}
+            >
+              {bodyContent}
+            </VStack>
+          ) : props.onOpenExternalUrl ? (
+            <VStack
+              frame={{ maxWidth: "infinity" }}
+              onTapGesture={props.onOpenExternalUrl}
+            >
+              {bodyContent}
+            </VStack>
+          ) : (
+            bodyContent
+          )}
+        </VStack>
+      )}
+    </ZStack>
+  )
+
+  if (props.embedded) {
+    return (
+      <VStack
+        frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+        contentShape={cardShape}
+        clipShape={cardShape}
+        contextMenu={compact ? cardContextMenu : undefined}
+        onAppear={props.onAppear}
+      >
+        {cardBody}
+      </VStack>
+    )
+  }
+
+  return (
+    <VStack
+      frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+      listRowInsets={{ top: 0, bottom: 0, leading: 8, trailing: 8 }}
+      listRowBackground={<EmptyView />}
+      listRowSeparator={{ visibility: "hidden", edges: "all" as any }}
+      listSectionSeparator={{ visibility: "hidden", edges: "all" as any }}
+      onAppear={props.onAppear}
+    >
+      {cardBody}
+    </VStack>
+  )
+}
+
+export function DynamicTabView(props: {
+  auth: BiliAuthSession | null
+  loginMode: BiliLoginMode
+  isLoggedIn: boolean
+  isAuthChecking: boolean
+  items: VideoDynamicItem[]
+  totalItemCount: number
+  isFilterActive: boolean
+  followedAuthors: BiliFollowedAuthor[]
+  followedAuthorsLoading: boolean
+  followedAuthorsErrorMessage: string
+  authorFilterRule: BiliAuthorFilterRule
+  playbackMode: BiliPlaybackMode
+  cardLayoutMode: BiliCardLayoutMode
+  isLoading: boolean
+  errorMessage: string
+  lastUpdatedAt: number | null
+  onExit: () => void
+  onRefresh: () => Promise<void>
+  onOpenSettings: () => void
+  hasMore: boolean
+  isLoadingMore: boolean
+  onLoadMore: () => Promise<void>
+  onOpenFilter: () => Promise<void>
+  onRetryFollowedAuthors: () => Promise<void>
+  onUpdateAuthorFilterRule: (rule: BiliAuthorFilterRule) => Promise<void>
+}) {
+  const [filterPresented, setFilterPresented] = useState(false)
+  const [playingItem, setPlayingItem] = useState<VideoDynamicItem | null>(null)
+  const scrollProxyRef = useRef<ScrollViewProxy>()
+  const summary = props.lastUpdatedAt
+    ? `上次刷新 ${new Date(props.lastUpdatedAt).toLocaleString("zh-CN")}`
+    : "下拉可以刷新关注动态"
+
+  function openFilterPage() {
+    setPlayingItem(null)
+    setFilterPresented(true)
+    void props.onOpenFilter()
+  }
+
+  function handleOpenItem(item: VideoDynamicItem) {
+    if (props.playbackMode === "inline" && props.auth?.loginMethod === "cookie" && props.auth?.cookieHeader) {
+      setFilterPresented(false)
+      setPlayingItem(item)
+      return
+    }
+
+    const target = resolveVideoUrl(item)
+    void openExternalUrl(target)
+  }
+
+  function handleAlternatePlayback(item: VideoDynamicItem) {
+    if (props.playbackMode === "external") {
+      setFilterPresented(false)
+      setPlayingItem(item)
+      return
+    }
+
+    void openExternalUrl(resolveVideoUrl(item))
+  }
+
+  async function handleManualRefresh() {
+    const topAnchorKey = props.items[0]?.id || "dynamic-state-top"
+    scrollProxyRef.current?.scrollTo(topAnchorKey, "top")
+    await props.onRefresh()
+  }
+
+  const footerText = props.isFilterActive
+    ? `${summary} · 已显示 ${props.items.length} / ${props.totalItemCount} 条`
+    : `${summary} · 已加载 ${props.items.length} 条`
+  const FeedContainer = props.cardLayoutMode === "double" ? ScrollView : List
+  const alternatePlaybackTitle = props.playbackMode === "external" ? "应用内播放" : "跳转播放"
+  const alternatePlaybackSystemImage = props.playbackMode === "external" ? "play.rectangle" : "safari"
+  return (
+    <NavigationStack>
+      <ScrollViewReader>
+        {(scrollProxy) => {
+          scrollProxyRef.current = scrollProxy
+
+          return (
+            <FeedContainer
+              navigationTitle="动态"
+              navigationBarTitleDisplayMode="large"
+              contentMargins={props.cardLayoutMode === "single"
+                ? { edges: "horizontal", insets: 0, placement: "scrollContent" }
+                : undefined}
+              listRowSpacing={6}
+              listSectionSpacing="compact"
+              listSectionSeparator={{ visibility: "hidden", edges: "all" as any }}
+              listRowSeparator={{ visibility: "hidden", edges: "all" as any }}
+              refreshable={props.isLoggedIn ? props.onRefresh : undefined}
+              navigationDestination={{
+                isPresented: filterPresented || playingItem != null,
+                onChanged: (value) => {
+                  if (!value) {
+                    void stopActiveInlinePlayback()
+                    setFilterPresented(false)
+                    setPlayingItem(null)
+                  }
+                },
+                content: filterPresented ? (
+                  <FollowingsFilterView
+                    authors={props.followedAuthors}
+                    loading={props.followedAuthorsLoading}
+                    errorMessage={props.followedAuthorsErrorMessage}
+                    filterRule={props.authorFilterRule}
+                    onRetry={props.onRetryFollowedAuthors}
+                    onChangeRule={props.onUpdateAuthorFilterRule}
+                  />
+                ) : (
+                  playingItem ? <InlineVideoPlayerPage auth={props.auth} item={playingItem} /> : <VStack />
+                ),
+              }}
+              toolbar={{
+                topBarLeading: [
+                  <Button
+                    key="close"
+                    title=""
+                    systemImage="xmark"
+                    action={props.onExit}
+                  />,
+                  ...(props.isLoggedIn ? [
+                    <Button
+                      key="refresh"
+                      title=""
+                      systemImage="arrow.clockwise"
+                      action={() => { void handleManualRefresh() }}
+                    />,
+                  ] : []),
+                ],
+                topBarTrailing: props.isLoggedIn
+                  ? (
+                    <Button
+                      title=""
+                      systemImage={props.isFilterActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"}
+                      action={openFilterPage}
+                    />
+                  )
+                  : undefined,
+              }}
+            >
+              {!props.isLoggedIn && !props.isAuthChecking ? (
+                <Section listSectionSeparator={{ visibility: "hidden", edges: "all" as any }}>
+                  <VStack
+                    key="dynamic-state-top"
+                    spacing={12}
+                    padding={{ top: 16, bottom: 16 }}
+                    frame={{ maxWidth: "infinity", alignment: "center" as any }}
+                    listRowBackground={<EmptyView />}
+                    listRowSeparator={{ visibility: "hidden", edges: "all" as any }}
+                  >
+                    <Text font="title3">还没有登录哔哩哔哩</Text>
+                    <Text font="subheadline" foregroundStyle="secondaryLabel">
+                      登录后这里会显示你关注的 UP 主最新视频投稿。
+                    </Text>
+                    <Button
+                      title="去设置登录"
+                      systemImage="person.crop.circle.badge.plus"
+                      action={props.onOpenSettings}
+                    />
+                  </VStack>
+                </Section>
+              ) : null}
+
+              {props.isAuthChecking && props.totalItemCount === 0 ? (
+                <Section listSectionSeparator={{ visibility: "hidden", edges: "all" as any }}>
+                  <VStack
+                    key="dynamic-state-top"
+                    spacing={10}
+                    padding={{ top: 24, bottom: 24 }}
+                    frame={{ maxWidth: "infinity", alignment: "center" as any }}
+                    listRowBackground={<EmptyView />}
+                    listRowSeparator={{ visibility: "hidden", edges: "all" as any }}
+                  >
+                    <ProgressView progressViewStyle="circular" />
+                    <Text foregroundStyle="secondaryLabel">正在检测登录状态…</Text>
+                  </VStack>
+                </Section>
+              ) : null}
+
+              {props.isLoading && props.totalItemCount === 0 && !props.isAuthChecking ? (
+                <Section listSectionSeparator={{ visibility: "hidden", edges: "all" as any }}>
+                  <VStack
+                    key="dynamic-state-top"
+                    spacing={10}
+                    padding={{ top: 24, bottom: 24 }}
+                    frame={{ maxWidth: "infinity", alignment: "center" as any }}
+                    listRowBackground={<EmptyView />}
+                    listRowSeparator={{ visibility: "hidden", edges: "all" as any }}
+                  >
+                    <ProgressView progressViewStyle="circular" />
+                    <Text foregroundStyle="secondaryLabel">正在加载视频动态…</Text>
+                  </VStack>
+                </Section>
+              ) : null}
+
+              {props.errorMessage && props.totalItemCount === 0 && props.isLoggedIn ? (
+                <Section listSectionSeparator={{ visibility: "hidden", edges: "all" as any }}>
+                  <VStack
+                    key="dynamic-state-top"
+                    spacing={10}
+                    padding={{ top: 16, bottom: 16 }}
+                    listRowBackground={<EmptyView />}
+                    listRowSeparator={{ visibility: "hidden", edges: "all" as any }}
+                  >
+                    <Text font="headline">加载失败</Text>
+                    <Text foregroundStyle="secondaryLabel">{props.errorMessage}</Text>
+                    <Button title="重新加载" systemImage="arrow.clockwise" action={() => void props.onRefresh()} />
+                  </VStack>
+                </Section>
+              ) : null}
+
+              {props.items.length > 0 && props.cardLayoutMode === "double" ? (
+                <LazyVGrid
+                  columns={DOUBLE_CARD_COLUMNS}
+                  alignment="center"
+                  spacing={6}
+                  frame={{ maxWidth: "infinity", alignment: "center" as any }}
+                >
+                  {props.items.map((item, index) => {
+                    const externalUrl = resolveVideoUrl(item)
+                    const authorUrl = resolveAuthorSpaceUrl(item)
+                    const canInlinePlay = props.playbackMode === "inline" && props.auth?.loginMethod === "cookie" && Boolean(props.auth?.cookieHeader)
+                    const isLastItem = index === props.items.length - 1
+
+                    return (
+                      <VideoDynamicCard
+                        key={item.id}
+                        embedded={true}
+                        compact={true}
+                        item={item}
+                        externalUrl={externalUrl}
+                        onOpenAuthorUrl={authorUrl ? () => { void openExternalUrl(authorUrl) } : undefined}
+                        onOpenExternalUrl={externalUrl ? () => { void openExternalUrl(externalUrl) } : undefined}
+                        onPress={canInlinePlay ? () => handleOpenItem(item) : undefined}
+                        alternatePlaybackTitle={alternatePlaybackTitle}
+                        alternatePlaybackSystemImage={alternatePlaybackSystemImage}
+                        onAlternatePlayback={() => handleAlternatePlayback(item)}
+                        onAppear={isLastItem && props.hasMore && !props.isLoadingMore ? () => { void props.onLoadMore() } : undefined}
+                      />
+                    )
+                  })}
+                </LazyVGrid>
+              ) : props.items.length > 0 ? (
+                props.items.map((item, index) => {
+                  const externalUrl = resolveVideoUrl(item)
+                  const authorUrl = resolveAuthorSpaceUrl(item)
+                  const canInlinePlay = props.playbackMode === "inline" && props.auth?.loginMethod === "cookie" && Boolean(props.auth?.cookieHeader)
+                  const isLastItem = index === props.items.length - 1
+
+                  return (
+                    <VideoDynamicCard
+                      key={item.id}
+                      item={item}
+                      externalUrl={externalUrl}
+                      onOpenAuthorUrl={authorUrl ? () => { void openExternalUrl(authorUrl) } : undefined}
+                      onOpenExternalUrl={externalUrl ? () => { void openExternalUrl(externalUrl) } : undefined}
+                      onPress={canInlinePlay ? () => handleOpenItem(item) : undefined}
+                      alternatePlaybackTitle={alternatePlaybackTitle}
+                      alternatePlaybackSystemImage={alternatePlaybackSystemImage}
+                      onAlternatePlayback={() => handleAlternatePlayback(item)}
+                      onAppear={isLastItem && props.hasMore && !props.isLoadingMore ? () => { void props.onLoadMore() } : undefined}
+                    />
+                  )
+                })
+              ) : null}
+
+              {props.totalItemCount > 0 ? (
+                <VStack
+                  key={props.items.length === 0 ? "dynamic-state-top" : undefined}
+                  spacing={8}
+                  padding={{ top: 10, bottom: 22, leading: 14, trailing: 14 }}
+                  frame={{ maxWidth: "infinity", alignment: "center" as any }}
+                  listRowBackground={<EmptyView />}
+                  listRowSeparator={{ visibility: "hidden", edges: "all" as any }}
+                >
+                  {props.isLoadingMore ? (
+                    <>
+                      <ProgressView progressViewStyle="circular" />
+                      <Text font="caption" foregroundStyle="secondaryLabel">正在加载更多动态…</Text>
+                    </>
+                  ) : null}
+                  {!props.hasMore ? (
+                    <Text font="caption" foregroundStyle="secondaryLabel">
+                      已经到底了
+                    </Text>
+                  ) : null}
+                  <Text font="caption" foregroundStyle="secondaryLabel">
+                    {props.errorMessage || footerText}
+                  </Text>
+                </VStack>
+              ) : null}
+
+              {!props.isLoading && !props.errorMessage && props.isLoggedIn && props.totalItemCount === 0 ? (
+                <Section listSectionSeparator={{ visibility: "hidden", edges: "all" as any }}>
+                  <VStack
+                    key="dynamic-state-top"
+                    spacing={10}
+                    padding={{ top: 16, bottom: 16 }}
+                    listRowBackground={<EmptyView />}
+                    listRowSeparator={{ visibility: "hidden", edges: "all" as any }}
+                  >
+                    <Text font="headline">暂时没有视频投稿</Text>
+                    <Text foregroundStyle="secondaryLabel">
+                      当前关注动态里没有可展示的视频卡片，可以稍后下拉刷新。
+                    </Text>
+                  </VStack>
+                </Section>
+              ) : null}
+
+              {!props.isLoading && !props.errorMessage && props.isLoggedIn && props.totalItemCount > 0 && props.items.length === 0 ? (
+                <Section listSectionSeparator={{ visibility: "hidden", edges: "all" as any }}>
+                  <VStack
+                    key="dynamic-state-top"
+                    spacing={10}
+                    padding={{ top: 16, bottom: 16 }}
+                    listRowBackground={<EmptyView />}
+                    listRowSeparator={{ visibility: "hidden", edges: "all" as any }}
+                  >
+                    <Text font="headline">当前筛选下没有视频投稿</Text>
+                    <Text foregroundStyle="secondaryLabel">
+                      可以点右上角的过滤按钮调整 UP 主范围，或者切回“全部”查看完整动态流。
+                    </Text>
+                  </VStack>
+                </Section>
+              ) : null}
+            </FeedContainer>
+          )
+        }}
+      </ScrollViewReader>
+    </NavigationStack>
+  )
+}

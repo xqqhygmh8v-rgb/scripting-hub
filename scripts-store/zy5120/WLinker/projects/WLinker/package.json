@@ -1,0 +1,7 @@
+{
+  "name": "wlinker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Wuling vehicle status widget (Scripting app)",
+  "dependencies": {}
+}

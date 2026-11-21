@@ -1,0 +1,9 @@
+{
+  "name": "天气日历",
+  "icon": "cloud.sun.fill",
+  "color": "rgba(10, 132, 255, 1)",
+  "version": "1.5.5",
+  "remoteResource": {
+    "url": "https://github.com/SmallMr/Scripting-WeatherWidget"
+  }
+}

@@ -1,0 +1,306 @@
+/**
+ * Claude 订阅用量（Pro / Max 的 5 小时与 7 天窗口）。
+ *
+ * 用的是 Claude Code 自己在用的那个 OAuth 端点：
+ *   GET https://api.anthropic.com/api/oauth/usage
+ *   Authorization: Bearer <sk-ant-oat...>
+ *   anthropic-beta: oauth-2025-04-20
+ *
+ * 端点确实存在（拿无效 token 打过去会返回 401 authentication_error，不是 404），
+ * 但 **它不是公开文档化的接口，返回结构是推断出来的**：这里按
+ * five_hour / seven_day / seven_day_opus 三个窗口去认，每个窗口取 utilization
+ * 和 resets_at。为了不在字段名变了的时候静默显示 0，解析分三层：
+ *
+ *   1. 认已知窗口键（连同几种可能的写法）
+ *   2. 认「一个数组，每项带 utilization / resets_at」的通用形状
+ *   3. 都不认识 -> 抛错，并把原始 JSON 留给诊断页
+ *
+ * 第 3 条是关键：宁可红着报错，也不要绿着显示一个假的 0%。
+ */
+import type { Metric, Provider, ProviderResult } from "./types"
+import {
+  describeHttpError,
+  explainAuthFailure,
+  getPath,
+  num,
+  requestJson,
+  toEpochMs,
+  windowLabel,
+} from "./util"
+
+const USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
+const TOKEN_URL = "https://api.anthropic.com/v1/oauth/token"
+/**
+ * Claude Code 自己的 OAuth 客户端 id。公开值，不是密钥。
+ *
+ * 验证方式：拿它配一个伪造的 refresh_token 打 TOKEN_URL，返回的是
+ * `invalid_grant`（refresh token 无效）而不是 `invalid_client`——
+ * 说明 client_id 这一半是被接受的。
+ */
+const CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+
+/** 已知窗口键 -> 显示名。左边写了几种可能的拼法，命中一个就够。 */
+const WINDOWS: { keys: string[]; label: string }[] = [
+  { keys: ["five_hour", "fiveHour", "5h", "session"], label: "5 小时" },
+  { keys: ["seven_day", "sevenDay", "7d", "week", "weekly"], label: "7 天" },
+  { keys: ["seven_day_sonnet", "sevenDaySonnet", "7d_sonnet"], label: "7 天 Sonnet" },
+  { keys: ["seven_day_opus", "sevenDayOpus", "7d_opus", "weekly_opus"], label: "7 天 Opus" },
+  { keys: ["seven_day_oauth_apps", "sevenDayOauthApps"], label: "7 天 · 第三方应用" },
+]
+
+/** 从一个窗口对象里抠出「已用百分比」。接受 0–1 的小数和 0–100 的整数两种。 */
+function utilizationOf(node: unknown): number | undefined {
+  const raw =
+    num(getPath(node, "utilization")) ??
+    num(getPath(node, "used_percent")) ??
+    num(getPath(node, "usedPercent")) ??
+    num(getPath(node, "percent")) ??
+    num(getPath(node, "usage"))
+  if (raw === undefined) return undefined
+  // 0.42 和 42 都可能是「42%」。<= 1 一律当小数——真有 1% 的时候少显示 1%，
+  // 比把 0.42 显示成 0% 强。
+  return raw <= 1 ? raw * 100 : raw
+}
+
+function resetOf(node: unknown): number | undefined {
+  return (
+    toEpochMs(getPath(node, "resets_at")) ??
+    toEpochMs(getPath(node, "resetsAt")) ??
+    toEpochMs(getPath(node, "reset_at")) ??
+    toEpochMs(getPath(node, "resets"))
+  )
+}
+
+export const anthropicProvider: Provider = {
+  id: "anthropic",
+  name: "Claude 订阅",
+  icon: "sparkle",
+  color: "#D97757",
+  help:
+    "凭据来自 Claude Code，不是 API Key。⚠️ refresh token 和电脑上的 Claude Code " +
+    "共用同一个 token 家族，两边都续期会互相作废，严重时一起登出——" +
+    "经常用 Claude Code 的话建议只填 access token（几小时重取一次）。",
+  fields: [
+    {
+      key: "token",
+      label: "Access Token",
+      secret: true,
+      placeholder: "sk-ant-oat01-...",
+      help:
+        "凭据文件里的 accessToken。只填这个最安全——不碰 token 家族，" +
+        "不会影响电脑上的 Claude Code。代价是几小时后要回电脑重取一次。",
+    },
+    {
+      key: "refreshToken",
+      label: "Refresh Token（可选，有代价）",
+      secret: true,
+      help:
+        "填了能自动续期，但**和电脑上的 Claude Code 共用同一个 token 家族**。" +
+        "refresh token 每次使用都会轮换并作废旧的，两边各续各的就会互相踢掉，" +
+        "严重时整个家族被撤销、两边一起登出。经常用 Claude Code 的话别填。",
+    },
+  ],
+  async fetch(config, ctx): Promise<ProviderResult> {
+    let token = config.token?.trim() ?? ""
+    const refreshToken = config.refreshToken?.trim() ?? ""
+
+    if (!token && !refreshToken) {
+      throw new Error("至少要填 access token（或 refresh token）。")
+    }
+
+    // 没有 access token 就直接去换，不发那个注定 401 的请求。
+    // 省一次往返是次要的，主要是不给用量端点白白增加一次失败调用。
+    if (!token) {
+      if (!ctx.allowTokenRefresh) {
+        throw new Error("上一次换 token 失败，正在退避中（半小时内不再重试）。")
+      }
+      try {
+        const first = await refreshTokens(refreshToken, ctx.timeoutSec)
+        token = first.accessToken
+        ctx.updateConfig({ token: first.accessToken, refreshToken: first.refreshToken })
+      } catch (error) {
+        ctx.onTokenRefreshFailed()
+        throw error
+      }
+    }
+
+    let resp = await getUsage(token, ctx.timeoutSec)
+
+    // access token 是短命的（几小时），过期就换一个再来一次。
+    // 只重试一次：第二次还 401 就是 refresh token 也失效了，得重新登录。
+    if (resp.status === 401) {
+      if (!refreshToken) {
+        throw new Error(
+          "access token 已过期 (401)。它本来就只有几个小时的寿命——" +
+            "把 refresh token 也填上就能自动续，不用每次手动重取。",
+        )
+      }
+      if (!ctx.allowTokenRefresh) {
+        throw new Error(
+          "access token 已过期，而上一次换新的也失败了，正在退避中（半小时内不再重试）。" +
+            "多半是 refresh token 也过期或被轮换掉了——回电脑上重新取一次凭据。",
+        )
+      }
+      let refreshed
+      try {
+        refreshed = await refreshTokens(refreshToken, ctx.timeoutSec)
+      } catch (error) {
+        // 告诉调用方去退避。不退避的话，每次渲染都来换一遍，
+        // 很快会把 token 端点打成 429，那时连错误信息都会变得看不懂。
+        ctx.onTokenRefreshFailed()
+        throw error
+      }
+      token = refreshed.accessToken
+      ctx.updateConfig({ token: refreshed.accessToken, refreshToken: refreshed.refreshToken })
+      resp = await getUsage(token, ctx.timeoutSec)
+      if (resp.status === 401) {
+        throw new Error("换过 token 之后仍然 401，refresh token 也失效了，需要在电脑上重新登录 Claude Code。")
+      }
+    }
+
+    ctx.captureRaw(resp.text)
+    if (resp.status === 429) {
+      // 服务器明确要求停下来。上报之后，调用方会在这段时间内完全不碰这个账户。
+      ctx.onRateLimited(resp.retryAfterSec)
+      const mins = resp.retryAfterSec ? Math.ceil(resp.retryAfterSec / 60) : undefined
+      throw new Error(
+        `被限流 (429)${mins ? `，服务器要求等 ${mins} 分钟` : ""}。` +
+          "这个端点对鉴权失败的容忍度很低——连续几次失败就会锁一段时间，" +
+          "期间本来能成功的请求也会一起挡掉。已经暂停对这个账户的请求。",
+      )
+    }
+    if (!resp.ok) throw new Error(describeHttpError(resp, "读取用量失败"))
+
+    const metrics = parseUsage(resp.json)
+    if (metrics.length === 0) {
+      throw new Error("接口返回了无法识别的结构，请在详情页查看原始响应")
+    }
+    return { metrics, plan: readPlan(resp.json) }
+  },
+}
+
+function getUsage(token: string, timeoutSec: number) {
+  return requestJson(
+    USAGE_URL,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "anthropic-beta": "oauth-2025-04-20",
+        "Content-Type": "application/json",
+      },
+    },
+    timeoutSec,
+  )
+}
+
+/**
+ * 用 refresh token 换一对新的。
+ *
+ * 端点和 client_id 都探过：伪造的 refresh_token 打过去返回 `invalid_grant`
+ * 而不是 `invalid_client`，说明这两样是对的。
+ */
+async function refreshTokens(
+  refreshToken: string,
+  timeoutSec: number,
+): Promise<{ accessToken: string; refreshToken: string }> {
+  const resp = await requestJson(
+    TOKEN_URL,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+        client_id: CLIENT_ID,
+      }),
+    },
+    timeoutSec,
+  )
+  const next = getPath(resp.json, "access_token")
+  if (!resp.ok || typeof next !== "string" || !next) {
+    const explained = explainAuthFailure(resp.json, resp.text)
+    throw new Error(explained ?? `换 token 失败：${refreshFailureDetail(resp)}`)
+  }
+  const rotated = getPath(resp.json, "refresh_token")
+  return {
+    accessToken: next,
+    // refresh token 通常会轮换，返回了就换掉，没返回就沿用旧的
+    refreshToken: typeof rotated === "string" && rotated ? rotated : refreshToken,
+  }
+}
+
+/**
+ * 换 token 失败时给一句能定位的话。
+ *
+ * 之前这里只输出「刷新被拒 (200)」——状态码是 200，措辞却是「被拒」，
+ * 而且一个字都没说服务器实际返回了什么。**在一个只能靠错误文字排查的界面上，
+ * 这种消息等于没有。** 现在把响应体也带出来。
+ */
+function refreshFailureDetail(resp: { status: number; json: unknown; text: string }): string {
+  const known =
+    getPath(resp.json, "error_description") ??
+    getPath(resp.json, "error.message") ??
+    getPath(resp.json, "error") ??
+    getPath(resp.json, "message")
+  if (typeof known === "string" && known.trim()) return `${known.trim()} (HTTP ${resp.status})`
+  const body = resp.text.trim()
+  if (!body) return `HTTP ${resp.status}，响应体是空的`
+  return `HTTP ${resp.status}，服务器返回：${body.slice(0, 300)}`
+}
+
+/** 导出给 dev/ 的测试用：解析逻辑要能在没有网络的情况下单独验。 */
+export function parseUsage(json: unknown): Metric[] {
+  const root = (getPath(json, "usage") as unknown) ?? json
+  const metrics: Metric[] = []
+
+  // 第 1 层：已知窗口键
+  for (const window of WINDOWS) {
+    for (const key of window.keys) {
+      const node = getPath(root, key)
+      if (node === undefined || node === null) continue
+      const value = utilizationOf(node)
+      if (value === undefined) continue
+      metrics.push({
+        id: key,
+        label: window.label,
+        kind: "percent",
+        value,
+        resetAt: resetOf(node),
+      })
+      break
+    }
+  }
+  if (metrics.length > 0) return metrics
+
+  // 第 2 层：数组形状
+  const list = Array.isArray(root)
+    ? root
+    : Array.isArray(getPath(root, "limits"))
+      ? (getPath(root, "limits") as unknown[])
+      : Array.isArray(getPath(root, "windows"))
+        ? (getPath(root, "windows") as unknown[])
+        : []
+  for (let i = 0; i < list.length; i++) {
+    const value = utilizationOf(list[i])
+    if (value === undefined) continue
+    const seconds = num(getPath(list[i], "window_seconds")) ?? num(getPath(list[i], "windowSeconds"))
+    const name = getPath(list[i], "name") ?? getPath(list[i], "type")
+    metrics.push({
+      id: typeof name === "string" ? name : `window${i}`,
+      label: typeof name === "string" ? name : windowLabel(seconds, `窗口 ${i + 1}`),
+      kind: "percent",
+      value,
+      resetAt: resetOf(list[i]),
+    })
+  }
+  return metrics
+}
+
+function readPlan(json: unknown): string | undefined {
+  const candidates = ["plan", "subscription_type", "subscriptionType", "account.plan", "tier"]
+  for (const path of candidates) {
+    const value = getPath(json, path)
+    if (typeof value === "string" && value.trim()) return value.trim()
+  }
+  return undefined
+}

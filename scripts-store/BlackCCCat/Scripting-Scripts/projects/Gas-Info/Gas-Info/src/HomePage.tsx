@@ -1,0 +1,1040 @@
+import {
+  VStack,
+  HStack,
+  Text,
+  Image,
+  ScrollView,
+  Spacer,
+  Button,
+  Divider,
+  Menu,
+  NavigationLink,
+  Navigation,
+  useState,
+  useEffect,
+  useRef,
+  TextField,
+  Widget,
+  gradient,
+  Chart,
+  LineCategoryChart,
+  ProgressView,
+} from "scripting"
+import {
+  FUELS,
+  FuelCode,
+  OilPriceData,
+  OilPriceTrendData,
+  ProvincePrice,
+  formatFuelPrice,
+  fuelMeta,
+  isValidFuelPrice,
+} from "./types"
+import {
+  fetchOilPriceHistory,
+  fetchOilPrices,
+  matchProvince,
+  normalizeProvinceName,
+  oilPriceHistoryUnavailableText,
+  supportsOilPriceHistory,
+} from "./service"
+import { Theme } from "./theme"
+import {
+  getLocationMode,
+  getLastAutoProvinceName,
+  getManualProvinceName,
+  LocationMode,
+  OilPriceSource,
+  setLastAutoProvinceName,
+  setLocationMode,
+  setManualProvinceName,
+} from "./settings"
+
+type ProvinceSortMode =
+  | "default"
+  | "nameAsc"
+  | "nameDesc"
+  | "priceAsc"
+  | "priceDesc"
+
+/** 头部高亮油价卡片 */
+function HeaderCard({
+  province,
+  forecast,
+  preferred,
+}: {
+  province: ProvincePrice
+  forecast: OilPriceData["forecast"]
+  preferred: FuelCode
+}) {
+  const meta = fuelMeta(preferred)
+  const bigPrice = province.prices[preferred]
+  // 头部小卡片展示除高亮油品外的另外 3 个油品
+  const others = FUELS.filter(f => f.code !== preferred)
+  const adjustmentText = province.adjustmentText ?? forecast.adjustmentText
+
+  return (
+    <VStack
+      spacing={0}
+      padding={{ horizontal: 18, top: 18, bottom: 16 }}
+      background={{
+        style: gradient("linear", {
+          colors: [...Theme.headerGradient],
+          startPoint: "topLeading",
+          endPoint: "bottomTrailing",
+        }),
+        shape: Theme.glassHeaderCard,
+      } as any}
+      glassEffect={Theme.glassHeaderCard as any}
+      frame={{ maxWidth: "infinity" }}
+    >
+      {/* 顶部：省份 + 更新时间 */}
+      <HStack>
+        <Image systemName="location.fill" font={15} foregroundStyle="white" />
+        <Text font={18} fontWeight="bold" foregroundStyle="white">
+          {province.province}
+        </Text>
+        <Spacer />
+        <Text font={12} foregroundStyle="rgba(255,255,255,0.85)">
+          更新于: {province.updatedAt}
+        </Text>
+      </HStack>
+
+      {/* 高亮油品放大显示 */}
+      <VStack spacing={2} padding={{ top: 12, bottom: 14 }}>
+        <Text font={15} foregroundStyle="rgba(255,255,255,0.92)">
+          {meta.fullName}
+        </Text>
+        <HStack alignment="firstTextBaseline" spacing={0}>
+          {isValidFuelPrice(bigPrice) ? (
+            <Text font={26} fontWeight="bold" foregroundStyle="white">
+              ¥
+            </Text>
+          ) : null}
+          <Text font={56} fontWeight="bold" foregroundStyle="white">
+            {formatFuelPrice(bigPrice)}
+          </Text>
+          <Text
+            font={16}
+            foregroundStyle="rgba(255,255,255,0.85)"
+            padding={{ leading: 4, bottom: 4 }}
+          >
+            元/升
+          </Text>
+        </HStack>
+      </VStack>
+
+      {/* 其它 3 个油品的小卡片 */}
+      <HStack spacing={10}>
+        {others.map(f => (
+          <VStack
+            spacing={3}
+            frame={{ maxWidth: "infinity" }}
+            padding={{ vertical: 10 }}
+            background={{
+              style: Theme.headerChipBg,
+              shape: Theme.glassSmallCard,
+            } as any}
+            glassEffect={Theme.glassSmallCard as any}
+          >
+            <Text font={12} foregroundStyle="rgba(255,255,255,0.85)">
+              {f.label}
+            </Text>
+            <Text font={16} fontWeight="bold" foregroundStyle="white">
+              {formatFuelPrice(province.prices[f.code], { currency: true })}
+            </Text>
+          </VStack>
+        ))}
+      </HStack>
+
+      {/* 调价预测 */}
+      <VStack
+        spacing={4}
+        padding={{ top: 14 }}
+        frame={{ maxWidth: "infinity" }}
+      >
+        <HStack
+          spacing={6}
+          frame={{ maxWidth: "infinity", alignment: "center" as any }}
+        >
+          <Image
+            systemName="calendar"
+            font={13}
+            foregroundStyle="rgba(255,255,255,0.9)"
+          />
+          <Text font={13} fontWeight="medium" foregroundStyle="white">
+            下次调价: {forecast.nextAdjustText} · 剩余 {forecast.remainingDays} 天
+          </Text>
+        </HStack>
+        <Text
+          font={12}
+          foregroundStyle="rgba(255,255,255,0.85)"
+          multilineTextAlignment="center"
+          frame={{ maxWidth: "infinity" }}
+        >
+          {forecast.sourceText}
+        </Text>
+        {adjustmentText ? (
+          <Text
+            font={12}
+            foregroundStyle="rgba(255,255,255,0.85)"
+            multilineTextAlignment="center"
+            frame={{ maxWidth: "infinity" }}
+          >
+            {adjustmentText}
+          </Text>
+        ) : null}
+      </VStack>
+    </VStack>
+  )
+}
+
+/** 全国油价列表中的单个省份卡片 */
+function ProvinceRow({ item }: { item: ProvincePrice }) {
+  return (
+    <VStack
+      spacing={10}
+      padding={14}
+      glassEffect={Theme.glassCard as any}
+    >
+      <HStack>
+        <Text font={17} fontWeight="semibold">
+          {item.province}
+        </Text>
+        <Spacer />
+        <Image
+          systemName="arrow.up.right.square"
+          font={18}
+          foregroundStyle={Theme.orange}
+        />
+      </HStack>
+      <HStack spacing={6}>
+        {FUELS.map(f => (
+          <VStack spacing={4} frame={{ maxWidth: "infinity" }}>
+            <Text font={12} foregroundStyle={Theme.secondary}>
+              {f.label}
+            </Text>
+            <Text font={16} fontWeight="semibold" foregroundStyle={Theme.priceOrange}>
+              {formatFuelPrice(item.prices[f.code])}
+            </Text>
+          </VStack>
+        ))}
+      </HStack>
+    </VStack>
+  )
+}
+
+function sortModeLabel(mode: ProvinceSortMode): string {
+  switch (mode) {
+    case "nameAsc":
+      return "名称正序"
+    case "nameDesc":
+      return "名称倒序"
+    case "priceAsc":
+      return "价格低到高"
+    case "priceDesc":
+      return "价格高到低"
+    default:
+      return "默认排序"
+  }
+}
+
+function sortProvinces(
+  provinces: ProvincePrice[],
+  mode: ProvinceSortMode,
+  preferred: FuelCode
+): ProvincePrice[] {
+  if (mode === "default") {
+    return provinces
+  }
+
+  return [...provinces].sort((a, b) => {
+    if (mode === "nameAsc" || mode === "nameDesc") {
+      const result = a.province.localeCompare(b.province, "zh-Hans-CN")
+      return mode === "nameAsc" ? result : -result
+    }
+
+    const aPrice = a.prices[preferred]
+    const bPrice = b.prices[preferred]
+    const aValid = isValidFuelPrice(aPrice)
+    const bValid = isValidFuelPrice(bPrice)
+    if (aValid !== bValid) {
+      return aValid ? -1 : 1
+    }
+    if (!aValid || !bValid) {
+      return a.province.localeCompare(b.province, "zh-Hans-CN")
+    }
+
+    const result = aPrice - bPrice
+    return mode === "priceAsc" ? result : -result
+  })
+}
+
+function SortMenu({
+  value,
+  onChange,
+}: {
+  value: ProvinceSortMode
+  onChange: (value: ProvinceSortMode) => void
+}) {
+  const options: Array<{ value: ProvinceSortMode; title: string }> = [
+    { value: "default", title: "默认排序" },
+    { value: "nameAsc", title: "名称正序" },
+    { value: "nameDesc", title: "名称倒序" },
+    { value: "priceAsc", title: "价格低到高" },
+    { value: "priceDesc", title: "价格高到低" },
+  ]
+
+  return (
+    <Menu
+      label={
+        <HStack spacing={4}>
+          <Text font={13} fontWeight="medium" foregroundStyle={Theme.orange}>
+            {sortModeLabel(value)}
+          </Text>
+          <Image
+            systemName="arrow.up.arrow.down"
+            font={13}
+            foregroundStyle={Theme.orange}
+          />
+        </HStack>
+      }
+    >
+      {options.map(option => (
+        <Button
+          title={option.title}
+          systemImage={option.value === value ? "checkmark" : undefined}
+          action={() => onChange(option.value)}
+        />
+      ))}
+    </Menu>
+  )
+}
+
+function DetailRow({ code, price }: { code: FuelCode; price: number }) {
+  const meta = fuelMeta(code)
+
+  return (
+    <VStack spacing={0}>
+      <HStack padding={{ horizontal: 12, vertical: 14 }}>
+        <Image
+          systemName="fuelpump"
+          font={22}
+          foregroundStyle={Theme.orange}
+          frame={{ width: 30 }}
+        />
+        <Text font={20} fontWeight="medium">
+          {meta.fullName}
+        </Text>
+        <Spacer />
+        <Text font={22} fontWeight="bold" foregroundStyle={Theme.priceOrange}>
+          {formatFuelPrice(price, { currency: true })}
+        </Text>
+        <Text font={14} foregroundStyle={Theme.secondary} padding={{ leading: 4 }}>
+          元/升
+        </Text>
+      </HStack>
+      <Divider padding={{ leading: 52 }} />
+    </VStack>
+  )
+}
+
+const TREND_COLORS = {
+  "92": "#F5A623",
+  "95": "#E85D3F",
+  "98": "#4A90E2",
+  "0": "#49A078",
+} as const
+
+function trendDateLabel(date: string): string {
+  const parts = date.split("-")
+  return parts.length === 3
+    ? `${Number(parts[1])}/${Number(parts[2])}`
+    : date
+}
+
+function OilPriceTrendCard({
+  province,
+  source,
+}: {
+  province: ProvincePrice
+  source: OilPriceSource
+}) {
+  const supportsHistory = supportsOilPriceHistory(source)
+  const [trend, setTrend] = useState<OilPriceTrendData | null>(null)
+  const [loading, setLoading] = useState(supportsHistory)
+  const [message, setMessage] = useState<string | null>(
+    supportsHistory ? null : oilPriceHistoryUnavailableText(source)
+  )
+  const [selectedLabel, setSelectedLabel] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setSelectedLabel(null)
+    if (!supportsOilPriceHistory(source)) {
+      setTrend(null)
+      setLoading(false)
+      setMessage(oilPriceHistoryUnavailableText(source))
+      return () => {
+        cancelled = true
+      }
+    }
+
+    setTrend(null)
+    setLoading(true)
+    setMessage(null)
+    fetchOilPriceHistory(province.province, source)
+      .then(result => {
+        if (!cancelled) {
+          setTrend(result)
+        }
+      })
+      .catch(error => {
+        if (!cancelled) {
+          setMessage(
+            error instanceof Error ? error.message : "历史趋势加载失败"
+          )
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [province.province, source])
+
+  const marks = trend
+    ? trend.points.flatMap(point =>
+        FUELS.flatMap(fuel => {
+          const price = point.prices[fuel.code]
+          const label = trendDateLabel(point.date)
+          return isValidFuelPrice(price)
+            ? [
+                {
+                  label,
+                  value: price,
+                  category: fuel.label,
+                  interpolationMethod: "catmullRom" as const,
+                  symbol: "circle" as const,
+                  symbolSize: selectedLabel === label ? 42 : 18,
+                  lineStyle: { lineWidth: 2 },
+                },
+              ]
+            : []
+        })
+      )
+    : []
+  const lastLabel = trend?.points.length
+    ? trendDateLabel(trend.points[trend.points.length - 1].date)
+    : ""
+  const selectedPoint = trend?.points.find(
+    point => trendDateLabel(point.date) === selectedLabel
+  )
+
+  return (
+    <VStack
+      alignment="leading"
+      spacing={12}
+      padding={16}
+      glassEffect={Theme.glassCard as any}
+      frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+    >
+      <HStack spacing={8} frame={{ maxWidth: "infinity" }}>
+        <Image
+          systemName="chart.xyaxis.line"
+          font={17}
+          foregroundStyle={Theme.orange}
+        />
+        <Text font={18} fontWeight="semibold">
+          油价趋势
+        </Text>
+        <Spacer />
+        {trend ? (
+          <Text font={12} foregroundStyle={Theme.secondary}>
+            {trend.points.length} 次调价
+          </Text>
+        ) : null}
+      </HStack>
+
+      {loading ? (
+        <HStack
+          spacing={8}
+          padding={{ vertical: 48 }}
+          frame={{ maxWidth: "infinity", alignment: "center" as any }}
+        >
+          <ProgressView />
+          <Text font={14} foregroundStyle={Theme.secondary}>
+            正在加载历史油价…
+          </Text>
+        </HStack>
+      ) : trend && marks.length ? (
+        <VStack spacing={10} frame={{ maxWidth: "infinity" }}>
+          <HStack spacing={12} frame={{ maxWidth: "infinity" }}>
+            {FUELS.map(fuel => (
+              <HStack spacing={4} frame={{ maxWidth: "infinity" }}>
+                <Text font={10} foregroundStyle={TREND_COLORS[fuel.code]}>
+                  ●
+                </Text>
+                <Text font={11} foregroundStyle={Theme.secondary}>
+                  {fuel.label}
+                </Text>
+              </HStack>
+            ))}
+          </HStack>
+          <Chart
+            chartXAxis="visible"
+            chartYAxis="visible"
+            chartLegend="hidden"
+            chartScrollableAxes="horizontal"
+            chartXVisibleDomain={7}
+            chartScrollPositionX={lastLabel}
+            chartXSelection={{
+              valueType: "string",
+              value: selectedLabel,
+              onChanged: (value: string | undefined | null) =>
+                setSelectedLabel(value ?? null),
+            }}
+            chartForegroundStyleScale={{
+              "92号": TREND_COLORS["92"],
+              "95号": TREND_COLORS["95"],
+              "98号": TREND_COLORS["98"],
+              "0号柴油": TREND_COLORS["0"],
+            }}
+            frame={{ height: 260, maxWidth: "infinity" }}
+          >
+            <LineCategoryChart labelOnYAxis={false} marks={marks} />
+          </Chart>
+          {selectedPoint ? (
+            <VStack spacing={7} frame={{ maxWidth: "infinity" }}>
+              <Text font={12} fontWeight="semibold">
+                {selectedPoint.date} · 元/升
+              </Text>
+              <HStack spacing={8} frame={{ maxWidth: "infinity" }}>
+                {FUELS.map(fuel => (
+                  <VStack spacing={2} frame={{ maxWidth: "infinity" }}>
+                    <Text font={10} foregroundStyle={Theme.secondary}>
+                      {fuel.label}
+                    </Text>
+                    <Text
+                      font={12}
+                      fontWeight="semibold"
+                      foregroundStyle={TREND_COLORS[fuel.code]}
+                    >
+                      {formatFuelPrice(selectedPoint.prices[fuel.code], {
+                        currency: true,
+                      })}
+                    </Text>
+                  </VStack>
+                ))}
+              </HStack>
+            </VStack>
+          ) : (
+            <Text
+              font={11}
+              foregroundStyle={Theme.secondary}
+              frame={{ maxWidth: "infinity", alignment: "center" as any }}
+            >
+              轻触数据点查看价格 · 左右滑动查看全部历史
+            </Text>
+          )}
+        </VStack>
+      ) : (
+        <Text
+          font={14}
+          foregroundStyle={Theme.secondary}
+          multilineTextAlignment="leading"
+          frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+        >
+          {message ?? "暂无历史趋势数据"}
+        </Text>
+      )}
+    </VStack>
+  )
+}
+
+function ProvinceDetailPage({
+  province,
+  forecast,
+  preferred,
+  source,
+  oilPriceSource,
+}: {
+  province: ProvincePrice
+  forecast: OilPriceData["forecast"]
+  preferred: FuelCode
+  source: string
+  oilPriceSource: OilPriceSource
+}) {
+  return (
+    <ScrollView>
+      <VStack
+        navigationTitle={province.province}
+        navigationBarTitleDisplayMode="inline"
+        spacing={18}
+        padding={{ horizontal: 16, top: 12, bottom: 28 }}
+        alignment="leading"
+      >
+        <HeaderCard
+          province={province}
+          forecast={forecast}
+          preferred={preferred}
+        />
+
+        <HStack frame={{ maxWidth: "infinity" }}>
+          <VStack spacing={8} frame={{ maxWidth: "infinity" }}>
+            <Text font={18} fontWeight="bold" foregroundStyle={Theme.orange}>
+              油价详情
+            </Text>
+            <HStack frame={{ height: 2, maxWidth: "infinity" }} background={Theme.orange} />
+          </VStack>
+        </HStack>
+
+        <VStack
+          spacing={0}
+          glassEffect={Theme.glassCard as any}
+          frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+        >
+          {FUELS.map(f => (
+            <DetailRow code={f.code} price={province.prices[f.code]} />
+          ))}
+        </VStack>
+
+        <OilPriceTrendCard province={province} source={oilPriceSource} />
+
+        <VStack
+          alignment="leading"
+          spacing={8}
+          padding={16}
+          glassEffect={Theme.glassCard as any}
+          frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+        >
+          <HStack spacing={8} frame={{ maxWidth: "infinity", alignment: "leading" as any }}>
+            <Image systemName="info.circle" font={16} foregroundStyle={Theme.orange} />
+            <Text font={17} fontWeight="semibold">
+              说明
+            </Text>
+          </HStack>
+          <Text
+            font={14}
+            foregroundStyle={Theme.secondary}
+            frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+          >
+            · 油价数据来源于 {source}
+          </Text>
+          <Text
+            font={14}
+            foregroundStyle={Theme.secondary}
+            frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+          >
+            · 实际价格以加油站公示价格为准
+          </Text>
+        </VStack>
+      </VStack>
+    </ScrollView>
+  )
+}
+
+function ProvinceSelectorPage({
+  provinces,
+  autoProvince,
+  autoLocatedName,
+  selectedProvince,
+  mode,
+  onUseAuto,
+  onSelectManual,
+}: {
+  provinces: ProvincePrice[]
+  autoProvince: ProvincePrice
+  autoLocatedName: string | null
+  selectedProvince: ProvincePrice
+  mode: LocationMode
+  onUseAuto: () => void
+  onSelectManual: (province: ProvincePrice) => void
+}) {
+  const dismiss = Navigation.useDismiss()
+  const [query, setQuery] = useState("")
+  const keyword = normalizeProvinceName(query)
+  const filtered = keyword
+    ? provinces.filter(p =>
+        normalizeProvinceName(p.province).includes(keyword)
+      )
+    : provinces
+
+  function chooseAuto() {
+    onUseAuto()
+    dismiss()
+  }
+
+  function chooseManual(province: ProvincePrice) {
+    onSelectManual(province)
+    dismiss()
+  }
+
+  return (
+    <ScrollView>
+      <VStack
+        navigationTitle="选择地区"
+        navigationBarTitleDisplayMode="inline"
+        spacing={14}
+        padding={{ horizontal: 16, top: 14, bottom: 28 }}
+        alignment="leading"
+      >
+        <TextField
+          title=""
+          value={query}
+          onChanged={setQuery}
+          prompt="输入省份名称搜索，如：湖北"
+          textFieldStyle="roundedBorder"
+        />
+
+        <Button action={chooseAuto}>
+          <VStack
+            padding={mode === "auto" ? 2 : 0}
+            background={mode === "auto" ? Theme.orange : "rgba(0,0,0,0.001)"}
+            clipShape={{ type: "rect", cornerRadius: 14 }}
+            frame={{ maxWidth: "infinity" }}
+          >
+            <HStack
+              spacing={14}
+              padding={{ horizontal: 16, vertical: 14 }}
+              glassEffect={Theme.glassSmallCard as any}
+              frame={{ maxWidth: "infinity" }}
+            >
+              <Image
+                systemName="location.fill"
+                font={28}
+                foregroundStyle={Theme.orange}
+              />
+              <VStack alignment="leading" spacing={4}>
+                <Text font={18} fontWeight="bold">
+                  自动定位
+                </Text>
+                <Text font={14} foregroundStyle={Theme.secondary}>
+                  {autoLocatedName ?? autoProvince.province}
+                </Text>
+              </VStack>
+              <Spacer />
+              {mode === "auto" ? (
+                <Image
+                  systemName="checkmark"
+                  font={20}
+                  fontWeight="semibold"
+                  foregroundStyle={Theme.orange}
+                />
+              ) : null}
+            </HStack>
+          </VStack>
+        </Button>
+
+        <VStack spacing={10} frame={{ maxWidth: "infinity" }}>
+          {filtered.map(p => {
+            const selected =
+              mode === "manual" && p.province === selectedProvince.province
+            return (
+              <Button action={() => chooseManual(p)}>
+                <HStack
+                  padding={{ horizontal: 16, vertical: 16 }}
+                  glassEffect={Theme.glassSmallCard as any}
+                  frame={{ maxWidth: "infinity" }}
+                >
+                  <Text font={18}>{p.province}</Text>
+                  <Spacer />
+                  {selected ? (
+                    <Image
+                      systemName="checkmark"
+                      font={16}
+                      fontWeight="semibold"
+                      foregroundStyle={Theme.orange}
+                    />
+                  ) : null}
+                </HStack>
+              </Button>
+            )
+          })}
+        </VStack>
+      </VStack>
+    </ScrollView>
+  )
+}
+
+export function HomePage({
+  preferred,
+  oilPriceSource,
+}: {
+  preferred: FuelCode
+  oilPriceSource: OilPriceSource
+}) {
+  const [data, setData] = useState<OilPriceData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [resolvingProvince, setResolvingProvince] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [autoProvince, setAutoProvince] = useState<ProvincePrice | null>(null)
+  const [locatedName, setLocatedName] = useState<string | null>(null)
+  const [locationModeState, setLocationModeState] =
+    useState<LocationMode>(getLocationMode())
+  const [manualProvinceName, setManualProvinceNameState] = useState<
+    string | null
+  >(getManualProvinceName())
+  const [sortMode, setSortMode] = useState<ProvinceSortMode>("default")
+  const previousSource = useRef(oilPriceSource)
+  const requestId = useRef(0)
+
+  async function requestCurrentProvinceName(forceRefresh: boolean) {
+    try {
+      const loc = await Location.requestCurrent({ forceRequest: forceRefresh })
+      if (!loc) {
+        return null
+      }
+      const placemarks = await Location.reverseGeocode({
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        locale: "zh-CN",
+      })
+      return placemarks?.[0]?.administrativeArea ?? null
+    } catch {
+      return null
+    }
+  }
+
+  async function load(forceRefresh = false, refreshLocation = forceRefresh) {
+    const currentRequest = ++requestId.current
+    if (forceRefresh) {
+      setRefreshing(true)
+    } else {
+      setLoading(true)
+    }
+    setResolvingProvince(true)
+    setError(null)
+    try {
+      const provinceNamePromise = requestCurrentProvinceName(refreshLocation)
+      const result = await fetchOilPrices({
+        forceRefresh,
+        preferredSource: oilPriceSource,
+      })
+      if (currentRequest !== requestId.current) {
+        return
+      }
+      setData(result)
+      const cachedAutoProvince = matchProvince(
+        result.provinces,
+        getLastAutoProvinceName()
+      )
+      if (locationModeState === "auto" && cachedAutoProvince) {
+        setAutoProvince(cachedAutoProvince)
+        setLocatedName(cachedAutoProvince.province)
+      }
+
+      const provinceName = await provinceNamePromise
+      if (currentRequest !== requestId.current) {
+        return
+      }
+      const matched = matchProvince(result.provinces, provinceName)
+      const displayProvince = matched ?? cachedAutoProvince ?? result.provinces[0]
+      if (matched) {
+        setLastAutoProvinceName(matched.province)
+      }
+      setAutoProvince(displayProvince)
+      setLocatedName(provinceName ?? displayProvince.province)
+      if (forceRefresh) {
+        Widget.reloadAll()
+      }
+    } catch (e) {
+      if (currentRequest === requestId.current) {
+        setError(e instanceof Error ? e.message : "油价数据加载失败")
+      }
+    } finally {
+      if (currentRequest === requestId.current) {
+        setLoading(false)
+        setResolvingProvince(false)
+        setRefreshing(false)
+      }
+    }
+  }
+
+  useEffect(() => {
+    const sourceChanged = previousSource.current !== oilPriceSource
+    previousSource.current = oilPriceSource
+    if (sourceChanged) {
+      setData(null)
+      setAutoProvince(null)
+      setLoading(true)
+    }
+    load(sourceChanged, false)
+    return () => {
+      requestId.current += 1
+    }
+  }, [oilPriceSource])
+
+  const manualProvince = data
+    ? matchProvince(data.provinces, manualProvinceName)
+    : null
+  const headerProvince =
+    locationModeState === "manual"
+      ? manualProvince ??
+        (!resolvingProvince ? autoProvince ?? data?.provinces[0] ?? null : null)
+      : autoProvince ?? (!resolvingProvince ? data?.provinces[0] ?? null : null)
+  const others = data
+    ? sortProvinces(
+        data.provinces.filter(p => p.province !== headerProvince?.province),
+        sortMode,
+        preferred
+      )
+    : []
+  const selectorDestination =
+    data && headerProvince ? (
+      <ProvinceSelectorPage
+        provinces={data.provinces}
+        autoProvince={autoProvince ?? data.provinces[0]}
+        autoLocatedName={locatedName}
+        selectedProvince={headerProvince}
+        mode={locationModeState}
+        onUseAuto={() => {
+          setLocationMode("auto")
+          setLocationModeState("auto")
+          Widget.reloadAll()
+        }}
+        onSelectManual={province => {
+          setLocationMode("manual")
+          setManualProvinceName(province.province)
+          setLocationModeState("manual")
+          setManualProvinceNameState(province.province)
+          Widget.reloadAll()
+        }}
+      />
+    ) : null
+
+  return (
+    <ScrollView
+      toolbar={{
+        ...(selectorDestination && headerProvince
+          ? {
+              topBarLeading: (
+                <NavigationLink destination={selectorDestination}>
+                  <HStack spacing={4}>
+                    <Image
+                      systemName={
+                        locationModeState === "auto"
+                          ? "location.fill"
+                          : "mappin.circle.fill"
+                      }
+                      font={13}
+                      foregroundStyle={Theme.orange}
+                    />
+                    <Text font={14} fontWeight="semibold" foregroundStyle={Theme.orange}>
+                      {headerProvince.province}
+                    </Text>
+                    <Image
+                      systemName="chevron.down"
+                      font={10}
+                      foregroundStyle={Theme.orange}
+                    />
+                  </HStack>
+                </NavigationLink>
+              ),
+            }
+          : {}),
+        topBarTrailing: (
+          <Button
+            title=""
+            systemImage="arrow.clockwise"
+            action={() => load(true)}
+            disabled={refreshing}
+          />
+        ),
+      }}
+    >
+      <VStack
+        spacing={16}
+        padding={{ horizontal: 16, top: 8, bottom: 24 }}
+        alignment="leading"
+      >
+        {(loading && !data) || (data && resolvingProvince && !headerProvince) ? (
+          <HStack frame={{ maxWidth: "infinity", minHeight: 200 }}>
+            <Spacer />
+            <VStack spacing={10}>
+              <Image
+                systemName="fuelpump.fill"
+                font={32}
+                foregroundStyle={Theme.orange}
+              />
+              <Text foregroundStyle={Theme.secondary}>
+                {data ? "正在确认省份…" : "加载中…"}
+              </Text>
+            </VStack>
+            <Spacer />
+          </HStack>
+        ) : error ? (
+          <VStack
+            spacing={12}
+            padding={{ vertical: 40 }}
+            frame={{ maxWidth: "infinity" }}
+          >
+            <Image
+              systemName="exclamationmark.triangle"
+              font={30}
+              foregroundStyle={Theme.orange}
+            />
+            <Text foregroundStyle={Theme.secondary}>{error}</Text>
+            <Button title="重新加载" action={() => load()} />
+          </VStack>
+        ) : data && headerProvince ? (
+          <>
+            <NavigationLink
+              destination={
+                <ProvinceDetailPage
+                  province={headerProvince}
+                  forecast={data.forecast}
+                  preferred={preferred}
+                  source={data.source}
+                  oilPriceSource={oilPriceSource}
+                />
+              }
+            >
+              <HeaderCard
+                province={headerProvince}
+                forecast={data.forecast}
+                preferred={preferred}
+              />
+            </NavigationLink>
+
+            <HStack
+              padding={{ top: 4 }}
+              frame={{ maxWidth: "infinity" }}
+            >
+              <Text font={20} fontWeight="bold">
+                全国油价
+              </Text>
+              <Spacer />
+              <SortMenu value={sortMode} onChange={setSortMode} />
+            </HStack>
+
+            <VStack spacing={12} alignment="leading">
+              {others.map(p => (
+                <NavigationLink
+                  destination={
+                    <ProvinceDetailPage
+                      province={p}
+                      forecast={data.forecast}
+                      preferred={preferred}
+                      source={data.source}
+                      oilPriceSource={oilPriceSource}
+                    />
+                  }
+                >
+                  <ProvinceRow item={p} />
+                </NavigationLink>
+              ))}
+            </VStack>
+          </>
+        ) : (
+          <Text foregroundStyle={Theme.secondary}>暂无数据</Text>
+        )}
+      </VStack>
+    </ScrollView>
+  )
+}

@@ -1,9 +1,0 @@
-{
-  "schema": 1,
-  "project_version": "v1.1.0",
-  "desktop_version": "1.1.0",
-  "target": "x86_64-pc-windows-msvc",
-  "url": "https://github.com/megumiss/NIKKEAutoScript/releases/download/v1.1.0/nkas-win-x64.exe",
-  "sha256": "308a7835e6a385cde43130501315b88add50b0f6269b14b221c1aa4d1cefe453",
-  "size": 6292480
-}

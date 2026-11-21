@@ -1,0 +1,31 @@
+{
+  "permissions" : null,
+  "runInApp" : false,
+  "entry" : "index.tsx",
+  "iconImage" : null,
+  "intentInputTypes" : [
+
+  ],
+  "author" : {
+    "name" : "bmqy",
+    "email" : "notice@bmqy.net",
+    "homepage" : "https:\/\/bmqy.net"
+  },
+  "remoteResource" : null,
+  "icon" : "car.fill",
+  "localizedNames" : {
+    "zh" : "",
+    "en" : ""
+  },
+  "description" : "根据当前位置自动查询所在城市机动车尾号限行信息",
+  "localizedDescriptions" : {
+    "zh" : "根据当前位置自动查询所在城市机动车尾号限行信息",
+    "en" : "Automatically checks traffic plate-number restrictions for your current city."
+  },
+  "version" : "1.0.0",
+  "color" : "rgba(243, 159, 68,1)",
+  "contributors" : [
+
+  ],
+  "name" : "限号"
+}

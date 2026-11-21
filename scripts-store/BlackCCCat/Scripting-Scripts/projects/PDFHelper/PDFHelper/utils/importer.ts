@@ -1,0 +1,531 @@
+import { Path } from "scripting";
+import type {
+  ImagePageItem,
+  ImportResult,
+  PdfWholeItem,
+  SourceItem,
+  WorkspaceId,
+} from "../types";
+import { createId } from "./id";
+import { buildPdfPagePreview } from "./preview";
+
+/** When per-page count exceeds this threshold, skip preview generation */
+const PREVIEW_THRESHOLD = 30;
+const LAST_IMPORT_DIRECTORY_KEY = "PDFHelper.lastImportDirectory";
+const LAST_FILE_PICKER_WORKSPACE_KEY = "PDFHelper.lastFilePickerWorkspace";
+
+const importInitialDirectoryCache: Partial<Record<WorkspaceId, string>> = {};
+
+function isPdfPath(path: string): boolean {
+  return Path.extname(path).toLowerCase() === ".pdf";
+}
+
+function createImageSource(
+  image: UIImage,
+  name: string,
+  sourcePath?: string,
+): SourceItem {
+  const sourceId = createId("source");
+  const page: ImagePageItem = {
+    id: createId("page"),
+    kind: "image",
+    title: "图片",
+    sourceName: name,
+    selected: false,
+    image,
+  };
+  return {
+    id: sourceId,
+    kind: "image",
+    name,
+    originalPath: sourcePath,
+    pages: [page],
+  };
+}
+
+function getImportDirectoryKey(workspaceId: WorkspaceId): string {
+  return workspaceId === "primary"
+    ? `${LAST_IMPORT_DIRECTORY_KEY}.primary`
+    : `${LAST_IMPORT_DIRECTORY_KEY}.secondary`;
+}
+
+export function getImportInitialDirectory(workspaceId: WorkspaceId = "primary"): string | undefined {
+  if (importInitialDirectoryCache[workspaceId]) return importInitialDirectoryCache[workspaceId];
+  const directory =
+    Storage.get<string>(getImportDirectoryKey(workspaceId)) ||
+    (workspaceId === "primary" ? Storage.get<string>(LAST_IMPORT_DIRECTORY_KEY) : undefined);
+  return directory || undefined;
+}
+
+function setImportInitialDirectory(directory: string, workspaceId: WorkspaceId = "primary") {
+  importInitialDirectoryCache[workspaceId] = directory;
+  Storage.set(getImportDirectoryKey(workspaceId), directory);
+  Storage.set(LAST_FILE_PICKER_WORKSPACE_KEY, workspaceId);
+  if (workspaceId === "primary") {
+    Storage.set(LAST_IMPORT_DIRECTORY_KEY, directory);
+  }
+}
+
+export function getLastFilePickerWorkspace(): WorkspaceId {
+  return Storage.get<string>(LAST_FILE_PICKER_WORKSPACE_KEY) === "secondary"
+    ? "secondary"
+    : "primary";
+}
+
+export async function chooseImportInitialDirectory(workspaceId: WorkspaceId = "primary"): Promise<string | null> {
+  const directory = await DocumentPicker.pickDirectory(
+    getImportInitialDirectory(workspaceId),
+  );
+  if (!directory) return null;
+  setImportInitialDirectory(directory, workspaceId);
+  return directory;
+}
+
+export type PdfImportMode = "whole" | "per-page";
+
+export type FileImportCandidate = {
+  path: string;
+  name: string;
+  kind: "image" | "pdf";
+  pageCount: number;
+  notice?: string;
+};
+
+export type FileImportChoice = {
+  workspaceId: WorkspaceId;
+  mode: PdfImportMode;
+  pageRange: string;
+};
+
+type PdfImportOptions = {
+  mode: PdfImportMode;
+  startPage: number;
+  endPage: number;
+};
+
+export function parsePageRange(
+  input: string,
+  pageCount: number,
+): { start: number; end: number } | null {
+  const trimmed = input.trim();
+  const match = trimmed.match(/^(\d+)\s*[-–—~～到]\s*(\d+)$/);
+  if (match) {
+    let start = parseInt(match[1], 10);
+    let end = parseInt(match[2], 10);
+    if (isNaN(start) || isNaN(end)) return null;
+    if (start > end) [start, end] = [end, start];
+    start = Math.max(1, start);
+    end = Math.min(pageCount, end);
+    if (start > pageCount) return null;
+    return { start, end };
+  }
+
+  const single = parseInt(trimmed, 10);
+  if (!isNaN(single) && single >= 1 && single <= pageCount) {
+    return { start: single, end: single };
+  }
+
+  return null;
+}
+
+async function pickFilePaths(workspaceId: WorkspaceId): Promise<string[]> {
+  const initialDirectory = getImportInitialDirectory(workspaceId);
+  const pickerOptions: PickFilesOption = {
+    types: ["public.image", "com.adobe.pdf"],
+    allowsMultipleSelection: true,
+  };
+  if (initialDirectory) pickerOptions.initialDirectory = initialDirectory;
+
+  const filePaths = await DocumentPicker.pickFiles(pickerOptions);
+  if (!filePaths || filePaths.length === 0) return [];
+
+  const firstDirectory = Path.dirname(filePaths[0]);
+  if (firstDirectory) setImportInitialDirectory(firstDirectory, workspaceId);
+  return filePaths;
+}
+
+export async function pickFileImportCandidates(
+  workspaceId: WorkspaceId = getLastFilePickerWorkspace(),
+): Promise<FileImportCandidate[]> {
+  const filePaths = await pickFilePaths(workspaceId);
+  return filePaths.map((path) => {
+    const name = Path.basename(path);
+    if (!isPdfPath(path)) {
+      return { path, name, kind: "image" as const, pageCount: 1 };
+    }
+
+    const document = PDFDocument.fromFilePath(path);
+    if (!document) {
+      return { path, name, kind: "pdf" as const, pageCount: 0, notice: `${name} 不是可读取的 PDF 文件` };
+    }
+    if (document.isLocked) {
+      return { path, name, kind: "pdf" as const, pageCount: document.pageCount, notice: `${name} 已加密，暂不支持导入` };
+    }
+    if (document.pageCount === 0) {
+      return { path, name, kind: "pdf" as const, pageCount: 0, notice: `${name} 没有可读取页面` };
+    }
+    return { path, name, kind: "pdf" as const, pageCount: document.pageCount };
+  });
+}
+
+async function askPdfImportOptions(
+  fileName: string,
+  pageCount: number,
+): Promise<PdfImportOptions | null> {
+  if (pageCount <= 1) {
+    return { mode: "per-page", startPage: 1, endPage: 1 };
+  }
+
+  const usePerPage = await Dialog.confirm({
+    title: `${fileName}（共 ${pageCount} 页）`,
+    message:
+      "「按页选择」将按页导入供您逐页勾选。\n「整体导入」将作为一个整体项目导入，合并时包含全部页面。",
+    confirmLabel: "按页选择",
+    cancelLabel: "整体导入",
+  });
+
+  if (!usePerPage) {
+    return { mode: "whole", startPage: 1, endPage: pageCount };
+  }
+
+  const defaultRange = `1-${pageCount}`;
+
+  return askPdfPageRange(fileName, pageCount, defaultRange);
+}
+
+async function askPdfPageRange(
+  fileName: string,
+  pageCount: number,
+  defaultRange = `1-${pageCount}`,
+  progressLabel?: string,
+): Promise<PdfImportOptions | null> {
+  const rangeInput = await Dialog.prompt({
+    title: progressLabel ? `${fileName} ${progressLabel}` : fileName,
+    message: `共 ${pageCount} 页，无页数上限。\n请输入导入范围，例如 "${defaultRange}" 或 "5-20"`,
+    placeholder: defaultRange,
+    defaultValue: defaultRange,
+  });
+
+  if (rangeInput == null) {
+    return null;
+  }
+
+  const parsed = parsePageRange(rangeInput, pageCount);
+  if (parsed) {
+    return { mode: "per-page", startPage: parsed.start, endPage: parsed.end };
+  }
+
+  return { mode: "per-page", startPage: 1, endPage: pageCount };
+}
+
+async function createPdfSourcePerPage(
+  path: string,
+  startPage: number,
+  endPage: number,
+): Promise<{ source: SourceItem | null; notice?: string }> {
+  const fileName = Path.basename(path);
+  const document = PDFDocument.fromFilePath(path);
+  if (!document) {
+    return { source: null, notice: `${fileName} 不是可读取的 PDF 文件` };
+  }
+  if (document.isLocked) {
+    return { source: null, notice: `${fileName} 已加密，暂不支持导入` };
+  }
+
+  const sourceId = createId("source");
+  const pages: SourceItem["pages"] = [];
+
+  const start0 = startPage - 1;
+  const end0 = Math.min(endPage - 1, document.pageCount - 1);
+  const totalPages = end0 - start0 + 1;
+  const skipPreview = totalPages > PREVIEW_THRESHOLD;
+
+  for (let idx = start0; idx <= end0; idx += 1) {
+    const page = document.pageAt(idx);
+    if (!page) continue;
+
+    let previewImage: UIImage | null = null;
+    let previewFilePath: string | null = null;
+
+    if (!skipPreview) {
+      try {
+        const preview = await buildPdfPagePreview(page, document);
+        previewImage = preview.previewImage;
+        previewFilePath = preview.previewFilePath;
+      } catch {
+      }
+    }
+
+    pages.push({
+      id: createId("page"),
+      kind: "pdf" as const,
+      title: `第 ${idx + 1} 页`,
+      sourceName: fileName,
+      selected: false,
+      pdfPath: path,
+      pageIndex: idx,
+      previewImage,
+      previewFilePath,
+    });
+  }
+
+  if (pages.length === 0) {
+    return { source: null, notice: `${fileName} 没有可读取页面` };
+  }
+
+  const rangeLabel =
+    startPage === 1 && endPage >= document.pageCount
+      ? ""
+      : `（第 ${startPage}-${Math.min(endPage, document.pageCount)} 页）`;
+
+  return {
+    source: {
+      id: sourceId,
+      kind: "pdf",
+      name: `${fileName}${rangeLabel}`,
+      originalPath: path,
+      pages,
+    },
+  };
+}
+
+async function createPdfSourceWhole(
+  path: string,
+): Promise<{ source: SourceItem | null; notice?: string }> {
+  const fileName = Path.basename(path);
+  const document = PDFDocument.fromFilePath(path);
+  if (!document) {
+    return { source: null, notice: `${fileName} 不是可读取的 PDF 文件` };
+  }
+  if (document.isLocked) {
+    return { source: null, notice: `${fileName} 已加密，暂不支持导入` };
+  }
+
+  if (document.pageCount === 0) {
+    return { source: null, notice: `${fileName} 没有可读取页面` };
+  }
+
+  const sourceId = createId("source");
+
+  // Whole mode: generate preview for first page only
+  let previewImage: UIImage | null = null;
+  let previewFilePath: string | null = null;
+  const firstPage = document.pageAt(0);
+  if (firstPage) {
+    try {
+      const preview = await buildPdfPagePreview(firstPage, document);
+      previewImage = preview.previewImage;
+      previewFilePath = preview.previewFilePath;
+    } catch {
+    }
+  }
+
+  const wholePage: PdfWholeItem = {
+    id: createId("page"),
+    kind: "pdf-whole",
+    title: `整体（共 ${document.pageCount} 页）`,
+    sourceName: fileName,
+    selected: false,
+    pdfPath: path,
+    pageCount: document.pageCount,
+    previewImage,
+    previewFilePath,
+  };
+
+  return {
+    source: {
+      id: sourceId,
+      kind: "pdf",
+      name: fileName,
+      originalPath: path,
+      pages: [wholePage],
+    },
+  };
+}
+
+export async function pickSourcesFromFiles(workspaceId: WorkspaceId = "primary"): Promise<ImportResult> {
+  const filePaths = await pickFilePaths(workspaceId);
+
+  if (filePaths.length === 0) {
+    return { sources: [], notices: [] };
+  }
+
+  const pdfPaths = filePaths.filter((p: string) => isPdfPath(p));
+  const nonPdfPaths = filePaths.filter((p: string) => !isPdfPath(p));
+
+  const pdfOptionsByPath = new Map<string, PdfImportOptions>();
+  if (pdfPaths.length > 0) {
+    const firstPdf = PDFDocument.fromFilePath(pdfPaths[0]);
+    const firstPageCount = firstPdf?.pageCount ?? 0;
+
+    if (pdfPaths.length === 1) {
+      const pdfOptions = await askPdfImportOptions(
+        Path.basename(pdfPaths[0]),
+        firstPageCount,
+      );
+      if (pdfOptions == null) {
+        return { sources: [], notices: [] };
+      }
+      pdfOptionsByPath.set(pdfPaths[0], pdfOptions);
+    } else {
+      const usePerPage = await Dialog.confirm({
+        title: `导入 ${pdfPaths.length} 个 PDF 文件`,
+        message:
+          "「按页选择」将按页导入供逐页勾选；页数较多时会自动减少缩略图生成以保持流畅。\n「整体导入」将每个文件作为一个整体项目导入。",
+        confirmLabel: "按页选择",
+        cancelLabel: "整体导入",
+      });
+
+      if (usePerPage) {
+        for (let idx = 0; idx < pdfPaths.length; idx += 1) {
+          const filePath = pdfPaths[idx];
+          const document = PDFDocument.fromFilePath(filePath);
+          const pageCount = document?.pageCount ?? 0;
+          if (!document || document.isLocked || pageCount <= 0) {
+            pdfOptionsByPath.set(filePath, {
+              mode: "per-page",
+              startPage: 1,
+              endPage: 99999,
+            });
+            continue;
+          }
+          const defaultRange = `1-${pageCount}`;
+          const pdfOptions = await askPdfPageRange(
+            Path.basename(filePath),
+            pageCount,
+            defaultRange,
+            `（${idx + 1}/${pdfPaths.length}）`,
+          );
+
+          if (pdfOptions == null) {
+            return { sources: [], notices: [] };
+          }
+          pdfOptionsByPath.set(filePath, pdfOptions);
+        }
+      } else {
+        for (const filePath of pdfPaths) {
+          pdfOptionsByPath.set(filePath, {
+            mode: "whole",
+            startPage: 1,
+            endPage: 99999,
+          });
+        }
+      }
+    }
+  }
+
+  const sources: SourceItem[] = [];
+  const notices: string[] = [];
+
+  for (const filePath of nonPdfPaths) {
+    const fileName = Path.basename(filePath);
+    const image = UIImage.fromFile(filePath);
+    if (image) {
+      sources.push(createImageSource(image, fileName, filePath));
+      continue;
+    }
+
+    const maybePdf = await createPdfSourceWhole(filePath);
+    if (maybePdf.source) {
+      sources.push(maybePdf.source);
+    } else {
+      notices.push(maybePdf.notice ?? `${fileName} 格式不支持`);
+    }
+  }
+
+  for (const filePath of pdfPaths) {
+    const pdfOptions = pdfOptionsByPath.get(filePath);
+    if (!pdfOptions) continue;
+
+    if (pdfOptions.mode === "whole") {
+      const { source, notice } = await createPdfSourceWhole(filePath);
+      if (source) sources.push(source);
+      if (notice) notices.push(notice);
+    } else {
+      const { source, notice } = await createPdfSourcePerPage(
+        filePath,
+        pdfOptions.startPage,
+        pdfOptions.endPage,
+      );
+      if (source) sources.push(source);
+      if (notice) notices.push(notice);
+    }
+  }
+
+  return { sources, notices };
+}
+
+export async function importFileCandidates(
+  candidates: FileImportCandidate[],
+  choices: FileImportChoice[],
+): Promise<{ sources: SourceItem[]; assignments: WorkspaceId[]; notices: string[] }> {
+  const sources: SourceItem[] = [];
+  const assignments: WorkspaceId[] = [];
+  const notices: string[] = [];
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    const candidate = candidates[index];
+    const choice = choices[index];
+    if (!choice) continue;
+    if (candidate.notice) {
+      notices.push(candidate.notice);
+      continue;
+    }
+
+    if (candidate.kind === "image") {
+      const image = UIImage.fromFile(candidate.path);
+      if (image) {
+        sources.push(createImageSource(image, candidate.name, candidate.path));
+        assignments.push(choice.workspaceId);
+      } else {
+        notices.push(`${candidate.name} 格式不支持`);
+      }
+      continue;
+    }
+
+    const range = choice.mode === "per-page"
+      ? parsePageRange(choice.pageRange, candidate.pageCount)
+      : { start: 1, end: candidate.pageCount };
+    if (!range) {
+      notices.push(`${candidate.name} 的页码范围无效`);
+      continue;
+    }
+
+    const result = choice.mode === "whole"
+      ? await createPdfSourceWhole(candidate.path)
+      : await createPdfSourcePerPage(candidate.path, range.start, range.end);
+    if (result.source) {
+      sources.push(result.source);
+      assignments.push(choice.workspaceId);
+    }
+    if (result.notice) notices.push(result.notice);
+  }
+
+  return { sources, assignments, notices };
+}
+
+export async function pickSourcesFromPhotos(): Promise<ImportResult> {
+  const picked = await Photos.pick({
+    limit: 50,
+    filter: PHPickerFilter.images(),
+  });
+
+  if (!picked || picked.length === 0) {
+    return { sources: [], notices: [] };
+  }
+
+  const sources: SourceItem[] = [];
+  const notices: string[] = [];
+
+  for (let idx = 0; idx < picked.length; idx += 1) {
+    const item = picked[idx];
+    const image = await item.uiImage();
+    if (!image) {
+      notices.push(`第 ${idx + 1} 张照片读取失败`);
+      continue;
+    }
+    sources.push(createImageSource(image, `照片 ${idx + 1}`));
+  }
+
+  return { sources, notices };
+}

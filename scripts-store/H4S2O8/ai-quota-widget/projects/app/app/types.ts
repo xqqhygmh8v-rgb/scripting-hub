@@ -1,0 +1,207 @@
+/**
+ * 领域类型。整个项目只在这里定义数据形状，其他文件只消费。
+ *
+ * 三层：
+ *   Provider   —— 「怎么向某个服务商拿额度」，纯函数，不碰 UI、不碰存储
+ *   Account    —— 用户配置的一个凭据实例（同一 Provider 可以有多个账户）
+ *   Snapshot   —— 最近一次抓取结果的缓存，主 App 和小组件通过它共享数据
+ */
+
+/**
+ * 指标类型决定 value 的含义与配色：
+ *   percent —— value 是「已用百分比」0–100（Claude 5 小时窗口这种）
+ *   amount  —— value 是「剩余金额」，unit 是货币符号；可选 max 表示总额
+ *   count   —— value 是「剩余次数/积分」，可选 max
+ *   spent   —— value 是「已消费金额」，没有上限，只做展示不判色
+ */
+export type MetricKind = "percent" | "amount" | "count" | "spent"
+
+export interface Metric {
+  /** 账户内唯一，如 "5h" / "7d" / "balance" */
+  id: string
+  /** 给人看的短标签，如 "5 小时" / "余额" */
+  label: string
+  kind: MetricKind
+  value: number
+  max?: number
+  unit?: string
+  /** 重置时间，epoch 毫秒 */
+  resetAt?: number
+  /** 一行补充说明，大尺寸小组件和主 App 会显示 */
+  hint?: string
+}
+
+export interface ProviderResult {
+  /** 第一项是「主指标」：小尺寸小组件只显示它 */
+  metrics: Metric[]
+  /** 套餐名，如 "Max" / "plus" */
+  plan?: string
+  /** 服务商返回的备注（如「账户不可用」） */
+  note?: string
+}
+
+export interface FieldSpec {
+  key: string
+  label: string
+  /** 密码框 */
+  secret?: boolean
+  placeholder?: string
+  required?: boolean
+  /** 显示在输入框下面的一句话说明 */
+  help?: string
+  /** 多行文本 */
+  multiline?: boolean
+}
+
+export interface FetchContext {
+  /** 单次请求超时（秒） */
+  timeoutSec: number
+  /**
+   * Provider 需要持久化新凭据时调用（例如 OAuth 刷新后拿到了新 token）。
+   * 调用方负责把补丁合并进账户配置并保存。
+   */
+  updateConfig: (patch: Record<string, string>) => void
+  /**
+   * 记下一段原始响应，供主 App 的「原始响应」诊断页显示。
+   *
+   * 存在的理由：有几个服务商的接口没有公开文档，字段名是推断出来的。推断错了
+   * 的症状是「取不到值」，而不是报错——在这个平台上，看不见的错误最贵。所以
+   * 凡是靠推断解析的 provider 都要把原文留下来，让人能直接看到它到底返回了什么。
+   */
+  captureRaw: (text: string) => void
+  /**
+   * 现在允不允许拿 refresh token 去换新的 access token。
+   *
+   * 为 false 说明上一次换失败了，还在退避窗口里。**必须尊重它**：
+   * OAuth 的 token 端点会限流，一个坏掉的 refresh token 配上每次渲染都重试，
+   * 很快就会把整个账户打成 429——那时连本来能成功的请求也一起挂掉。
+   */
+  allowTokenRefresh: boolean
+  /** 换 token 失败时调一下，调用方会记下来并退避一段时间。 */
+  onTokenRefreshFailed: () => void
+  /**
+   * 撞上 429 时调一下，把服务器给的 retry-after（秒）带上。
+   *
+   * **这条是必须尊重的。** 鉴权端点对失败请求的容忍度极低——实测
+   * `api.anthropic.com/api/oauth/usage` 连续 3 次鉴权失败之后第 4 次就 429，
+   * 而且 `retry-after` 给的是将近一小时。限流期间继续请求不但没用，还可能
+   * 把限流窗口顶得更长，甚至波及同一账号在别处的正常使用。
+   */
+  onRateLimited: (retryAfterSec?: number) => void
+}
+
+export interface Provider {
+  /** 稳定 id，写进配置文件；改了会让已有账户失联 */
+  id: string
+  name: string
+  /** SF Symbol */
+  icon: string
+  /** 品牌色，#RRGGBB */
+  color: string
+  /** 怎么拿到凭据、接口是否官方，写在这里，添加页会显示 */
+  help: string
+  fields: FieldSpec[]
+  fetch(config: Record<string, string>, ctx: FetchContext): Promise<ProviderResult>
+}
+
+export interface Account {
+  id: string
+  providerId: string
+  label: string
+  enabled: boolean
+  config: Record<string, string>
+  /**
+   * amount/count 类指标低于这个值就标红。没有上限的余额只能靠它判色；
+   * 不填就永远绿色。
+   */
+  warnBelow?: number
+}
+
+export interface Settings {
+  /** 小组件多久自行刷新一次；也是「数据算过期」的阈值 */
+  refreshMinutes: number
+  /**
+   * 小组件渲染时发现数据过期，是否自己去抓。
+   *
+   * 一度以为小组件不能联网（因为异步会导致渲染失败），后来拿到一份能正常工作的
+   * 样本，它在 async 里 await 完网络请求才 present——所以这条能力一直都在，
+   * 是我归因错了。
+   */
+  widgetSelfRefresh: boolean
+  /**
+   * 打开 App 时，数据过期就自动抓一遍。
+   *
+   * 和小组件自刷新是互补的：iOS 给小组件的刷新配额有限且不保证，
+   * 打开 App 是最可靠的那个时机。
+   */
+  autoRefreshOnOpen: boolean
+  /**
+   * 点小组件干什么。
+   *
+   * `refresh`（默认）—— 整块小组件包在一个 Button 里，点哪儿都触发 AppIntent
+   *                      在后台抓一遍，不切 App。
+   * `open`          —— 不包裹，走系统默认（打开脚本）。
+   *
+   * 关键细节：Button 的内容必须走 **children**（`<Button ...>{内容}</Button>`），
+   * 不能用 `label={...}` 属性——后者实测一片漆黑。
+   */
+  widgetTap: "refresh" | "open"
+  /** 单个账户的请求超时（秒） */
+  timeoutSec: number
+  /**
+   * 面板显示「还剩多少」还是「用了多少」。
+   *
+   * 存在的理由：服务商给的额度一半是增长式（已用 42%）一半是扣除式（余额 ¥12.5），
+   * 混在一屏里没法扫。这个开关把两种统一成同一个口径，默认「剩余」——
+   * 大数字一律代表宽裕。
+   */
+  displayMode: "remaining" | "used"
+}
+
+export interface AppConfig {
+  version: 1
+  accounts: Account[]
+  settings: Settings
+}
+
+export interface AccountState {
+  ok: boolean
+  /** 最近一次成功抓取的时间 */
+  fetchedAt: number
+  /** 最近一次成功的结果；失败时保留上一次的，让小组件继续有数可显 */
+  result?: ProviderResult
+  error?: string
+  errorAt?: number
+  /** 最近一次抓取的原始响应（截断），只有部分 provider 会记 */
+  raw?: string
+  /**
+   * 换 token 失败后的退避截止时间。
+   *
+   * 在此之前不再尝试刷新，直接报「凭据已过期」。这是为了不把 OAuth 的 token
+   * 端点打成 429——它一旦限流，连正常的请求也会跟着失败，症状会变得完全看不懂。
+   */
+  refreshBlockedUntil?: number
+  /**
+   * 被限流后，在此时间之前完全不再请求这个账户。
+   *
+   * 和 refreshBlockedUntil 不同：那个只挡「换 token」，这个挡**整个账户的抓取**。
+   * 429 意味着服务器已经明确要求你停下来，继续打只会更糟。
+   */
+  retryAfter?: number
+}
+
+export interface Snapshot {
+  updatedAt: number
+  states: Record<string, AccountState>
+}
+
+export const DEFAULT_SETTINGS: Settings = {
+  refreshMinutes: 15,
+  widgetSelfRefresh: true,
+  autoRefreshOnOpen: true,
+  widgetTap: "refresh",
+  timeoutSec: 15,
+  displayMode: "remaining",
+}
+
+export const EMPTY_SNAPSHOT: Snapshot = { updatedAt: 0, states: {} }

@@ -1,0 +1,1198 @@
+// File: utils/update_tasks.ts
+import { Path } from "scripting"
+import type { AppConfig } from "./config"
+import { BUILTIN_SCRIPTING_BOOKMARK, getExcludePatterns } from "./config"
+import { Runtime } from "./runtime"
+import { sleep, FM, removePathLoose, tempDownloadPath, pickGithubSha256FromDigest, globToRegExp, pickExpectedSize, getFileSize } from "./common"
+import { downloadWithProgress } from "./downloader"
+import { ensureDir, removeDirSafe, unzipToDirWithOverwrite, mergeSubdirsByName } from "./fs"
+import { deployHamster } from "./deploy"
+import { assertInstallPathAccess, detectRimeDir, getScriptingRimePaths } from "./hamster"
+
+import { loadMetaAsync, setDictMeta, setModelMeta, setSchemeMeta } from "./meta"
+import { removeExtractedFiles, setExtractedFiles } from "./extracted_cache"
+import { isModelUpdateAvailable } from "./model_mark"
+
+const OWNER = "amzxyz"
+const GH_REPO = "rime_wanxiang"
+const CNB_REPO = "rime-wanxiang"
+
+const DICT_TAG = "dict-nightly"
+const CNB_PREVIEW_TAG = "v1.0.0"
+const CNB_MODEL_TAG = "model"
+const MODEL_REPO = "RIME-LMDG"
+const MODEL_TAG = "LTS"
+const MODEL_FILE = "wanxiang-lts-zh-hans.gram"
+const CNB_SCHEME_TITLE = "\u4e07\u8c61\u62fc\u97f3\u8f93\u5165\u65b9\u6848"
+const HTTP_TIMEOUT_MS = 30 * 1000
+
+export type RemoteAsset = {
+  name: string
+  url: string
+  tag?: string
+  body?: string
+  updatedAt?: string
+  publishedAt?: string
+  remoteIdOrSha?: string
+  size?: number
+}
+
+export type AllUpdateResult = {
+  scheme?: RemoteAsset
+  dict?: RemoteAsset
+  model?: RemoteAsset
+}
+
+export type AutoUpdateRunResult = {
+  remote: AllUpdateResult
+  updated: {
+    scheme: boolean
+    dict: boolean
+    model: boolean
+  }
+  failed: {
+    scheme: boolean
+    dict: boolean
+    model: boolean
+  }
+  didUpdate: boolean
+  didDeploy: boolean
+}
+
+export type UpdateDecision = {
+  scheme: boolean
+  dict: boolean
+  model: boolean
+}
+
+const SCRIPTING_MANUAL_DEPLOY_MESSAGE = "当前不支持自动部署，请到工具(Tools)-Rime输入法(Rime Input Method)手动部署"
+
+function normalizeMark(v?: string): string {
+  return String(v ?? "").trim().toLowerCase()
+}
+
+function schemeRemoteMarkForConfig(cfg: AppConfig, asset?: RemoteAsset): string {
+  return normalizeMark(
+    cfg.usePrereleaseScheme
+      ? (asset?.remoteIdOrSha ?? asset?.tag ?? asset?.name)
+      : (asset?.tag ?? asset?.name)
+  )
+}
+
+function ensureRemoteMark(asset?: RemoteAsset, kind?: "dict" | "model"): string | undefined {
+  if (!asset) return undefined
+  const direct = String(asset.remoteIdOrSha ?? "").trim()
+  if (direct) return direct
+
+  const name = String(asset.name ?? "").trim()
+  const size = typeof asset.size === "number" && Number.isFinite(asset.size) && asset.size > 0 ? asset.size : undefined
+  if (kind && name && size) return `${kind}:${name}:${size}`
+
+  const updatedAt = String(asset.updatedAt ?? "").trim()
+  if (kind && name && updatedAt) return `${kind}:${name}:${updatedAt}`
+
+  const tag = String(asset.tag ?? "").trim()
+  if (kind && name && tag) return `${kind}:${name}:${tag}`
+
+  const url = String(asset.url ?? "").trim()
+  if (kind && name && url) return `${kind}:${name}:${url}`
+
+  return undefined
+}
+
+function emitProgress(
+  onProgress: ((p: { percent?: number; received: number; total?: number; speedBps?: number }) => void) | undefined,
+  fraction: number
+) {
+  const value = typeof fraction === "number" && Number.isFinite(fraction)
+    ? Math.max(0, Math.min(1, fraction))
+    : 0
+  onProgress?.({ percent: value, received: value > 0 ? 1 : 0, total: 1 })
+}
+
+async function httpJson(url: string, init?: any) {
+  const fetchFn = Runtime.fetch
+  if (!fetchFn) throw new Error("\u8fd0\u884c\u65f6\u6ca1\u6709 fetch")
+  const AbortControllerCtor = (globalThis as any).AbortController
+  const controller = typeof AbortControllerCtor === "function" ? new AbortControllerCtor() : null
+  const timer = setTimeout(() => {
+    try {
+      controller?.abort()
+    } catch { }
+  }, HTTP_TIMEOUT_MS)
+  let res: any
+  try {
+    res = await fetchFn(url, controller ? { ...(init ?? {}), signal: controller.signal } : init)
+  } catch (error: any) {
+    const raw = String(error?.message ?? error ?? "")
+    if (raw.includes("AbortError") || raw.includes("aborted")) {
+      throw new Error(`请求超时：${Math.round(HTTP_TIMEOUT_MS / 1000)} 秒内未完成`)
+    }
+    throw new Error(`网络请求失败：${raw || "未知错误"}`)
+  } finally {
+    clearTimeout(timer)
+  }
+  if (!res.ok) throw new Error(`\u8bf7\u6c42\u5931\u8d25\uff1a${res.status} ${res.statusText}`)
+  const json = await res.json()
+  return { json, headers: res.headers }
+}
+
+async function isDownloadUrlUsable(url: string, expectedSize?: number): Promise<boolean> {
+  const fetchFn = Runtime.fetch
+  if (!fetchFn) return true
+  try {
+    const res: any = await fetchFn(url, { method: "HEAD" })
+    if (!res?.ok) return false
+    const lenRaw = res?.headers?.get?.("content-length") ?? res?.headers?.get?.("Content-Length")
+    const len = lenRaw != null ? Number(lenRaw) : undefined
+    if (
+      typeof expectedSize === "number" &&
+      Number.isFinite(expectedSize) &&
+      expectedSize > 0 &&
+      typeof len === "number" &&
+      Number.isFinite(len) &&
+      len > 0
+    ) {
+      return Math.abs(len - expectedSize) <= expectedSize * 0.05
+    }
+    return true
+  } catch {
+    // HEAD 在部分环境可能不可用；下载阶段仍会做文件大小校验。
+    return true
+  }
+}
+
+async function usableCnbDownloadUrl(urls: Array<string | undefined>, expectedSize?: number): Promise<string | undefined> {
+  const seen = new Set<string>()
+  for (const raw of urls) {
+    const url = String(raw ?? "").trim()
+    if (!url || seen.has(url)) continue
+    seen.add(url)
+    if (await isDownloadUrlUsable(url, expectedSize)) return url
+  }
+  return undefined
+}
+
+async function fetchLatestAssetFromGithub(args: {
+  owner: string
+  repo: string
+  tag?: string
+  assetNameExact?: string
+  assetNameGlob?: string
+  releaseTagPattern?: RegExp
+  token?: string
+}): Promise<RemoteAsset | undefined> {
+  const headers: Record<string, string> = {
+    "User-Agent": "scripting",
+    "Accept": "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+  }
+  if (args.token) headers["Authorization"] = `Bearer ${args.token}`
+
+  const url = args.tag
+    ? `https://api.github.com/repos/${args.owner}/${args.repo}/releases/tags/${args.tag}`
+    : `https://api.github.com/repos/${args.owner}/${args.repo}/releases`
+
+  const { json } = await httpJson(url, { headers })
+  const releases = Array.isArray(json) ? json : [json]
+  const re = args.assetNameGlob ? globToRegExp(args.assetNameGlob) : undefined
+
+  for (const rel of releases) {
+    const releaseTag = String(rel?.tag_name ?? "").trim()
+    if (args.releaseTagPattern && !args.releaseTagPattern.test(releaseTag)) continue
+    const assets = rel?.assets ?? []
+    for (const a of assets) {
+      const name = a?.name
+      if (!name) continue
+      if (args.assetNameExact && name !== args.assetNameExact) continue
+      if (re && !re.test(name)) continue
+      return {
+        name,
+        url: a.browser_download_url,
+        updatedAt: a.updated_at,
+        publishedAt: rel.published_at ?? rel.created_at ?? rel.updated_at,
+        tag: rel.tag_name,
+        body: rel.body,
+        remoteIdOrSha: pickGithubSha256FromDigest(a?.digest),
+        size: typeof a?.size === "number" ? a.size : undefined,
+      }
+    }
+  }
+  return undefined
+}
+
+async function fetchLatestAssetFromCnb(args: {
+  owner: string
+  repo: string
+  assetNameExact?: string
+  assetNameGlob?: string
+  traverseAllPages?: boolean
+  releaseTagExact?: string
+  releaseTitleIncludes?: string[]
+}): Promise<RemoteAsset | undefined> {
+  const headers: Record<string, string> = {
+    "User-Agent": "scripting",
+    "Accept": "application/vnd.cnb.web+json",
+    "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+  }
+  const baseUrl = `https://cnb.cool/${args.owner}/${args.repo}/-/releases`
+
+  const first = await httpJson(baseUrl, { headers })
+
+  const toReleaseList = (json: any): any[] => {
+    if (Array.isArray(json)) return json
+    if (Array.isArray(json?.releases)) return json.releases
+    if (Array.isArray(json?.data?.releases)) return json.data.releases
+    return []
+  }
+
+  let list: any[] = toReleaseList(first.json)
+
+  const total = first.headers.get("X-Cnb-Total")
+  const pageSize = first.headers.get("X-Cnb-Page-Size")
+  const totalCount = total ? Math.max(0, parseInt(total, 10)) : 0
+  const perPage = pageSize ? Math.max(1, parseInt(pageSize, 10)) : 1
+  const lastPage = totalCount && perPage ? Math.max(1, Math.ceil(totalCount / perPage)) : 1
+
+  if (args.traverseAllPages && lastPage > 1) {
+    for (let page = 2; page <= lastPage; page++) {
+      const next = await httpJson(`${baseUrl}?page=${page}`, { headers })
+      list = list.concat(toReleaseList(next.json))
+    }
+  }
+
+  const re = args.assetNameGlob ? globToRegExp(args.assetNameGlob) : undefined
+  const titleKeywords = (args.releaseTitleIncludes ?? []).map((s) => s.toLowerCase()).filter(Boolean)
+  const exactTag = String(args.releaseTagExact ?? "").trim().toLowerCase()
+  const normalizedTag = (rel: any) =>
+    String(rel?.tag_ref ?? rel?.tag_name ?? rel?.tagName ?? "").split("/").pop()?.trim().toLowerCase() ?? ""
+  const matchTitle = (rel: any) => {
+    if (!titleKeywords.length) return true
+    const title = String(rel?.title ?? rel?.name ?? "").toLowerCase()
+    return titleKeywords.some((k) => title.includes(k))
+  }
+  const matchTag = (rel: any) => !exactTag || normalizedTag(rel) === exactTag
+  const preferred = list.filter((rel) => matchTag(rel) && matchTitle(rel))
+  const searchList = preferred.length ? preferred : list
+
+  for (const rel of searchList) {
+    if (!matchTag(rel)) continue
+    const assets = rel?.assets ?? []
+    for (const a of assets) {
+      const name = a?.name
+      if (!name) continue
+      if (args.assetNameExact && name !== args.assetNameExact) continue
+      if (re && !re.test(name)) continue
+
+      const url2 = a.browser_download_url
+        ? a.browser_download_url
+        : a.path
+          ? `https://cnb.cool${a.path}`
+          : undefined
+      const size =
+        typeof a?.size === "number"
+          ? a.size
+          : typeof a?.fileSize === "number"
+            ? a.fileSize
+            : undefined
+      const usableUrl = await usableCnbDownloadUrl([url2], size)
+      if (!usableUrl) continue
+
+      return {
+        name,
+        url: usableUrl,
+        updatedAt: a.updated_at ?? a.updatedAt,
+        publishedAt: rel.published_at ?? rel.created_at ?? rel.updated_at,
+        tag: String(rel?.tag_ref ?? rel?.tag_name ?? rel?.tagName ?? "").split("/").pop() || undefined,
+        body: rel.body,
+        remoteIdOrSha: a?.id != null ? String(a.id) : undefined,
+        size,
+      }
+    }
+  }
+
+  return undefined
+}
+
+async function fetchLatestAssetFromCnbOpenApi(args: {
+  owner: string
+  repo: string
+  token?: string
+  assetNameExact?: string
+  assetNameGlob?: string
+  traverseAllPages?: boolean
+  releaseTagExact?: string
+  releaseTitleIncludes?: string[]
+}): Promise<RemoteAsset | undefined> {
+  const token = String(args.token ?? "").trim()
+  if (!token) return undefined
+
+  const headers: Record<string, string> = {
+    "User-Agent": "scripting",
+    "Accept": "application/json",
+    "Authorization": `Bearer ${token}`,
+  }
+  const repoPath = `${args.owner}/${args.repo}`
+  const baseUrl = `https://api.cnb.cool/${repoPath}/-/releases`
+  const exactTag = String(args.releaseTagExact ?? "").trim()
+  const pageSize = 10
+
+  const toReleaseList = async (): Promise<any[]> => {
+    if (exactTag) {
+      const { json } = await httpJson(`${baseUrl}/tags/${encodeURIComponent(exactTag)}`, { headers })
+      return json && typeof json === "object" && !Array.isArray(json) ? [json] : []
+    }
+
+    const releases: any[] = []
+    const maxPages = args.traverseAllPages ? 20 : 1
+    for (let page = 1; page <= maxPages; page++) {
+      const { json } = await httpJson(`${baseUrl}?page=${page}&page_size=${pageSize}`, { headers })
+      const list = Array.isArray(json) ? json : []
+      if (!list.length) break
+      releases.push(...list)
+      if (!args.traverseAllPages) break
+      if (list.length < pageSize) break
+    }
+    return releases
+  }
+
+  const list = await toReleaseList()
+  const re = args.assetNameGlob ? globToRegExp(args.assetNameGlob) : undefined
+  const titleKeywords = (args.releaseTitleIncludes ?? []).map((s) => s.toLowerCase()).filter(Boolean)
+  const normalizedTag = (rel: any) =>
+    String(rel?.tag_name ?? rel?.tag_ref ?? rel?.tagName ?? "").split("/").pop()?.trim().toLowerCase() ?? ""
+  const matchTitle = (rel: any) => {
+    if (!titleKeywords.length) return true
+    const title = String(rel?.name ?? rel?.title ?? "").toLowerCase()
+    return titleKeywords.some((k) => title.includes(k))
+  }
+  const matchTag = (rel: any) => !exactTag || normalizedTag(rel) === exactTag.toLowerCase()
+  const preferred = list.filter((rel) => matchTag(rel) && matchTitle(rel))
+  const searchList = preferred.length ? preferred : list
+
+  for (const rel of searchList) {
+    if (!matchTag(rel)) continue
+    const assets = rel?.assets ?? []
+    for (const a of assets) {
+      const name = a?.name
+      if (!name) continue
+      if (args.assetNameExact && name !== args.assetNameExact) continue
+      if (re && !re.test(name)) continue
+
+      const hash = String(a?.hash_value ?? "").trim()
+      const size =
+        typeof a?.size === "number"
+          ? a.size
+          : typeof a?.fileSize === "number"
+            ? a.fileSize
+            : undefined
+      const url = await usableCnbDownloadUrl(
+        [a.browser_download_url, a.brower_download_url, a.path ? `https://cnb.cool${a.path}` : undefined],
+        size,
+      )
+      if (!url) continue
+      return {
+        name,
+        url,
+        updatedAt: a.updated_at ?? a.updatedAt,
+        publishedAt: rel.published_at ?? rel.created_at ?? rel.updated_at,
+        tag: String(rel?.tag_name ?? rel?.tag_ref ?? rel?.tagName ?? "").split("/").pop() || undefined,
+        body: rel.body,
+        remoteIdOrSha: hash || (a?.id != null ? String(a.id) : undefined),
+        size,
+      }
+    }
+  }
+
+  return undefined
+}
+
+async function fetchLatestAssetFromCnbPreferOpenApi(args: Parameters<typeof fetchLatestAssetFromCnb>[0] & { token?: string }) {
+  if (String(args.token ?? "").trim()) {
+    try {
+      const asset = await fetchLatestAssetFromCnbOpenApi(args)
+      if (asset) return asset
+    } catch { }
+  }
+  return fetchLatestAssetFromCnb(args)
+}
+
+function dictPattern(cfg: AppConfig): string {
+  if (cfg.schemeEdition === "base") return "*base*dicts*.zip"
+  if (cfg.schemeEdition === "pure") return "pure-dicts.zip"
+  if (cfg.schemeEdition === "lite") return "lite-dicts.zip"
+  return `*${cfg.proSchemeKey}*dicts.zip`
+}
+
+function schemePattern(cfg: AppConfig): string {
+  if (cfg.schemeEdition === "base") return "*base.zip"
+  if (cfg.schemeEdition === "pure") return "rime-wanxiang-pure.zip"
+  if (cfg.schemeEdition === "lite") return "rime-wanxiang-lite.zip"
+  return `*${cfg.proSchemeKey}*fuzhu.zip`
+}
+
+async function fetchLatestDictAsset(cfg: AppConfig): Promise<RemoteAsset | undefined> {
+  if (cfg.releaseSource === "github") {
+    return fetchLatestAssetFromGithub({
+      owner: OWNER,
+      repo: GH_REPO,
+      tag: DICT_TAG,
+      assetNameGlob: dictPattern(cfg),
+      token: cfg.githubToken,
+    })
+  }
+
+  return fetchLatestAssetFromCnbPreferOpenApi({
+    owner: OWNER,
+    repo: CNB_REPO,
+    token: cfg.cnbToken,
+    assetNameGlob: dictPattern(cfg),
+    releaseTagExact: CNB_PREVIEW_TAG,
+  })
+}
+
+async function fetchModelReleaseAsset(cfg: AppConfig, fileName: string): Promise<RemoteAsset | undefined> {
+  return cfg.releaseSource === "github"
+    ? await fetchLatestAssetFromGithub({
+      owner: OWNER,
+      repo: MODEL_REPO,
+      tag: MODEL_TAG,
+      assetNameExact: fileName,
+      token: cfg.githubToken,
+    })
+    : await fetchLatestAssetFromCnbPreferOpenApi({
+      owner: OWNER,
+      repo: CNB_REPO,
+      token: cfg.cnbToken,
+      assetNameExact: fileName,
+      releaseTagExact: CNB_MODEL_TAG,
+      traverseAllPages: true,
+    })
+}
+
+async function fetchLatestSchemeAsset(cfg: AppConfig): Promise<RemoteAsset | undefined> {
+  const glob = schemePattern(cfg)
+  if (cfg.usePrereleaseScheme) {
+    if (cfg.releaseSource === "github") {
+      return fetchLatestAssetFromGithub({
+        owner: OWNER,
+        repo: GH_REPO,
+        tag: DICT_TAG,
+        assetNameGlob: glob,
+        token: cfg.githubToken,
+      })
+    }
+    return fetchLatestAssetFromCnbPreferOpenApi({
+      owner: OWNER,
+      repo: CNB_REPO,
+      token: cfg.cnbToken,
+      assetNameGlob: glob,
+      releaseTagExact: CNB_PREVIEW_TAG,
+    })
+  }
+  if (cfg.releaseSource === "github") {
+    return fetchLatestAssetFromGithub({
+      owner: OWNER,
+      repo: GH_REPO,
+      assetNameGlob: glob,
+      releaseTagPattern: /^v\d+\.\d+\.\d+$/,
+      token: cfg.githubToken,
+    })
+  }
+  return fetchLatestAssetFromCnbPreferOpenApi({
+    owner: OWNER,
+    repo: CNB_REPO,
+    token: cfg.cnbToken,
+    assetNameGlob: glob,
+    releaseTitleIncludes: [CNB_SCHEME_TITLE],
+  })
+}
+
+async function resolveRimeDir(cfg: AppConfig): Promise<string> {
+  return await assertInstallPathAccess(cfg)
+}
+
+type UpdateInstallTarget = {
+  cfg: AppConfig
+  installRoot: string
+  label?: string
+}
+
+function samePath(left: string, right: string): boolean {
+  return String(left ?? "").replace(/\/+$/, "") === String(right ?? "").replace(/\/+$/, "")
+}
+
+async function resolveUpdateTargets(cfg: AppConfig): Promise<UpdateInstallTarget[]> {
+  const primaryRoot = await resolveRimeDir(cfg)
+  const targets: UpdateInstallTarget[] = [{ cfg, installRoot: primaryRoot }]
+  const shouldSync = cfg.syncUpdateToScriptingRime === true &&
+    cfg.inputMethod !== "scripting" &&
+    cfg.hamsterBookmarkName !== BUILTIN_SCRIPTING_BOOKMARK
+  if (!shouldSync) return targets
+
+  const scriptingPaths = await getScriptingRimePaths()
+  if (!scriptingPaths?.rootDir) throw new Error("无法获取 Scripting Rime 路径，无法完成同步更新")
+  const scriptingCfg: AppConfig = {
+    ...cfg,
+    hamsterRootPath: scriptingPaths.rootDir,
+    hamsterBookmarkName: BUILTIN_SCRIPTING_BOOKMARK,
+    inputMethod: "scripting",
+    useBuiltinScriptingPath: true,
+    syncUpdateToScriptingRime: false,
+  }
+  const scriptingRoot = await resolveRimeDir(scriptingCfg)
+  if (!samePath(primaryRoot, scriptingRoot)) {
+    targets.push({ cfg: scriptingCfg, installRoot: scriptingRoot, label: "Scripting Rime" })
+  }
+  return targets
+}
+
+function targetLogPrefix(target: UpdateInstallTarget): string {
+  return target.label ? `同步到 ${target.label}：` : ""
+}
+
+async function replaceFileFromSource(fm: any, sourcePath: string, destinationPath: string) {
+  try {
+    if (typeof fm?.removeSync === "function") fm.removeSync(destinationPath)
+    else if (typeof fm?.remove === "function") await fm.remove(destinationPath)
+  } catch { }
+
+  if (typeof fm?.copyFileSync === "function") {
+    fm.copyFileSync(sourcePath, destinationPath)
+    return
+  }
+  if (typeof fm?.copyFile === "function") {
+    await fm.copyFile(sourcePath, destinationPath)
+    return
+  }
+  if (typeof fm?.copySync === "function") {
+    fm.copySync(sourcePath, destinationPath)
+    return
+  }
+  if (typeof fm?.copy === "function") {
+    await fm.copy(sourcePath, destinationPath)
+    return
+  }
+  if (typeof fm?.copyItem === "function") {
+    await fm.copyItem(sourcePath, destinationPath)
+    return
+  }
+  throw new Error("FileManager 不支持复制文件，无法同步写入多个目录")
+}
+
+// ===== 统一检查：方案/词库/模型 =====
+export async function checkAllUpdates(
+  cfg: AppConfig,
+  onError?: (kind: "scheme" | "dict" | "model", message: string) => void
+): Promise<AllUpdateResult> {
+  const capture = async <T,>(kind: "scheme" | "dict" | "model", task: Promise<T | undefined>) => {
+    try {
+      return await task
+    } catch (error: any) {
+      onError?.(kind, String(error?.message ?? error))
+      return undefined
+    }
+  }
+
+  const scheme = await capture("scheme", fetchLatestSchemeAsset(cfg))
+  if (scheme && !scheme.remoteIdOrSha) {
+    scheme.remoteIdOrSha = scheme.tag ?? scheme.name
+  }
+
+  const dict = await capture("dict", fetchLatestDictAsset(cfg))
+
+  const model = cfg.downloadModel
+    ? await capture("model", fetchModelReleaseAsset(cfg, MODEL_FILE))
+    : undefined
+
+  if (dict && !dict.remoteIdOrSha) {
+    dict.remoteIdOrSha = ensureRemoteMark(dict, "dict")
+  }
+  if (model && !model.remoteIdOrSha) {
+    model.remoteIdOrSha = ensureRemoteMark(model, "model")
+  }
+
+  return { scheme, dict, model }
+}
+
+// ===== 部署（删 build 再 URL scheme）=====
+async function deployIfEnabled(cfg: AppConfig, onStage?: (s: string) => void, onLog?: (s: string) => void) {
+  if (cfg.autoDeployAfterDownload === false) return
+  if (cfg.inputMethod === "scripting") {
+    onStage?.(SCRIPTING_MANUAL_DEPLOY_MESSAGE)
+    return
+  }
+  const installRoot = await resolveRimeDir(cfg)
+  const buildBase = installRoot
+  const buildDir = Path.join(buildBase, "build")
+  if (cfg.skipBuildCleanup) {
+    onLog?.(`跳过清理 build 目录：${buildDir}`)
+  } else {
+    onStage?.("部署前清理 build…")
+    onLog?.(`删除 build 目录：${buildDir}`)
+    await removeDirSafe(buildDir)
+  }
+  for (let i = 3; i >= 1; i--) {
+    onStage?.(`部署倒计时：${i}s`)
+    await sleep(1000)
+  }
+  onStage?.("触发部署中…")
+  await deployHamster(cfg.inputMethod)
+}
+
+export async function deployInputMethod(cfg: AppConfig, onStage?: (s: string) => void, onLog?: (s: string) => void) {
+  if (cfg.inputMethod === "scripting") {
+    throw new Error(SCRIPTING_MANUAL_DEPLOY_MESSAGE)
+  }
+  const installRoot = await resolveRimeDir(cfg)
+  const buildBase = installRoot
+  const buildDir = Path.join(buildBase, "build")
+  if (cfg.skipBuildCleanup) {
+    onLog?.(`跳过清理 build 目录：${buildDir}`)
+  } else {
+    onLog?.(`删除 build 目录：${buildDir}`)
+    await removeDirSafe(buildDir)
+  }
+  for (let i = 3; i >= 1; i--) {
+    onStage?.(`部署倒计时：${i}s`)
+    await sleep(1000)
+  }
+  onStage?.("触发部署中…")
+  await deployHamster(cfg.inputMethod)
+  onStage?.("部署完成")
+}
+
+// ===== 三个按钮入口 =====
+
+export async function updateScheme(
+  cfg: AppConfig,
+  params: {
+    onStage?: (s: string) => void
+    onLog?: (s: string) => void
+    onProgress?: (p: { percent?: number; received: number; total?: number; speedBps?: number }) => void
+    autoDeploy?: boolean
+  }
+) {
+  params.onStage?.("解析目录...")
+  const { engine } = await detectRimeDir(cfg)
+  const targets = await resolveUpdateTargets(cfg)
+  const installDir = targets[0].installRoot
+
+  const latest = await fetchLatestSchemeAsset(cfg)
+  if (!latest?.url) throw new Error("\u672A\u627E\u5230\u53EF\u7528\u7684\u8FDC\u7AEF\u65B9\u6848\u8D44\u4EA7")
+  params.onLog?.(`远程方案资产：${latest.name}`)
+  params.onLog?.(`下载地址：${latest.url}`)
+
+  for (const target of targets) {
+    await ensureDir(target.installRoot)
+    await removeDirSafe(Path.join(target.installRoot, "UpdateCache"))
+  }
+  const zipPath = tempDownloadPath(latest.name)
+  await removePathLoose(zipPath)
+
+  try {
+    params.onStage?.("下载中...")
+    emitProgress(params.onProgress, 0)
+    try {
+      await downloadWithProgress(latest.url, zipPath, (p) => {
+        emitProgress(params.onProgress, typeof p?.percent === "number" ? p.percent : 0)
+      }, (e) => {
+        if (e.type === "retrying") {
+          params.onStage?.(`\u4E0B\u8F7D\u4E2D\uFF08\u91CD\u8BD5 ${e.attempt}/${e.maxAttempts}\uFF09...`)
+          params.onLog?.(`下载出现波动，准备重试：${e.attempt}/${e.maxAttempts}`)
+        }
+      })
+    } catch (error: any) {
+      params.onLog?.(`下载失败：${String(error?.message ?? error)}`)
+      throw error
+    }
+
+    // \u6587\u4EF6\u5927\u5C0F\u6821\u9A8C
+    const expectedSize = pickExpectedSize(latest)
+    if (expectedSize) {
+      const fm = FM()
+      const actualSize = await getFileSize(fm, zipPath)
+      if (actualSize > 0 && Math.abs(actualSize - expectedSize) > expectedSize * 0.05) {
+        throw new Error(`\u65B9\u6848\u4E0B\u8F7D\u6587\u4EF6\u5927\u5C0F\u4E0D\u5339\u914D\uFF08\u671F\u671B ${expectedSize} \u5B57\u8282\uFF0C\u5B9E\u9645 ${actualSize} \u5B57\u8282\uFF09`)
+      }
+    }
+
+    for (const target of targets) {
+      const prefix = targetLogPrefix(target)
+      const exclude = getExcludePatterns(target.cfg)
+      if (target.label) params.onStage?.(`${target.label}：清理旧文件中…`)
+      else params.onStage?.("清理旧文件中…")
+      emitProgress(params.onProgress, 0)
+      const removed = await removeExtractedFiles({
+        installRoot: target.installRoot,
+        kind: "scheme",
+        compareRoot: target.installRoot,
+        excludePatterns: exclude,
+        onRemovedFile: (path) => params.onLog?.(`${prefix}删除旧文件：${path}`),
+        onSkippedFile: (path, reason) => {
+          if (reason === "excluded") params.onLog?.(`${prefix}跳过排除文件：${path}`)
+        },
+        onProgress: (done, total) => emitProgress(params.onProgress, total > 0 ? done / total : 1),
+      })
+      if (removed > 0) {
+        params.onStage?.(`${target.label ? `${target.label}：` : ""}已清理旧文件：${removed} 个`)
+      }
+      params.onStage?.(target.label ? `${target.label}：解压中...` : "解压中...")
+      emitProgress(params.onProgress, 0)
+      const copied = new Set<string>()
+      await unzipToDirWithOverwrite(zipPath, target.installRoot, {
+        excludePatterns: exclude,
+        onCopiedFile: (dstPath) => {
+          copied.add(String(dstPath))
+          params.onLog?.(`${prefix}写入文件：${String(dstPath)}`)
+        },
+        onSkippedFile: (srcPath) => {
+          params.onLog?.(`${prefix}跳过排除文件：${String(srcPath)}`)
+        },
+        onProgress: (done, total) => emitProgress(params.onProgress, total > 0 ? done / total : 1),
+      })
+      setExtractedFiles(target.installRoot, "scheme", Array.from(copied))
+      params.onLog?.(`${prefix}方案写入完成：${copied.size} 个文件`)
+      await setSchemeMeta({
+        installRoot: target.installRoot,
+        bookmarkName: target.cfg.hamsterBookmarkName,
+        fileName: latest.name,
+        usePrereleaseScheme: target.cfg.usePrereleaseScheme,
+        schemeEdition: target.cfg.schemeEdition,
+        proSchemeKey: target.cfg.schemeEdition === "pro" ? target.cfg.proSchemeKey : undefined,
+        inputMethod: target.cfg.inputMethod,
+        tag: latest.tag,
+        updatedAt: latest.updatedAt ?? new Date().toISOString(),
+        remoteIdOrSha: latest.remoteIdOrSha ?? latest.tag ?? latest.name,
+        source: target.cfg.releaseSource,
+      })
+      emitProgress(params.onProgress, 1)
+    }
+  } finally {
+    await removePathLoose(zipPath)
+  }
+
+  if (params.autoDeploy) await deployIfEnabled(cfg, params.onStage, params.onLog)
+  return { engine, installRoot: installDir, assetName: latest.name, tag: latest.tag, updatedAt: latest.updatedAt, remoteIdOrSha: latest.remoteIdOrSha ?? latest.tag ?? latest.name }
+}
+
+export async function updateDict(
+  cfg: AppConfig,
+  params: {
+    onStage?: (s: string) => void
+    onLog?: (s: string) => void
+    onProgress?: (p: { percent?: number; received: number; total?: number; speedBps?: number }) => void
+    autoDeploy?: boolean
+  }
+) {
+  const targets = await resolveUpdateTargets(cfg)
+  for (const target of targets) {
+    await ensureDir(target.installRoot)
+    await removeDirSafe(Path.join(target.installRoot, "UpdateCache"))
+  }
+
+  const dict = await fetchLatestDictAsset(cfg)
+
+  if (!dict?.url) throw new Error("未找到可用的词库资产")
+  params.onLog?.(`远程词库资产：${dict.name}`)
+  params.onLog?.(`下载地址：${dict.url}`)
+
+  const zipPath = tempDownloadPath(dict.name)
+  await removePathLoose(zipPath)
+
+  try {
+    params.onStage?.("下载中…")
+    emitProgress(params.onProgress, 0)
+    try {
+      await downloadWithProgress(dict.url, zipPath, (p) => {
+        emitProgress(params.onProgress, typeof p?.percent === "number" ? p.percent : 0)
+      }, (e) => {
+        if (e.type === "retrying") {
+          params.onStage?.(`下载中（重试 ${e.attempt}/${e.maxAttempts}）…`)
+          params.onLog?.(`下载出现波动，准备重试：${e.attempt}/${e.maxAttempts}`)
+        }
+      })
+    } catch (error: any) {
+      params.onLog?.(`下载失败：${String(error?.message ?? error)}`)
+      throw error
+    }
+
+    // 文件大小校验
+    const expectedSize = pickExpectedSize(dict)
+    if (expectedSize) {
+      const fm = FM()
+      const actualSize = await getFileSize(fm, zipPath)
+      if (actualSize > 0 && Math.abs(actualSize - expectedSize) > expectedSize * 0.05) {
+        throw new Error(`词库下载文件大小不匹配（期望 ${expectedSize} 字节，实际 ${actualSize} 字节）`)
+      }
+    }
+
+    for (const target of targets) {
+      const prefix = targetLogPrefix(target)
+      const exclude = getExcludePatterns(target.cfg)
+      const dictDir = Path.join(target.installRoot, "dicts")
+      await ensureDir(dictDir)
+      params.onStage?.(target.label ? `${target.label}：清理旧文件中…` : "清理旧文件中…")
+      emitProgress(params.onProgress, 0)
+      const removed = await removeExtractedFiles({
+        installRoot: target.installRoot,
+        kind: "dict",
+        compareRoot: dictDir,
+        excludePatterns: exclude,
+        onRemovedFile: (path) => params.onLog?.(`${prefix}删除旧文件：${path}`),
+        onSkippedFile: (path, reason) => {
+          if (reason === "excluded") params.onLog?.(`${prefix}跳过排除文件：${path}`)
+        },
+        onProgress: (done, total) => emitProgress(params.onProgress, total > 0 ? done / total : 1),
+      })
+      if (removed > 0) params.onStage?.(`${target.label ? `${target.label}：` : ""}已清理旧文件：${removed} 个`)
+      params.onStage?.(target.label ? `${target.label}：解压到 dicts 目录中…` : "解压到 dicts 目录中…")
+      emitProgress(params.onProgress, 0)
+      const copied = new Set<string>()
+      await unzipToDirWithOverwrite(zipPath, dictDir, {
+        excludePatterns: exclude,
+        flattenSingleDir: true,
+        onCopiedFile: (dstPath) => {
+          copied.add(String(dstPath))
+          params.onLog?.(`${prefix}写入文件：${String(dstPath)}`)
+        },
+        onSkippedFile: (srcPath) => {
+          params.onLog?.(`${prefix}跳过排除文件：${String(srcPath)}`)
+        },
+        onProgress: (done, total) => emitProgress(params.onProgress, total > 0 ? done / total : 1),
+      })
+      params.onStage?.(target.label ? `${target.label}：整理词库文件中…` : "整理词库文件中…")
+      emitProgress(params.onProgress, 0)
+      const merged = await mergeSubdirsByName(dictDir, {
+        excludePatterns: exclude,
+        namePattern: /dict/i,
+        onCopiedFile: (dstPath) => {
+          copied.add(String(dstPath))
+          params.onLog?.(`${prefix}整理词库文件：${String(dstPath)}`)
+        },
+        onSkippedFile: (srcPath) => {
+          params.onLog?.(`${prefix}跳过排除文件：${String(srcPath)}`)
+        },
+        onProgress: (done, total) => emitProgress(params.onProgress, total > 0 ? done / total : 1),
+      })
+      setExtractedFiles(target.installRoot, "dict", Array.from(copied))
+      if (merged > 0) params.onLog?.(`${prefix}已整理嵌套词库目录：${merged} 个`)
+      params.onLog?.(`${prefix}词库写入完成：${copied.size} 个文件`)
+      await setDictMeta({
+        installRoot: target.installRoot,
+        bookmarkName: target.cfg.hamsterBookmarkName,
+        fileName: dict.name,
+        inputMethod: target.cfg.inputMethod,
+        tag: dict.tag,
+        updatedAt: dict.updatedAt ?? new Date().toISOString(),
+        remoteIdOrSha: ensureRemoteMark(dict, "dict"),
+        source: target.cfg.releaseSource,
+      })
+      emitProgress(params.onProgress, 1)
+    }
+  } finally {
+    await removePathLoose(zipPath)
+  }
+
+  if (params.autoDeploy) await deployIfEnabled(cfg, params.onStage, params.onLog)
+  return dict
+}
+
+async function updateBinaryAsset(args: {
+  cfg: AppConfig
+  fileName: string
+  asset?: RemoteAsset
+  label: string
+  onStage?: (s: string) => void
+  onLog?: (s: string) => void
+  onProgress?: (p: { percent?: number; received: number; total?: number; speedBps?: number }) => void
+  targets?: UpdateInstallTarget[]
+  writeMeta: (target: UpdateInstallTarget, asset: RemoteAsset) => Promise<void>
+}) {
+  const targets = args.targets ?? (await resolveUpdateTargets(args.cfg))
+  for (const target of targets) {
+    await ensureDir(target.installRoot)
+    await removeDirSafe(Path.join(target.installRoot, "UpdateCache"))
+  }
+
+  const asset = args.asset ?? (await fetchModelReleaseAsset(args.cfg, args.fileName))
+  if (!asset?.url) throw new Error(`未找到可用的${args.label}资产`)
+  args.onLog?.(`远程${args.label}资产：${args.fileName}`)
+  args.onLog?.(`下载地址：${asset.url}`)
+
+  const expectedSize = pickExpectedSize(asset)
+  const tempPath = tempDownloadPath(args.fileName)
+
+  args.onStage?.("下载中…")
+  const fm = FM()
+  await removePathLoose(tempPath)
+  try {
+    emitProgress(args.onProgress, 0)
+    try {
+      await downloadWithProgress(asset.url, tempPath, (p) => {
+        emitProgress(args.onProgress, typeof p?.percent === "number" ? p.percent : 0)
+      }, (e) => {
+        if (e.type === "retrying") {
+          args.onStage?.(`下载中（重试 ${e.attempt}/${e.maxAttempts}）…`)
+          args.onLog?.(`下载出现波动，准备重试：${e.attempt}/${e.maxAttempts}`)
+        }
+      })
+    } catch (error: any) {
+      args.onLog?.(`下载失败：${String(error?.message ?? error)}`)
+      throw error
+    }
+
+    args.onStage?.("校验中…")
+    emitProgress(args.onProgress, 0)
+    {
+      const actualSize = await getFileSize(fm, tempPath)
+      if (expectedSize && expectedSize > 0) {
+        if (actualSize !== expectedSize) {
+          throw new Error(`下载不完整：实际 ${actualSize} bytes，期望 ${expectedSize} bytes`)
+        }
+      } else if (actualSize <= 0) {
+        throw new Error("下载结果为空文件")
+      }
+    }
+
+    args.onStage?.("写入中…")
+    emitProgress(args.onProgress, 0)
+    try {
+      for (const target of targets) {
+        const destinationPath = Path.join(target.installRoot, args.fileName)
+        const prefix = targetLogPrefix(target)
+        args.onLog?.(`${prefix}删除旧${args.label}：${destinationPath}`)
+        await replaceFileFromSource(fm, tempPath, destinationPath)
+        args.onLog?.(`${prefix}写入${args.label}文件：${destinationPath}`)
+        await args.writeMeta(target, asset)
+      }
+      emitProgress(args.onProgress, 1)
+    } catch (err) {
+      args.onStage?.("写入失败")
+      throw err
+    }
+  } finally {
+    await removePathLoose(tempPath)
+  }
+
+  return asset
+}
+
+export async function updateModel(
+  cfg: AppConfig,
+  params: {
+    onStage?: (s: string) => void
+    onLog?: (s: string) => void
+    onProgress?: (p: { percent?: number; received: number; total?: number; speedBps?: number }) => void
+    autoDeploy?: boolean
+    targets?: {
+      model?: boolean
+    }
+  }
+) {
+  if (!cfg.downloadModel) {
+    params.onStage?.("设置中未开启下载模型")
+    params.onLog?.("已跳过模型下载：设置中未开启下载模型")
+    return undefined
+  }
+
+  const modelAsset = await fetchModelReleaseAsset(cfg, MODEL_FILE)
+  const shouldUpdateModel = params.targets?.model !== false
+
+  if (!shouldUpdateModel) {
+    params.onStage?.("已是最新，无需更新")
+    params.onLog?.("模型已是最新")
+    return modelAsset
+  }
+
+  const targets = shouldUpdateModel ? await resolveUpdateTargets(cfg) : []
+  const model = shouldUpdateModel ? await updateBinaryAsset({
+    cfg,
+    targets,
+    fileName: MODEL_FILE,
+    asset: modelAsset,
+    label: "模型",
+    onStage: (s) => params.onStage?.(`模型：${s}`),
+    onLog: params.onLog,
+    onProgress: params.onProgress,
+    writeMeta: async (target, asset) => {
+      await setModelMeta({
+        installRoot: target.installRoot,
+        bookmarkName: target.cfg.hamsterBookmarkName,
+        fileName: MODEL_FILE,
+        inputMethod: target.cfg.inputMethod,
+        tag: asset.tag,
+        updatedAt: asset.updatedAt ?? new Date().toISOString(),
+        remoteIdOrSha: ensureRemoteMark(asset, "model"),
+        source: target.cfg.releaseSource,
+      })
+    },
+  }) : modelAsset
+
+  if (params.autoDeploy) await deployIfEnabled(cfg, params.onStage, params.onLog)
+  return model
+}
+
+// ===== 自动更新：支持传入预先检查结果（避免重复请求，也便于 UI 先展示远程信息）=====
+export async function autoUpdateAll(
+  cfg: AppConfig,
+  params: {
+    onStage?: (s: string) => void
+    onLog?: (s: string) => void
+    onProgress?: (p: { percent?: number; received: number; total?: number; speedBps?: number }) => void
+    onAfterModule?: (kind: "scheme" | "dict" | "model") => void | Promise<void>
+    hasPrecheckFailure?: boolean
+  },
+  prechecked?: AllUpdateResult,
+  preDecision?: UpdateDecision
+): Promise<AutoUpdateRunResult> {
+  params.onStage?.("自动更新：检查更新中…")
+  const r = prechecked ?? (await checkAllUpdates(cfg, (kind, message) => {
+    const label = kind === "scheme" ? "方案" : kind === "dict" ? "词库" : "模型"
+    params.onLog?.(`[${label}] 请求失败：${message}`)
+  }))
+  const installRoot = await resolveRimeDir(cfg)
+  const meta = await loadMetaAsync(installRoot, cfg.hamsterBookmarkName)
+  const updated = { scheme: false, dict: false, model: false }
+  const failed = { scheme: false, dict: false, model: false }
+
+  const schemeRemoteMark = schemeRemoteMarkForConfig(cfg, r.scheme)
+  const computedNeedScheme = !!(
+    schemeRemoteMark &&
+    normalizeMark(
+      cfg.usePrereleaseScheme
+        ? meta.scheme?.remoteIdOrSha
+        : meta.scheme?.remoteTagOrName
+    ) !== schemeRemoteMark
+  )
+
+  const remoteDictMark = normalizeMark(ensureRemoteMark(r.dict, "dict"))
+  const localDictMark = normalizeMark(meta.dict?.remoteIdOrSha)
+  const computedNeedDict = !!(r.dict && remoteDictMark && localDictMark !== remoteDictMark)
+
+  if (r.model && !r.model.remoteIdOrSha) r.model.remoteIdOrSha = ensureRemoteMark(r.model, "model")
+  const computedNeedModel = cfg.downloadModel && isModelUpdateAvailable(meta.model, r.model)
+
+  const needScheme = preDecision
+    ? !!(preDecision.scheme && r.scheme)
+    : computedNeedScheme
+  const needDict = preDecision
+    ? !!(preDecision.dict && r.dict)
+    : computedNeedDict
+  const needModel = preDecision
+    ? !!(cfg.downloadModel && preDecision.model && r.model)
+    : computedNeedModel
+
+  if (!needScheme && !needDict && !needModel) {
+    params.onStage?.("自动更新：已是最新，无需更新")
+    return {
+      remote: r,
+      updated: { scheme: false, dict: false, model: false },
+      failed: { scheme: false, dict: false, model: false },
+      didUpdate: false,
+      didDeploy: false,
+    }
+  }
+
+  // 单项失败只记录日志，不阻断后续更新任务。
+  if (needScheme) {
+    try {
+      await updateScheme(cfg, {
+        onStage: (s) => params.onStage?.(`方案：${s}`),
+        onLog: (s) => params.onLog?.(`[方案] ${s}`),
+        onProgress: params.onProgress,
+        autoDeploy: false,
+      })
+      updated.scheme = true
+      await params.onAfterModule?.("scheme")
+    } catch (error: any) {
+      failed.scheme = true
+      params.onLog?.(`[方案] 更新失败：${String(error?.message ?? error)}`)
+      params.onStage?.("方案：更新失败，继续后续任务")
+    }
+  }
+  if (needDict) {
+    try {
+      await updateDict(cfg, {
+        onStage: (s) => params.onStage?.(`词库：${s}`),
+        onLog: (s) => params.onLog?.(`[词库] ${s}`),
+        onProgress: params.onProgress,
+        autoDeploy: false,
+      })
+      updated.dict = true
+      await params.onAfterModule?.("dict")
+    } catch (error: any) {
+      failed.dict = true
+      params.onLog?.(`[词库] 更新失败：${String(error?.message ?? error)}`)
+      params.onStage?.("词库：更新失败，继续后续任务")
+    }
+  }
+  if (needModel) {
+    try {
+      await updateModel(cfg, {
+        onStage: params.onStage,
+        onLog: (s) => params.onLog?.(s),
+        onProgress: params.onProgress,
+        autoDeploy: false,
+        targets: {
+          model: needModel,
+        },
+      })
+      updated.model = true
+      await params.onAfterModule?.("model")
+    } catch (error: any) {
+      failed.model = true
+      params.onLog?.(`[模型] 更新失败：${String(error?.message ?? error)}`)
+      params.onStage?.("模型：更新失败，继续后续任务")
+    }
+  }
+
+  const didUpdate = updated.scheme || updated.dict || updated.model
+  const hasFailure = params.hasPrecheckFailure || failed.scheme || failed.dict || failed.model
+  if (!didUpdate) {
+    params.onStage?.("自动更新：完成（没有成功更新的项目）")
+    return {
+      remote: r,
+      updated,
+      failed,
+      didUpdate: false,
+      didDeploy: false,
+    }
+  }
+
+  // 自动更新后统一清理 dicts 下残留的词库子文件夹
+  const exclude = getExcludePatterns(cfg)
+  const merged = await mergeSubdirsByName(Path.join(installRoot, "dicts"), {
+    excludePatterns: exclude,
+    namePattern: /dict/i,
+    onCopiedFile: (dstPath) => params.onLog?.(`[自动整理] ${String(dstPath)}`),
+    onSkippedFile: (srcPath) => params.onLog?.(`跳过排除文件：${String(srcPath)}`),
+  })
+  if (merged > 0) params.onLog?.(`自动更新后整理词库目录：${merged} 个`)
+
+  if (hasFailure) {
+    params.onLog?.("检测到更新任务失败，已跳过自动部署")
+    params.onStage?.("自动更新：检测到失败，已跳过自动部署")
+    return {
+      remote: r,
+      updated,
+      failed,
+      didUpdate,
+      didDeploy: false,
+    }
+  }
+
+  // 统一部署（你指定：安装目录/build）
+  await deployIfEnabled(cfg, params.onStage, params.onLog)
+
+  if (cfg.inputMethod !== "scripting") {
+    params.onStage?.("自动更新：完成")
+  }
+  return {
+    remote: r,
+    updated,
+    failed,
+    didUpdate,
+    didDeploy: cfg.autoDeployAfterDownload !== false && cfg.inputMethod !== "scripting",
+  }
+}

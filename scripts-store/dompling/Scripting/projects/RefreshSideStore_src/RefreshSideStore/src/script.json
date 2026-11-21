@@ -1,0 +1,46 @@
+{
+  "color" : "#2686C5",
+  "version" : "1.0.4",
+  "contributors" : [
+
+  ],
+  "description" : "SideStore 签名倒计时 · 马蹄圈 · RefreshSideStore",
+  "localizedNames" : {
+    "de" : "",
+    "en" : "",
+    "ru" : "",
+    "ja" : "",
+    "pt" : "",
+    "fr" : "",
+    "zh" : "",
+    "es" : "",
+    "it" : ""
+  },
+  "localizedDescriptions" : {
+    "en" : "",
+    "ru" : "",
+    "de" : "",
+    "ja" : "",
+    "zh" : "",
+    "it" : "",
+    "pt" : "",
+    "fr" : "",
+    "es" : ""
+  },
+  "author" : null,
+  "name" : "RefreshSideStore",
+  "icon" : "arrow.trianglehead.2.clockwise.rotate.90",
+  "runInApp" : false,
+  "iconImage" : null,
+  "remoteResource" : {
+    "url" : "https:\/\/github.com\/dompling\/Scripting\/tree\/main\/RefreshSideStore\/src",
+    "autoUpdateInterval" : 1800,
+    "hash" : "7f39dd741525172e1c4bb0293873c84b"
+  },
+  "permissions" : null,
+  "remoteDefinitionId" : null,
+  "entry" : "index.tsx",
+  "intentInputTypes" : [
+    "text"
+  ]
+}

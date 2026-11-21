@@ -1,0 +1,32 @@
+export type CheckStatus = "unknown" | "checking" | "green" | "yellow" | "red"
+export type CompatibilityMode = "newapi" | "openai" | "gemini"
+
+export type ApiCheckResult = {
+  status: CheckStatus
+  baseAvailable: boolean
+  modelsAvailable: boolean
+  modelIds: string[]
+  checkedAt: number | null
+  message: string
+}
+
+export type ApiEntry = {
+  id: string
+  name: string
+  compatibilityMode: CompatibilityMode
+  baseUrl: string
+  apiKey: string
+  updatedAt: number
+  check: ApiCheckResult
+}
+
+export type ManagerSettings = {
+  autoCheckOnLaunch: boolean
+  autoCheckOnAdd: boolean
+  widgetRefreshHours: number
+}
+
+export type ManagerState = {
+  settings: ManagerSettings
+  entries: ApiEntry[]
+}

@@ -1,0 +1,23 @@
+{
+  "runInApp": false,
+  "version": "0.1.0",
+  "localizedDescriptions": {
+    "zh-Hans": "基于五菱官方开放接口的车辆状态小组件，展示里程/电量/续航/门锁/充电/位置等车况信息。"
+  },
+  "name": "WLinker",
+  "description": "Wuling vehicle status widget built on the official SGMW open API.",
+  "author": {
+    "name": "Scripting Agent",
+    "homepage": null,
+    "email": null
+  },
+  "contributors": [],
+  "icon": "car.side.fill",
+  "localizedNames": {
+    "zh-Hans": "五菱小助手"
+  },
+  "permissions": null,
+  "iconImage": null,
+  "entry": "index.tsx",
+  "color": "#166DFF"
+}

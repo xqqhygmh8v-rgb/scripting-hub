@@ -1,0 +1,682 @@
+import {
+  Button,
+  Editor,
+  Group,
+  Form,
+  Navigation,
+  NavigationStack,
+  EmptyView,
+  List,
+  Section,
+  Toggle,
+  Text,
+  TextField,
+  VStack,
+  HStack,
+  Spacer,
+  Picker,
+  useEffect,
+  useMemo,
+  useState,
+} from "scripting"
+
+import { loadModules, moduleNameFromContent, type ModuleInfo } from "../utils/storage"
+import { loadConfig, type OnlineModuleSource } from "../utils/config"
+
+type LibraryCacheEntry = { items: ModuleInfo[]; fetchedAt: number }
+const CACHE_AGE_MS = 60 * 60 * 1000
+const libraryCache = new Map<OnlineModuleSource, LibraryCacheEntry>()
+const libraryPending = new Map<OnlineModuleSource, Promise<LibraryCacheEntry>>()
+const libraryProgress = new Map<OnlineModuleSource, number>()
+const libraryProgressListeners = new Map<OnlineModuleSource, Set<(value: number) => void>>()
+
+function cacheKey(source: OnlineModuleSource): string {
+  return `surge_online_modules_${source}_v1`
+}
+
+function readLibraryCache(source: OnlineModuleSource): LibraryCacheEntry | null {
+  const memory = libraryCache.get(source)
+  if (memory) return memory
+  try {
+    const saved = Storage.get<LibraryCacheEntry>(cacheKey(source))
+    if (!saved || !Number.isFinite(saved.fetchedAt) || !Array.isArray(saved.items) ||
+      !saved.items.every(item => typeof item.name === "string" && typeof item.link === "string")) return null
+    libraryCache.set(source, saved)
+    return saved
+  } catch {
+    return null
+  }
+}
+
+function reportLibraryProgress(source: OnlineModuleSource, value: number): void {
+  const progress = Math.max(libraryProgress.get(source) ?? 0, value)
+  libraryProgress.set(source, progress)
+  libraryProgressListeners.get(source)?.forEach(listener => listener(progress))
+}
+
+async function loadFmzModules(onProgress: (value: number) => void): Promise<ModuleInfo[]> {
+  if (!GitHub.isAvailable()) throw new Error("请先在 Scripting 设置 → GitHub 配置登录信息")
+  const owner = "fmz200"
+  const repo = "wool_scripts"
+  const root = "Surge/module"
+  const modules: ModuleInfo[] = []
+  const dirs = [root]
+  let scanned = 0
+  while (dirs.length) {
+    const path = dirs.shift()!
+    const entries = await GitHub.getContent({ owner, repo, path, ref: "main" })
+    if (!Array.isArray(entries)) throw new Error(`无法读取 GitHub 目录：${path}`)
+    for (const entry of entries) {
+      if (entry.type === "dir") {
+        dirs.push(entry.path)
+      } else if (entry.type === "file" && /\.(?:sgmodule|module)$/i.test(entry.name)) {
+        const link = String(entry.download_url ?? "")
+        if (link) modules.push({ name: entry.name.replace(/\.(?:sgmodule|module)$/i, ""), link })
+      }
+    }
+    scanned += 1
+    onProgress(Math.min(95, Math.floor(scanned / (scanned + dirs.length) * 95)))
+  }
+  return modules.sort((a, b) => a.name.localeCompare(b.name))
+}
+
+function LocalContentEditorView(props: {
+  initialContent: string
+}) {
+  const dismiss = Navigation.useDismiss()
+  const [controller] = useState(() => new EditorController({
+    content: props.initialContent,
+    ext: "txt",
+    readOnly: false,
+  }))
+
+  useEffect(() => {
+    return () => {
+      controller.dispose()
+    }
+  }, [controller])
+
+  return (
+    <NavigationStack>
+      <VStack
+        navigationTitle="编辑模块内容"
+        navigationBarTitleDisplayMode="inline"
+        frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+        toolbar={{
+          topBarTrailing: (
+            <Button
+              title="保存"
+              action={() => {
+                HapticFeedback.mediumImpact()
+                dismiss(String(controller.content ?? ""))
+              }}
+            />
+          ),
+        }}
+      >
+        <Editor
+          controller={controller}
+          scriptName="Surge Module"
+          showAccessoryView
+          searchEnabled
+          ignoresSafeArea={{ regions: "container", edges: "bottom" }}
+        />
+      </VStack>
+    </NavigationStack>
+  )
+}
+
+export function EditModuleView(props: {
+  title: string
+  categories: string[]
+  initial?: ModuleInfo
+  defaultCategory?: string
+  saveDirs?: string[]
+}) {
+  const dismiss = Navigation.useDismiss()
+
+  const initial = props.initial
+  const [name, setName] = useState<string>(initial?.name ?? "")
+  const [link, setLink] = useState<string>(initial?.link ?? "")
+  const [isRemote, setIsRemote] = useState<boolean>(initial ? !!initial.link : true)
+  const [content, setContent] = useState<string>("")
+  const [libraryItems, setLibraryItems] = useState<ModuleInfo[]>([])
+  const [libraryLoading, setLibraryLoading] = useState(false)
+  const [libraryPercent, setLibraryPercent] = useState(0)
+  const [libraryError, setLibraryError] = useState("")
+  const [existingLinks, setExistingLinks] = useState<Set<string>>(new Set())
+  const [existingNames, setExistingNames] = useState<Set<string>>(new Set())
+  const [filterText, setFilterText] = useState("")
+  const [showOnlyNew, setShowOnlyNew] = useState(false)
+  const showLibrary = !initial
+  const [librarySource] = useState<OnlineModuleSource>(() => loadConfig().onlineModuleSource)
+
+  const categoryOptions = useMemo<string[]>(() => ["不设置分类", ...props.categories], [props.categories])
+  const initialIdx = Math.max(
+    0,
+    categoryOptions.findIndex((c) => c === (initial?.category ?? props.defaultCategory ?? ""))
+  )
+  const [categoryIdx, setCategoryIdx] = useState<number>(initialIdx >= 0 ? initialIdx : 0)
+  const saveDirOptions = useMemo<string[]>(() => {
+    const dirs = props.saveDirs ?? []
+    if (!dirs.length) return []
+    return ["根目录", ...dirs]
+  }, [props.saveDirs])
+  const [saveDirIdx, setSaveDirIdx] = useState<number>(0)
+
+  useEffect(() => {
+    if (!showLibrary) return
+    void loadLibrary()
+    void loadExistingLinks()
+  }, [showLibrary])
+
+  useEffect(() => {
+    let currentDir = initial?.saveDir ?? ""
+    if (!initial) {
+      try {
+        const saved = Storage.get<{ scope: string; directory: string }>("surge_module_last_save_dir_v1")
+        const config = loadConfig()
+        const scope = config.baseBookmarkName || config.baseDir
+        if (saved?.scope === scope && saved.directory) {
+          currentDir = saveDirOptions.find(dir => dir.split("/").pop() === saved.directory) ?? ""
+        }
+      } catch {}
+    }
+    if (!saveDirOptions.length || !currentDir) {
+      setSaveDirIdx(0)
+      return
+    }
+    const idx = saveDirOptions.findIndex((dir) => dir === currentDir)
+    setSaveDirIdx(idx >= 0 ? idx : 0)
+  }, [initial?.saveDir, saveDirOptions])
+
+  useEffect(() => {
+    if (!initial || initial.link || !initial.filePath) return
+    const fm: any = (globalThis as any).FileManager
+    if (!fm?.readAsString) return
+    void (async () => {
+      try {
+        const text = await fm.readAsString(initial.filePath)
+        setContent(String(text ?? ""))
+      } catch {}
+    })()
+  }, [initial])
+
+  async function loadExistingLinks() {
+    try {
+      const list = await loadModules()
+      setExistingLinks(new Set(list.map((m) => m.link).filter(Boolean)))
+      setExistingNames(new Set(list.map((m) => m.name).filter(Boolean)))
+    } catch {
+      setExistingLinks(new Set())
+      setExistingNames(new Set())
+    }
+  }
+
+  function decodeHtml(s: string): string {
+    return s
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, "\"")
+      .replace(/&#39;/g, "'")
+  }
+
+  function stripTags(s: string): string {
+    const cleaned = decodeHtml(s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim())
+    return cleaned.replace(/\.sgmodule\s*$/i, "").trim()
+  }
+
+  function extractLinks(html: string): ModuleInfo[] {
+    const re = /<a\s+[^>]*href=["'](https:\/\/raw\.githubusercontent\.com[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi
+    const list: ModuleInfo[] = []
+    let m: RegExpExecArray | null
+    while ((m = re.exec(html))) {
+      const link = m[1]?.trim()
+      const name = stripTags(m[2] ?? "")
+      if (name && link) list.push({ name, link })
+    }
+    return list
+  }
+
+  function uniqueByLink(list: ModuleInfo[]): ModuleInfo[] {
+    const seen = new Set<string>()
+    const out: ModuleInfo[] = []
+    for (const item of list) {
+      if (seen.has(item.link)) continue
+      seen.add(item.link)
+      out.push(item)
+    }
+    return out
+  }
+
+  function pickSection(html: string, marker: string, endMarkers: string[]): string | null {
+    const idx = html.indexOf(marker)
+    if (idx < 0) return null
+    let end = html.length
+    for (const e of endMarkers) {
+      const i = html.indexOf(e, idx + marker.length)
+      if (i >= 0 && i < end) end = i
+    }
+    return html.slice(idx, end)
+  }
+
+  async function loadLibrary() {
+    const cached = readLibraryCache(librarySource)
+    if (cached) setLibraryItems(cached.items)
+    if (cached && Date.now() - cached.fetchedAt < CACHE_AGE_MS) return
+    const listener = (value: number) => setLibraryPercent(value)
+    const listeners = libraryProgressListeners.get(librarySource) ?? new Set<(value: number) => void>()
+    listeners.add(listener)
+    libraryProgressListeners.set(librarySource, listeners)
+    try {
+      setLibraryLoading(true)
+      setLibraryPercent(libraryProgress.get(librarySource) ?? 0)
+      setLibraryError("")
+      let pending = libraryPending.get(librarySource)
+      if (!pending) {
+        libraryProgress.set(librarySource, 0)
+        pending = (async (): Promise<LibraryCacheEntry> => {
+          const items = librarySource === "fmz200"
+            ? await loadFmzModules(value => reportLibraryProgress(librarySource, value))
+            : await (async () => {
+              const fetchFn: any = (globalThis as any).fetch
+              if (typeof fetchFn !== "function") throw new Error("fetch 不可用")
+              const res = await fetchFn("https://surge.qingr.moe/", {
+                headers: { "User-Agent": "Mozilla/5.0" },
+              })
+              if (!res?.ok) throw new Error(`请求失败：${res?.status ?? "unknown"}`)
+              const html = await res.text()
+
+              const all = extractLinks(html)
+              const preSection = pickSection(html, "前置依赖", ["Official", "Beta", "Others", "官方", "测试"]) ?? ""
+              const pre = preSection ? extractLinks(preSection) : all.slice(0, 2)
+              const preSet = new Set(pre.map((i) => i.link))
+              const official = all.filter((i) => i.link.includes(".official.") && !preSet.has(i.link))
+              const beta = all.filter((i) => i.link.includes(".beta.") && !preSet.has(i.link))
+              const others = all.filter(
+                (i) =>
+                  i.link.includes(".sgmodule") &&
+                  !i.link.includes(".official.") &&
+                  !i.link.includes(".beta.") &&
+                  !preSet.has(i.link)
+              )
+              return uniqueByLink([...pre, ...official, ...beta, ...others])
+            })()
+          reportLibraryProgress(librarySource, 100)
+          const entry = { items, fetchedAt: Date.now() }
+          libraryCache.set(librarySource, entry)
+          try { Storage.set(cacheKey(librarySource), entry) } catch {}
+          return entry
+        })()
+        libraryPending.set(librarySource, pending)
+      }
+
+      const result = await pending
+      setLibraryItems(result.items)
+    } catch (e: any) {
+      const msg = String(e?.message ?? e)
+      setLibraryError(msg)
+    } finally {
+      libraryPending.delete(librarySource)
+      libraryProgress.delete(librarySource)
+      listeners.delete(listener)
+      if (!listeners.size) libraryProgressListeners.delete(librarySource)
+      setLibraryLoading(false)
+    }
+  }
+
+  async function onSave() {
+    let trimmedName = name.trim()
+    const trimmedLink = link.trim()
+    const localContent = String(content ?? "")
+    const trimmedContent = localContent.trim()
+    const cat = categoryOptions[categoryIdx] === "不设置分类" ? undefined : categoryOptions[categoryIdx]
+    const saveDir =
+      saveDirOptions.length && saveDirIdx > 0 ? saveDirOptions[saveDirIdx] : undefined
+
+    if (initial && !trimmedName) {
+      await Dialog.alert({ message: "名称不能为空" })
+      return
+    }
+    if (isRemote && !trimmedLink) {
+      await Dialog.alert({ message: "链接不能为空" })
+      return
+    }
+    if (!isRemote && !trimmedContent) {
+      await Dialog.alert({ message: "模块内容不能为空" })
+      return
+    }
+    if (!trimmedName && !isRemote) {
+      try {
+        trimmedName = moduleNameFromContent(localContent)
+      } catch (e: any) {
+        await Dialog.alert({ message: String(e?.message ?? e) })
+        return
+      }
+    }
+
+    if (!initial) {
+      let names = existingNames
+      let links = existingLinks
+      if (!names.size && !links.size) {
+        try {
+          const list = await loadModules()
+          names = new Set(list.map((m) => m.name).filter(Boolean))
+          links = new Set(list.map((m) => m.link).filter(Boolean))
+          setExistingNames(names)
+          setExistingLinks(links)
+        } catch {}
+      }
+
+      if (trimmedName && names.has(trimmedName)) {
+        await Dialog.alert({
+          title: "模块已存在",
+          message: `已存在同名模块：${trimmedName}`,
+        })
+        return
+      }
+      if (isRemote && links.has(trimmedLink)) {
+        await Dialog.alert({
+          title: "模块已存在",
+          message: "已存在相同下载链接的模块",
+        })
+        return
+      }
+    }
+
+    const result: ModuleInfo = {
+      name: trimmedName,
+      link: isRemote ? trimmedLink : "",
+      isLocal: !isRemote,
+      content: isRemote ? undefined : localContent,
+      category: cat,
+      saveDir,
+    }
+    if (!initial) {
+      try {
+        const config = loadConfig()
+        Storage.set("surge_module_last_save_dir_v1", {
+          scope: config.baseBookmarkName || config.baseDir,
+          directory: saveDir?.split("/").pop() ?? "",
+        })
+      } catch {}
+    }
+    dismiss(result)
+  }
+
+  async function openLocalContentEditor() {
+    const next = await Navigation.present<string | null>({
+      element: <LocalContentEditorView initialContent={content} />,
+      modalPresentationStyle: "pageSheet",
+    })
+    if (next == null) return
+    setContent(next)
+  }
+
+  async function openLink(url: string) {
+    try {
+      const Safari = (globalThis as any).Safari
+      if (Safari?.openURL) {
+        const ok = await Safari.openURL(url)
+        if (!ok) throw new Error("打开 URL 失败")
+        return
+      }
+      if (Safari?.open) {
+        const ok = await Safari.open(url)
+        if (ok === false) throw new Error("打开 URL 失败")
+        return
+      }
+      const openURL = (globalThis as any).openURL
+      if (typeof openURL === "function") {
+        const ok = await openURL(url)
+        if (ok === false) throw new Error("打开 URL 失败")
+        return
+      }
+      throw new Error("无法打开 URL scheme：Safari.openURL/open/openURL 都不存在")
+    } catch (e: any) {
+      await Dialog.alert({ message: String(e?.message ?? e) })
+    }
+  }
+
+  async function onSearch() {
+    const input = await Dialog.prompt({
+      title: "筛选模块",
+      message: "输入关键字（留空清除筛选）",
+      defaultValue: filterText,
+      placeholder: "名称关键词",
+    })
+    if (input == null) return
+    setFilterText(input.trim())
+  }
+
+  const shownItems = useMemo(() => {
+    let list = libraryItems
+    if (showOnlyNew) {
+      list = list.filter((m) => !existingLinks.has(m.link))
+    }
+    if (!filterText) return list
+    const key = filterText.toLowerCase()
+    return list.filter((m) => m.name.toLowerCase().includes(key))
+  }, [libraryItems, filterText, showOnlyNew, existingLinks])
+
+  return (
+    <NavigationStack>
+      <VStack
+        navigationTitle={props.title}
+        navigationBarTitleDisplayMode={"inline"}
+        toolbar={{
+          topBarTrailing: (
+            <Button
+              title="保存"
+              action={() => {
+                HapticFeedback.mediumImpact()
+                void onSave()
+              }}
+            />
+          ),
+        }}
+      >
+        <Form formStyle="grouped">
+          <Section header={<Text>模块信息</Text>}>
+            <TextField
+              label={<Text>名称</Text>}
+              value={name}
+              onChanged={(v: string) => setName(v)}
+              prompt="模块名称"
+            />
+            <Toggle
+              title="远程模块"
+              value={isRemote}
+              onChanged={(value: boolean) => {
+                HapticFeedback.heavyImpact()
+                setIsRemote(value)
+              }}
+            />
+            {isRemote ? (
+              <TextField
+                label={<Text>链接</Text>}
+                value={link}
+                onChanged={(v: string) => setLink(v)}
+                prompt="https://"
+              />
+            ) : (
+              <VStack
+                spacing={8}
+                frame={{ maxWidth: "infinity", alignment: "leading" }}
+              >
+                <Text foregroundStyle="secondaryLabel">模块内容（点击编辑）</Text>
+                <Button
+                  buttonStyle="plain"
+                  action={() => {
+                    HapticFeedback.mediumImpact()
+                    void openLocalContentEditor()
+                  }}
+                >
+                  <VStack
+                    spacing={8}
+                    padding={{ top: 12, bottom: 12, leading: 12, trailing: 12 }}
+                    frame={{ maxWidth: "infinity", minHeight: 120, alignment: "topLeading" }}
+                    background={{
+                      style: "secondarySystemBackground",
+                      shape: { type: "rect", cornerRadius: 14 },
+                    }}
+                  >
+                    <Text
+                      font="caption"
+                      foregroundStyle={content.trim() ? "secondaryLabel" : "tertiaryLabel"}
+                      lineLimit={5}
+                      frame={{ maxWidth: "infinity", alignment: "leading" }}
+                    >
+                      {content.trim() || "暂无内容，点击进入 Editor 编辑"}
+                    </Text>
+                  </VStack>
+                </Button>
+              </VStack>
+            )}
+          </Section>
+
+          <Section header={<Text>分类</Text>}>
+            <Picker
+              title={"模块分类"}
+              pickerStyle="menu"
+              value={categoryIdx}
+                onChanged={(idx: number) => {
+                  HapticFeedback.heavyImpact()
+                  setCategoryIdx(idx)
+                }}
+              >
+              {categoryOptions.map((c, idx) => (
+                <Text key={`${c}-${idx}`} tag={idx}>
+                  {c}
+                </Text>
+              ))}
+            </Picker>
+          </Section>
+
+          {saveDirOptions.length ? (
+            <Section header={<Text>保存路径</Text>}>
+              <Picker
+                title={"保存路径"}
+                pickerStyle="menu"
+                value={saveDirIdx}
+                onChanged={(idx: number) => {
+                  HapticFeedback.heavyImpact()
+                  setSaveDirIdx(idx)
+                }}
+              >
+                {saveDirOptions.map((p, idx) => {
+                  const label = idx === 0 ? "根目录" : (String(p).split("/").pop() ?? p)
+                  return (
+                    <Text key={`${p}-${idx}`} tag={idx}>
+                      {label}
+                    </Text>
+                  )
+                })}
+              </Picker>
+            </Section>
+          ) : null}
+
+          {showLibrary ? (
+            <Section
+              header={(
+                <HStack>
+                  <Text>在线模块(来自</Text>
+                  <Button
+                    title={librarySource === "fmz200" ? "fmz200/wool_scripts" : "LoonKissSurge"}
+                    action={() => {
+                      HapticFeedback.mediumImpact()
+                      openLink(librarySource === "fmz200"
+                        ? "https://github.com/fmz200/wool_scripts/tree/main/Surge/module"
+                        : "https://github.com/QingRex/LoonKissSurge/")
+                    }}
+                  />
+                  <Text>)</Text>
+                  <Spacer />
+                  <Button
+                    title=""
+                    systemImage="magnifyingglass"
+                    action={() => {
+                      HapticFeedback.mediumImpact()
+                      onSearch()
+                    }}
+                  />
+                </HStack>
+              )}
+            >
+              {libraryLoading ? <Text>{libraryItems.length ? "刷新中" : "加载中"}：{libraryPercent}%</Text> : null}
+              {libraryError ? <Text>{libraryError}</Text> : null}
+              {filterText ? (
+                <HStack>
+                  <Text>筛选：{filterText}</Text>
+                  <Spacer />
+                  <Button
+                    title="清除"
+                    action={() => {
+                      HapticFeedback.mediumImpact()
+                      setFilterText("")
+                    }}
+                  />
+                </HStack>
+              ) : null}
+              <Toggle
+                title="只看未添加"
+                value={showOnlyNew}
+                onChanged={(value: boolean) => {
+                  HapticFeedback.heavyImpact()
+                  setShowOnlyNew(value)
+                }}
+              />
+              <List listStyle="plain" frame={{ height: 360 }}>
+                {shownItems.map((item) => {
+                  const existed = existingLinks.has(item.link)
+                  return (
+                    <VStack
+                      key={item.link}
+                      listRowBackground={<EmptyView />}
+                      contextMenu={{
+                        menuItems: (
+                          <Group>
+                            <Button title="复制名称" action={() => Pasteboard.setString(item.name)} />
+                            <Button title="复制链接" action={() => Pasteboard.setString(item.link)} />
+                            <Button
+                              title="打开链接"
+                              action={() => {
+                                HapticFeedback.mediumImpact()
+                                openLink(item.link)
+                              }}
+                            />
+                          </Group>
+                        ),
+                      }}
+                    >
+                      <HStack padding={{ top: 8, bottom: 8 }}>
+                        <Text>{item.name}</Text>
+                        <Spacer />
+                        {existed ? (
+                          <Text foregroundStyle="secondaryLabel">已添加</Text>
+                          ) : (
+                            <Button
+                              title="添加"
+                              buttonStyle="borderedProminent"
+                              tint="systemGreen"
+                              action={() => {
+                                HapticFeedback.mediumImpact()
+                                setName(item.name)
+                                setLink(item.link)
+                                setIsRemote(true)
+                              }}
+                            />
+                          )}
+                      </HStack>
+                    </VStack>
+                  )
+                })}
+              </List>
+            </Section>
+          ) : null}
+        </Form>
+      </VStack>
+    </NavigationStack>
+  )
+}

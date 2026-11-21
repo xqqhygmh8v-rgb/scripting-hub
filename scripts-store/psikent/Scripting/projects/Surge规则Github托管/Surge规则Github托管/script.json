@@ -1,0 +1,46 @@
+{
+  "iconImage" : "https:\/\/nssurge.com\/favicon.ico",
+  "intentInputTypes" : [
+    "Text",
+    "URLs"
+  ],
+  "runInApp" : false,
+  "localizedNames" : {
+    "de" : "",
+    "ja" : "",
+    "ru" : "",
+    "en" : "",
+    "fr" : "",
+    "pt" : "",
+    "zh" : "",
+    "es" : "",
+    "it" : ""
+  },
+  "author" : {
+    "email" : null,
+    "homepage" : null,
+    "name" : "Lucasss1916"
+  },
+  "localizedDescriptions" : {
+    "en" : "",
+    "ru" : "",
+    "ja" : "",
+    "it" : "",
+    "zh" : "",
+    "es" : "",
+    "de" : "",
+    "pt" : "",
+    "fr" : ""
+  },
+  "version" : "1.0.0",
+  "color" : "rgba(28, 140, 255,1)",
+  "remoteResource" : null,
+  "icon" : "network",
+  "description" : "直接在已有规则文件基础上，添加新规则",
+  "name" : "Surge规则Github托管",
+  "entry" : "index.tsx",
+  "contributors" : [
+
+  ],
+  "permissions" : null
+}

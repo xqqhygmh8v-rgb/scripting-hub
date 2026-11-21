@@ -1,0 +1,43 @@
+{
+  "icon" : "globe",
+  "intentInputTypes" : [
+
+  ],
+  "localizedDescriptions" : {
+    "fr" : "",
+    "es" : "",
+    "zh" : "腾讯云 EdgeOne：总流量、总请求、带宽峰值、命中率。",
+    "en" : "Tencent EdgeOne L7 timing analysis widget (DescribeTimingL7AnalysisData).",
+    "de" : "",
+    "ja" : "",
+    "it" : "",
+    "ru" : "",
+    "pt" : ""
+  },
+  "version" : "1.0.0",
+  "author" : {
+    "name" : "DTZSGHNR",
+    "homepage" : "https://github.com/Nanako718",
+    "email" : "2753086015@qq.com"
+  },
+  "remoteResource" : null,
+  "description" : "腾讯云 EdgeOne：总流量、总请求、带宽峰值、缓存命中率（与控制台同源）；分析+回源双接口。需 Secret ID、Secret Key；可选 Zone ID（不填为 *）。",
+  "localizedNames" : {
+    "fr" : "",
+    "es" : "",
+    "zh" : "EdgeOne",
+    "en" : "EdgeOne",
+    "de" : "",
+    "ja" : "",
+    "it" : "",
+    "ru" : "",
+    "pt" : ""
+  },
+  "color" : "rgba(174, 109, 216,1)",
+  "iconImage" : null,
+  "name" : "EdgeOne",
+  "contributors" : [
+
+  ],
+  "runInApp" : false
+}

@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>AdHunter 智能去广告实验室 — LocalDNS</title>
+  <style>
+    :root {
+      --bg: #0f141c;
+      --card-bg: rgba(26, 34, 46, 0.75);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --card-hover: rgba(36, 47, 64, 0.9);
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --purple: #8b5cf6;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --code-bg: #090d13;
+      --radius: 14px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: radial-gradient(circle at 15% 15%, #182234 0%, #0c1017 100%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px 16px 80px 16px;
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 980px;
+      margin: 0 auto;
+    }
+
+    /* Top bar */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      padding: 6px 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+    .back-link:hover { color: var(--text); background: rgba(255, 255, 255, 0.1); }
+    .badge-pill {
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    /* Header title */
+    .hero {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .hero h1 {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .hero p {
+      color: var(--text-muted);
+      font-size: 15px;
+    }
+
+    /* Glass Cards */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 20px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      margin-bottom: 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    }
+
+    /* Input area */
+    .search-wrap {
+      display: flex;
+      gap: 12px;
+    }
+    .url-input {
+      flex: 1;
+      background: var(--code-bg);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      padding: 12px 16px;
+      color: #fff;
+      font-size: 15px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .url-input:focus { border-color: var(--primary); }
+    .btn-analyze {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 0 24px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+    .btn-analyze:hover { background: var(--primary-hover); transform: translateY(-1px); }
+    .btn-analyze:active { transform: translateY(0); }
+    .btn-analyze:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    /* Presets */
+    .presets-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 14px;
+      flex-wrap: wrap;
+      font-size: 13px;
+    }
+    .preset-label { color: var(--text-muted); }
+    .preset-chip {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #93c5fd;
+      border-radius: 6px;
+      padding: 4px 10px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .preset-chip:hover {
+      background: rgba(59, 130, 246, 0.2);
+      border-color: rgba(59, 130, 246, 0.4);
+      color: #fff;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .stat-box {
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      padding: 12px;
+      text-align: center;
+    }
+    .stat-val {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--primary);
+    }
+    .stat-lbl {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* Findings List */
+    .section-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .findings-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .finding-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+    }
+    .finding-left { flex: 1; }
+    .finding-tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+      margin-bottom: 4px;
+    }
+    .finding-desc { color: #d1d5db; font-weight: 500; }
+    .finding-sel {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      color: #93c5fd;
+      margin-top: 4px;
+      word-break: break-all;
+    }
+
+    /* Tabs & Code box */
+    .tabs-header {
+      display: flex;
+      gap: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 12px;
+      margin-bottom: 14px;
+      overflow-x: auto;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .tab-btn.active {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+    }
+    .code-container {
+      position: relative;
+    }
+    .code-box {
+      background: var(--code-bg);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 16px;
+      color: #e2e8f0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      max-height: 320px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      line-height: 1.6;
+    }
+    .btn-copy {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #fff;
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-copy:hover { background: rgba(255, 255, 255, 0.2); }
+
+    /* Action bar */
+    .actions-bar {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 20px;
+    }
+    .btn-action {
+      flex: 1;
+      min-width: 200px;
+      padding: 12px 18px;
+      border-radius: 10px;
+      border: none;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+    .btn-surge {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: #fff;
+    }
+    .btn-surge:hover { opacity: 0.92; transform: translateY(-1px); }
+    .btn-userscript {
+      background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+      color: #fff;
+    }
+    .btn-userscript:hover { opacity: 0.92; transform: translateY(-1px); }
+    .btn-autosync {
+      background: linear-gradient(135deg, #2563eb 0%, #7c3aed 50%, #db2777 100%);
+      color: #fff;
+      font-weight: 700;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 4px 18px rgba(124, 58, 237, 0.35);
+    }
+    .btn-autosync:hover { opacity: 0.95; transform: translateY(-2px); box-shadow: 0 8px 25px rgba(124, 58, 237, 0.5); }
+
+    /* Toast */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: rgba(16, 185, 129, 0.95);
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 30px;
+      font-size: 14px;
+      font-weight: 600;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+      transition: transform 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+      z-index: 99999;
+      pointer-events: none;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+    #toast.error { background: rgba(239, 68, 68, 0.95); }
+
+    /* Spinner */
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- Top Bar -->
+    <div class="top-bar">
+      <a href="/ui/" class="back-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        返回 LocalDNS 控制台
+      </a>
+      <span class="badge-pill">FJMOS · 零域名去广告引擎</span>
+    </div>
+
+    <!-- Hero -->
+    <div class="hero">
+      <h1>🛡️ AdHunter 智能去广告实验室</h1>
+      <p>面向高频更换域名的网站 · 页面骨架与运行时特征自动扫描 · 零域名规则合成</p>
+    </div>
+
+    <!-- Input Card -->
+    <div class="card">
+      <div style="display:flex;gap:8px;margin-bottom:12px;border-bottom:1px solid var(--border-color);padding-bottom:10px;">
+        <button type="button" id="tab-mode-url" class="tab-btn active" onclick="switchInputMode('url')" style="border-radius:8px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer;">🌐 目标网址分析</button>
+        <button type="button" id="tab-mode-session" class="tab-btn" onclick="switchInputMode('session')" style="border-radius:8px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer;">📂 Surge 抓包会话深度扫描 (TF436+)</button>
+      </div>
+
+      <div id="input-mode-url" class="search-wrap">
+        <input type="text" id="target-url" class="url-input" placeholder="输入任意目标网址，如 https://i4p76.sancpkvy.cc/ 或详情页…" />
+        <button id="btn-run" class="btn-analyze btn-autosync" onclick="startAnalysis(true)">
+          <span>⚡ 深度分析并全端生效</span>
+        </button>
+      </div>
+
+      <div id="input-mode-session" class="search-wrap" style="display:none;align-items:center;gap:10px;">
+        <select id="surge-session-select" class="url-input" style="flex:1;cursor:pointer;">
+          <option value="">正在检测 Surge 抓包会话…</option>
+        </select>
+        <button type="button" class="tab-btn" onclick="loadSurgeSessions()" style="padding:10px 14px;border-radius:8px;font-size:13px;">🔄 刷新会话</button>
+        <button id="btn-run-session" class="btn-analyze btn-autosync" onclick="startSessionAnalysis(true)">
+          <span>⚡ 扫描抓包并全端生效</span>
+        </button>
+      </div>
+
+      <div class="presets-wrap" id="presets-container">
+        <span class="preset-label">快速预设:</span>
+        <span class="preset-chip" onclick="applyPreset('https://i4p76.sancpkvy.cc/')">🍉 黑料网首页</span>
+        <span class="preset-chip" onclick="applyPreset('https://i4p76.sancpkvy.cc/archives/123759/')">📝 黑料网详情页</span>
+        <span class="preset-chip" onclick="applyPreset('https://kanav.ad/')">🔞 KanAV 影视 (kanav.ad)</span>
+        <span class="preset-chip" onclick="applyPreset('https://javtiful.com/zh/video/115315/ipzz-995-reducing-mosaic')">🎬 Javtiful 视频页</span>
+        <span class="preset-chip" onclick="applyPreset('https://m.youtube.com/')">▶️ YouTube 视频页</span>
+      </div>
+    </div>
+
+    <!-- Result Container -->
+    <div id="result-wrap" style="display:none">
+      <!-- Summary Card -->
+      <div class="card">
+        <div class="section-title">
+          <span>🎯 页面指纹诊断</span>
+          <span id="sync-status-badge" class="badge-pill" style="display:none;background:rgba(16,185,129,0.2);color:#34d399;border-color:rgba(16,185,129,0.4);margin-left:8px;"></span>
+          <span id="cms-badge" class="badge-pill" style="margin-left:auto"></span>
+        </div>
+        <p id="cms-desc" style="font-size:14px;color:var(--text-muted);"></p>
+
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="stat-val" id="stat-total">0</div>
+            <div class="stat-lbl">广告特征总数</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val" id="stat-slots" style="color:#60a5fa">0</div>
+            <div class="stat-lbl">插槽类广告</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val" id="stat-cards" style="color:#f59e0b">0</div>
+            <div class="stat-lbl">信息流混排卡片</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val" id="stat-popups" style="color:#ef4444">0</div>
+            <div class="stat-lbl">遮罩/年龄弹窗</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val" id="stat-text" style="color:#a78bfa">0</div>
+            <div class="stat-lbl">密集文字矩阵</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val" id="stat-scripts" style="color:#10b981">0</div>
+            <div class="stat-lbl">核心广告引擎</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detected Features Detail Card -->
+      <div class="card">
+        <div class="section-title">🔍 提取的结构化特征明细</div>
+        <div class="findings-list" id="findings-container"></div>
+      </div>
+
+      <!-- Synthesized Rules Card -->
+      <div class="card">
+        <div class="section-title">⚡ 自动合成的三维拦截规则 (零域名依赖)</div>
+
+        <div class="tabs-header">
+          <button class="tab-btn active" onclick="switchTab('css')">1. 纯特征 CSS (Cosmetic)</button>
+          <button class="tab-btn" onclick="switchTab('defuser')">2. Defuser 脚本 (JS 灭活)</button>
+          <button class="tab-btn" onclick="switchTab('surge')">3. Surge 零域名 URL-REGEX</button>
+          <button class="tab-btn" onclick="switchTab('userscript')">4. 完整 Userscript 脚本</button>
+        </div>
+
+        <div class="code-container">
+          <pre class="code-box" id="code-display"></pre>
+          <button class="btn-copy" onclick="copyCurrentCode()">复制规则代码</button>
+        </div>
+
+        <!-- Action deployment buttons -->
+        <div class="actions-bar" style="flex-direction:column;gap:12px;">
+          <button id="btn-autosync-action" class="btn-action btn-autosync" onclick="autoSyncAll()" style="width:100%;padding:14px;font-size:15px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            ⚡ 一键全端自动化合流（Surge模块 + Safari全局母核即时生效）
+          </button>
+          <div style="display:flex;gap:12px;width:100%;">
+            <button class="btn-action btn-surge" onclick="deployToSurge()" style="flex:1;">
+              仅写入 Surge & LocalDNS 防线
+            </button>
+            <button class="btn-action btn-userscript" onclick="deployToUserscript()" style="flex:1;">
+              导出独立 Userscript 脚本
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    let currentReport = null;
+    let activeTab = 'css';
+
+    function switchInputMode(mode) {
+      const isSession = mode === 'session';
+      document.getElementById('input-mode-url').style.display = isSession ? 'none' : 'flex';
+      document.getElementById('input-mode-session').style.display = isSession ? 'flex' : 'none';
+      document.getElementById('presets-container').style.display = isSession ? 'none' : 'flex';
+      document.getElementById('tab-mode-url').className = isSession ? 'tab-btn' : 'tab-btn active';
+      document.getElementById('tab-mode-session').className = isSession ? 'tab-btn active' : 'tab-btn';
+      if (isSession) {
+        loadSurgeSessions();
+      }
+    }
+
+    async function loadSurgeSessions() {
+      const sel = document.getElementById('surge-session-select');
+      sel.innerHTML = '<option value="">正在拉取 Surge 抓包会话列表…</option>';
+      try {
+        const res = await fetch('/api/v1/ad-hunter/surge-sessions');
+        const data = await res.json();
+        const sessions = data.sessions || [];
+        if (sessions.length === 0) {
+          sel.innerHTML = '<option value="">⚠️ 暂无保存的会话（请在手机 Surge 中打开抓包并保存落盘）</option>';
+          return;
+        }
+        sel.innerHTML = sessions.map(s => {
+          const reqCount = s.requestCount ? `${s.requestCount} 条请求` : '';
+          const reason = s.stopReason ? `· ${s.stopReason}` : '';
+          return `<option value="${s.name}">${s.name} (${reqCount} ${reason})</option>`;
+        }).join('');
+      } catch (e) {
+        sel.innerHTML = '<option value="">❌ 拉取会话失败，请确认 Surge HTTP API 已联通</option>';
+      }
+    }
+
+    async function startSessionAnalysis(autoSync = false) {
+      const sel = document.getElementById('surge-session-select');
+      const sessionName = sel.value;
+      if (!sessionName) {
+        showToast('请选择有效的抓包会话', true);
+        return;
+      }
+
+      const btn = document.getElementById('btn-run-session');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> <span>扫描会话中...</span>';
+
+      try {
+        const res = await fetch('/api/v1/ad-hunter/analyze-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session: sessionName, maxRequests: 150 })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || '分析会话失败');
+        }
+
+        currentReport = data.report;
+        renderReport(currentReport);
+        document.getElementById('result-wrap').style.display = 'block';
+
+        if (autoSync) {
+          showToast('抓包会话特征提取成功！正在自动全端合流部署...');
+          await autoSyncAll();
+        } else {
+          showToast(`已成功从会话 [${sessionName}] 提取 ${currentReport.stats.totalAdsDetected} 处广告特征！`);
+        }
+      } catch (e) {
+        showToast(e.message || '分析抓包会话异常', true);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>⚡ 扫描抓包并全端生效</span>';
+      }
+    }
+
+    function applyPreset(url) {
+      document.getElementById('target-url').value = url;
+      startAnalysis();
+    }
+
+    function showToast(msg, isError = false) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = isError ? 'show error' : 'show';
+      setTimeout(() => { t.className = ''; }, 3200);
+    }
+
+    async function startAnalysis(autoSync = false) {
+      const urlInput = document.getElementById('target-url');
+      const url = urlInput.value.trim();
+      if (!url) {
+        showToast('请输入目标网址', true);
+        return;
+      }
+
+      const btn = document.getElementById('btn-run');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> <span>分析中...</span>';
+
+      try {
+        let reportData = null;
+        let lastErr = null;
+        try {
+          const res = await fetch('/api/v1/ad-hunter/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url })
+          });
+          const data = await res.json();
+          if (res.ok && data.success && data.report) {
+            reportData = data.report;
+          } else {
+            lastErr = new Error(data.error || `HTTP ${res.status}`);
+          }
+        } catch (e) {
+          lastErr = e;
+        }
+
+        // 前端多重跨网穿透与降级引擎
+        if (!reportData) {
+          let html = '';
+          try {
+            const directRes = await fetch(url, { headers: { 'Accept': 'text/html,*/*' } });
+            if (directRes.ok) html = await directRes.text();
+          } catch (_) {}
+
+          if (!html || html.length < 200) {
+            try {
+              const jinaRes = await fetch(`https://r.jina.ai/${url}`, { headers: { 'X-Return-Format': 'html' } });
+              if (jinaRes.ok) html = await jinaRes.text();
+            } catch (_) {}
+          }
+
+          if (html && html.length > 200) {
+            const targetHost = new URL(url).hostname;
+            reportData = clientSideAnalyze(url, targetHost, html);
+          } else {
+            throw lastErr || new Error('目标网页连接中断或不可达，请检查网址或切换到「Surge 抓包会话」模式分析');
+          }
+        }
+
+        currentReport = reportData;
+        renderReport(currentReport);
+        document.getElementById('result-wrap').style.display = 'block';
+
+        if (autoSync) {
+          showToast('分析完成！正在自动全端合流部署...');
+          await autoSyncAll();
+        } else {
+          showToast('分析完成！已提取页面特征并合成零域名规则');
+        }
+      } catch (e) {
+        showToast(e.message || '分析失败，请检查网址', true);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>⚡ 深度分析并全端生效</span>';
+      }
+    }
+
+    function clientSideAnalyze(url, domain, html) {
+      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+      const siteTitle = titleMatch ? titleMatch[1].trim().slice(0, 40) : domain;
+
+      const rep = {
+        targetUrl: url,
+        domain: domain,
+        analyzedAt: new Date().toISOString(),
+        cmsFamily: { id: 'universal', name: siteTitle ? `${siteTitle} · 自适应网页` : '通用自适应 CMS', confidence: 0.8, signaturesFound: [] },
+        stats: { totalAdsDetected: 0, slotsCount: 0, inFeedCardsCount: 0, popupsCount: 0, textMatricesCount: 0, navPromosCount: 0, scriptEnginesCount: 0 },
+        detectedSlots: [],
+        inFeedCards: { detected: false, containerSelector: '', cardSelector: '', features: [] },
+        popupsAndOverlays: [],
+        textLinkMatrices: [],
+        fakeNavigationPromos: [],
+        scriptEngines: [],
+        synthesizedRules: { cssCosmetic: '', defuserScriptlet: '', surgeUrlRegex: [], userscriptCode: '' }
+      };
+
+      const FALSE_WORDS = new Set([
+        'download', 'downloads', 'thread', 'threads', 'header', 'headers', 'footer', 'footers',
+        'breadcrumb', 'breadcrumbs', 'broadcast', 'radio', 'gradient', 'shadow', 'radius',
+        'badge', 'badges', 'reload', 'head', 'lead', 'upload', 'uploads', 'spread', 'dead',
+        'reading', 'headline', 'pad', 'road', 'load', 'loading', 'container', 'wrapper', 'sidebar',
+        'content', 'main', 'card', 'box', 'item', 'page'
+      ]);
+
+      function isToken(raw) {
+        const s = raw.toLowerCase().trim();
+        if (s.length < 2 || s.length > 50 || FALSE_WORDS.has(s)) return false;
+        if (/^(ads?|banner|guanggao|gg|sponsor(ed)?|popunder|floating[-_]?ad|fixed[-_]?ad|couplet|adv|qf|img-qf|bottom-img-qf|home-qf)$/i.test(s)) return true;
+        if (s.includes('exo-native') || s.includes('msg-native') || s.includes('native-widget') || s.includes('img-qf') || s.includes('home-qf')) return true;
+        if (/^(ad|banner|gg|adv|sponsor)[-_](box|slot|card|container|wrapper|placement|item|content|area|zone|frame|header|footer|sidebar|top|bottom|left|right|float|fixed|popup|overlay|layer|module|block|wrap|view|list|pic|img)$/i.test(s)) return true;
+        if (/^([a-z0-9]+)[-_](ad|ads|banner|gg|guanggao|sponsor|adv)$/i.test(s)) return true;
+        if (/^([a-z0-9]+)[-_](ad|ads|banner|gg|adv)[-_]([a-z0-9]+)$/i.test(s)) return true;
+        return false;
+      }
+
+      // 1. 扫描真实出现的广告 class 和 id
+      const foundClasses = new Set();
+      const foundIds = new Set();
+      const classMatches = html.match(/class=["']([^"']+)["']/gi) || [];
+      for (const cm of classMatches) {
+        const clean = cm.replace(/^class=["']/i, '').replace(/["']$/, '');
+        for (const tok of clean.split(/\s+/)) {
+          if (isToken(tok)) foundClasses.add(tok);
+        }
+      }
+      const idMatches = html.match(/id=["']([^"']+)["']/gi) || [];
+      for (const im of idMatches) {
+        const idVal = im.replace(/^id=["']/i, '').replace(/["']$/, '').trim();
+        if (isToken(idVal)) foundIds.add(idVal);
+      }
+
+      if (foundClasses.size > 0) {
+        const selArray = Array.from(foundClasses).map(c => `.${c}`);
+        rep.detectedSlots.push({
+          selector: selArray.slice(0, 15).join(', '),
+          description: `提取到 ${foundClasses.size} 个具有广告词根特征的 DOM 容器 (${Array.from(foundClasses).slice(0, 6).join(', ')})`
+        });
+      }
+      if (foundIds.size > 0) {
+        const idArray = Array.from(foundIds).map(id => `#${id}`);
+        rep.detectedSlots.push({
+          selector: idArray.join(', '),
+          description: `提取到 ${foundIds.size} 个广告专属 ID 锚点 (${Array.from(foundIds).slice(0, 5).join(', ')})`
+        });
+      }
+
+      // 2. 主流联盟组件与通栏横幅 (QF 旗帜横幅)
+      if (html.includes('home-qf') || html.includes('img-qf') || html.includes('bottom-img-qf') || html.includes('/images/qf/')) {
+        rep.detectedSlots.push({
+          selector: '.home-qf, .img-qf1, .img-qf2, .bottom-img-qf1, .bottom-img-qf2, [class*="img-qf"], img[src*="/images/qf/"], a:has(> img[src*="/images/qf/"]), a[href*="amazonaws.com"], a[href*="guotiai4.cc"], a[href*="ifengyue.online"], a[href*=":5012"], a[href*=":5002"], a[href*=":30400"]',
+          description: '通栏横幅广告容器与博彩外链图片 (QF 旗帜横幅)'
+        });
+      }
+      if (html.includes('adsbygoogle') || html.includes('google-analytics') || html.includes('doubleclick')) {
+        rep.detectedSlots.push({ selector: 'ins.adsbygoogle, [data-ad-client], [data-ad-slot], [data-ad-format], [data-ad-unit]', description: 'Google AdSense 联盟广告组件与自定义插槽' });
+      }
+      if (html.includes('cpro') || html.includes('pos.baidu.com') || html.includes('BAIDU_SSP_') || html.includes('mobads')) {
+        rep.detectedSlots.push({ selector: '[id^="BAIDU_SSP_"], [id^="baidu_clb_slot_id"], div[id^="cproIframe"], [class*="cpro"]', description: '百度原生推广与网盟展示容器' });
+      }
+      if (html.includes('pangle') || html.includes('pangolin')) {
+        rep.detectedSlots.push({ selector: '[id^="pangle"], [class*="pangle"], [class*="pangolin"]', description: '字节跳动穿山甲广告原生容器' });
+      }
+      if (/<iframe[^>]+(ad|banner|google|baidu|cpro|doubleclick)[^>]*>/i.test(html)) {
+        rep.detectedSlots.push({ selector: 'iframe[src*="ad"], iframe[id*="ad"], iframe[src*="doubleclick"], iframe[src*="googleads"], iframe[src*="pos.baidu.com"]', description: '第三方广告展示 iframe 嵌套框架' });
+      }
+
+      // 3. 悬浮贴片与弹窗
+      if (html.includes('bottom-floating-ad') || html.includes('fixed-banner') || /(?:class|id)=["'][^"']*(floating[-_]?ad|fixed[-_]?ad|couplet)[^"']*["']/i.test(html)) {
+        rep.popupsAndOverlays.push({ selector: '.bottom-floating-ad, .fixed-banner, [class*="floating-ad"], [class*="fixed-ad"], [class*="couplet"]', description: '悬浮广告横幅与对联挂件', type: 'modal' });
+      }
+      if (html.includes('age-gate')) {
+        rep.popupsAndOverlays.push({ selector: '#age-gate, .age-gate, .age-gate-box, .age-gate-overlay', description: '18禁年龄拦截确认遮罩（阻断访问并锁定滚动）', type: 'age_gate' });
+      }
+
+      // 4. 推广赞助外链
+      if (html.includes('rel="sponsored"') || html.includes("rel='sponsored'")) {
+        rep.textLinkMatrices.push({ selector: 'a[rel*="sponsored"], a[target="_blank"][href*="/ad/"], a[target="_blank"][href*="union"]', description: '第三方付费赞助与引流点击链接' });
+      }
+
+      // 5. 脚本网络扫描
+      const AD_DOMAINS = [
+        'doubleclick.net', 'googlesyndication.com', 'google-analytics.com', 'googletagmanager.com',
+        'pos.baidu.com', 'cpro.baidu.com', 'mobads.baidu.com', 'hm.baidu.com', 'eclick.baidu.com',
+        'pgdt.gtimg.cn', 'e.qq.com', 'tmead.y.qq.com', 'adnet.qq.com',
+        'pangolin-sdk-toutiao.com', 'pangle.io', 'toblog.ctobsnssdk.com',
+        'alimama.com', 'tanx.com', 'adash.m.taobao.com',
+        'taboola.com', 'outbrain.com', 'criteo.com', 'popads.net', 'exoclick.com', 'juicyads.com', 'trafficjunky.com'
+      ];
+
+      const srcMatches = html.match(/(?:src|href)=["']([^"']+)["']/gi) || [];
+      const scannedUrls = new Set();
+      for (const m of srcMatches) {
+        const raw = m.replace(/^(?:src|href)=["']/i, '').replace(/["']$/, '').trim();
+        if (raw && !raw.startsWith('data:') && !raw.startsWith('javascript:')) scannedUrls.add(raw);
+      }
+
+      const enginesMap = new Map();
+      for (const uStr of scannedUrls) {
+        let uHost = '';
+        let uPath = '';
+        try {
+          const u = new URL(uStr.startsWith('//') ? 'https:' + uStr : (uStr.startsWith('http') ? uStr : `http://${domain}/${uStr.replace(/^\/+/, '')}`));
+          uHost = u.hostname.toLowerCase();
+          uPath = u.pathname;
+        } catch {
+          uPath = uStr.split('?')[0].split('#')[0];
+        }
+
+        for (const adDom of AD_DOMAINS) {
+          if (uHost === adDom || uHost.endsWith('.' + adDom)) {
+            const rule = `DOMAIN-SUFFIX,${adDom},REJECT`;
+            if (!enginesMap.has(rule)) {
+              enginesMap.set(rule, { type: 'ad_network', rule, desc: `已知广告网络 (${uHost})` });
+            }
+            break;
+          }
+        }
+
+        if (
+          uPath.includes('slot-ads') || uPath.includes('bottom-popup') || uPath.includes('tjtag') ||
+          uPath.includes('/api/ad') || uPath.includes('/get_ad') || uPath.includes('/splash_ad')
+        ) {
+          const cleanP = uPath.split('?')[0];
+          const zeroRegex = `^https?:\\/\\/[^\\/]+${cleanP.replace(/\./g, '\\.')}(?:[?#]|$)`;
+          if (!enginesMap.has(zeroRegex)) {
+            enginesMap.set(zeroRegex, { type: 'slot_engine', rule: `URL-REGEX,"${zeroRegex}",REJECT`, desc: '广告插槽与接口调度脚本' });
+          }
+        }
+      }
+
+      for (const [key, item] of enginesMap.entries()) {
+        rep.scriptEngines.push({ path: key, zeroDomainRegex: item.rule, type: item.type, description: item.desc });
+      }
+
+      // 保底插槽
+      if (rep.detectedSlots.length === 0 && rep.popupsAndOverlays.length === 0 && rep.scriptEngines.length === 0) {
+        rep.detectedSlots.push({ selector: 'ins.adsbygoogle, [data-ad-slot], [data-ad-client], iframe[src*="ad"], iframe[src*="googleads"], div[id^="cproIframe"], .banner-ad, .ad-box', description: '通用广告插槽与联盟组件基础过滤防线' });
+      }
+
+      rep.stats.slotsCount = rep.detectedSlots.length;
+      rep.stats.inFeedCardsCount = rep.inFeedCards.detected ? 1 : 0;
+      rep.stats.popupsCount = rep.popupsAndOverlays.length;
+      rep.stats.textMatricesCount = rep.textLinkMatrices.length;
+      rep.stats.navPromosCount = rep.fakeNavigationPromos.length;
+      rep.stats.scriptEnginesCount = rep.scriptEngines.length;
+      rep.stats.totalAdsDetected = rep.stats.slotsCount + rep.stats.inFeedCardsCount + rep.stats.popupsCount + rep.stats.textMatricesCount + rep.stats.navPromosCount + rep.stats.scriptEnginesCount;
+
+      const selList = [];
+      rep.detectedSlots.forEach(s => selList.push(s.selector));
+      if (rep.inFeedCards.detected) { selList.push(rep.inFeedCards.containerSelector); selList.push(rep.inFeedCards.cardSelector); }
+      rep.textLinkMatrices.forEach(t => selList.push(t.selector));
+      rep.fakeNavigationPromos.forEach(n => selList.push(n.selector));
+      rep.popupsAndOverlays.forEach(p => selList.push(p.selector));
+      const uniqueSels = Array.from(new Set(selList.flatMap(s => s.split(',').map(x => x.trim())).filter(Boolean)));
+
+      rep.synthesizedRules.cssCosmetic = (uniqueSels.length > 0 ? uniqueSels.join(',\n') : 'ins.adsbygoogle, [data-ad-slot], [data-ad-client], .banner-ad, .ad-box') + ' {\n  display: none !important;\n  visibility: hidden !important;\n  height: 0 !important;\n  pointer-events: none !important;\n  z-index: -9999 !important;\n}' +
+        '\n\n/* === 物理防锁死：彻底粉碎 fixbody 对页面滚动的劫持 === */\nhtml,\nbody,\nhtml.fixbody,\nbody.fixbody,\nbody.navbar,\n#xqbj-container {\n  overflow: visible !important;\n  overflow-y: auto !important;\n  height: auto !important;\n  min-height: 100% !important;\n  max-height: none !important;\n  position: static !important;\n  touch-action: auto !important;\n  -webkit-overflow-scrolling: touch !important;\n}';
+      
+      const adultPreempt = `try { const now = new Date(); const dk = \`\${now.getFullYear()}-\${String(now.getMonth()+1).padStart(2,'0')}-\${String(now.getDate()).padStart(2,'0')}\`; localStorage.setItem('hlw_age_verify_date', dk); } catch(_) {}`;
+      rep.synthesizedRules.defuserScriptlet = rep.cmsFamily.id === 'heiliao'
+        ? `${adultPreempt}\nObject.defineProperty(window, 'HlwPgxAds', { get: () => ({ boot: () => {} }), set: () => {}, configurable: false });\nwindow.__SSP_ENABLED__ = false;\nwindow.__SSP_SLOTS__ = [];`
+        : `try { Object.defineProperty(window, 'AdProvider', { get: () => ({}), set: () => {}, configurable: false }); Object.defineProperty(window, 'popunder', { get: () => ({}), set: () => {}, configurable: false }); window.adsbygoogle = { push: function(){} }; try { Object.freeze(window.adsbygoogle); } catch(_) {} } catch(_) {}\ntry { const AD_HOSTS = ['magsrv.com','pemsrv.com','realsrv.com','exosrv.com','exoclick.com','juicyads.com','trafficjunky.net','popads.net','popcash.net','propellerads.com','onclickads.net','clickadu.com','adsterra.com','hilltopads.net','popunder.net','doubleclick.net','googlesyndication.com','googleadservices.com','adnxs.com']; const POP_RE = /(?:^|\/)(?:popunder|popunder2|adframe)(?:[\/.]|$)|[?&](?:popunder|popunder_id|clocid|cltgid|epidermispushup)=/i; const isBad = (raw) => { if (typeof raw !== 'string' || !raw) return false; var u; try { u = new URL(raw, location.href); if (u.protocol !== 'http:' && u.protocol !== 'https:') return false; if (u.hostname === location.hostname) return false; } catch(_) { return false; } var h = u.hostname.toLowerCase(); for (var i = 0; i < AD_HOSTS.length; i++) { var d = AD_HOSTS[i]; if (h === d || h.endsWith('.' + d)) return true; } return POP_RE.test(u.pathname + u.search); }; const _rawAdd = EventTarget.prototype.addEventListener; EventTarget.prototype.addEventListener = function(type, listener, options) { if (location.hostname.includes('youtube.com')) return _rawAdd.call(this, type, listener, options); if ((type === 'click' || type === 'touchstart' || type === 'touchend' || type === 'mousedown' || type === 'pointerdown') && (this === window || this === document || (this && (this.tagName === 'BODY' || this.tagName === 'HTML')))) { var f = String(listener || ''); if (f.includes('epidermispushup') || f.includes('clocid') || f.includes('cltgid') || f.includes('magsrv') || f.includes('pemsrv') || f.includes('popunder')) return; } return _rawAdd.call(this, type, listener, options); }; const _rawAClick = HTMLAnchorElement.prototype.click; HTMLAnchorElement.prototype.click = function() { if (isBad(String(this.href || ''))) return; return _rawAClick.call(this); }; const _rawOpen = window.open; window.open = function(url, t, f) { if (isBad(url)) return null; return _rawOpen.apply(window, arguments); }; } catch(_) {}`;
+      rep.synthesizedRules.surgeUrlRegex = rep.scriptEngines.map(s => s.zeroDomainRegex.startsWith('DOMAIN') || s.zeroDomainRegex.startsWith('URL-REGEX') ? s.zeroDomainRegex : `URL-REGEX,"${s.zeroDomainRegex}",REJECT`);
+      if (rep.synthesizedRules.surgeUrlRegex.length === 0) {
+        // 不再生成裸子串 URL-REGEX（会误杀正常资源），无规则时留空即可。
+      }
+      rep.synthesizedRules.userscriptCode = `// ==UserScript==\n// @name         AdHunter 智能特征去广告 [${rep.cmsFamily.name}]\n// @namespace    https://github.com/LocalDNS/AdHunter\n// @version      1.0.0\n// @description  基于 DOM 基因与行为特征的高精度纯净去广告，零域名依赖，无惧换皮与域名轮换\n// @match        *://*/*\n// @run-at       document-start\n// @grant        none\n// ==/UserScript==\n\n(function(){\n  'use strict';\n  ${rep.synthesizedRules.defuserScriptlet}\n  function applyStyles() {\n    if (document.getElementById('adhunter-feature-style')) return;\n    const style = document.createElement('style');\n    style.id = 'adhunter-feature-style';\n    style.textContent = \`${rep.synthesizedRules.cssCosmetic}\`;\n    (document.head || document.documentElement).appendChild(style);\n  }\n  function unlock() {\n    const g = document.getElementById('age-gate'); if (g) g.remove();\n    if (document.body) { document.body.classList.remove('fixbody'); document.body.style.removeProperty('overflow'); document.body.style.removeProperty('height'); }\n  }\n  unlock();\n  window.addEventListener('DOMContentLoaded', unlock);\n})();`;
+
+      return rep;
+    }
+
+    function renderReport(r) {
+      document.getElementById('cms-badge').textContent = r.cmsFamily.name;
+      document.getElementById('cms-desc').textContent = '命中指纹: ' + r.cmsFamily.signaturesFound.join(' · ');
+
+      document.getElementById('stat-total').textContent = r.stats.totalAdsDetected;
+      document.getElementById('stat-slots').textContent = r.stats.slotsCount;
+      document.getElementById('stat-cards').textContent = r.stats.inFeedCardsCount;
+      document.getElementById('stat-popups').textContent = r.stats.popupsCount;
+      document.getElementById('stat-text').textContent = r.stats.textMatricesCount;
+      document.getElementById('stat-scripts').textContent = r.stats.scriptEnginesCount;
+
+      // Render findings list
+      const container = document.getElementById('findings-container');
+      container.innerHTML = '';
+
+      const items = [];
+      r.detectedSlots.forEach(s => items.push({ tag: '插槽广告位', desc: s.description, sel: s.selector }));
+      if (r.inFeedCards.detected) items.push({ tag: '信息流伪装卡片', desc: '利用 :has() 消除混排假视频/假文章卡片', sel: r.inFeedCards.containerSelector });
+      r.textLinkMatrices.forEach(t => items.push({ tag: '密集文字推广', desc: t.description, sel: t.selector }));
+      r.popupsAndOverlays.forEach(p => items.push({ tag: '全屏遮罩/弹窗', desc: p.description, sel: p.selector }));
+      r.fakeNavigationPromos.forEach(n => items.push({ tag: '虚假导航/外链', desc: n.description, sel: n.selector }));
+      r.scriptEngines.forEach(s => items.push({ tag: '广告核心脚本', desc: s.description + ' (零域名路径匹配)', sel: s.zeroDomainRegex }));
+
+      items.forEach(it => {
+        const row = document.createElement('div');
+        row.className = 'finding-row';
+        row.innerHTML = `
+          <div class="finding-left">
+            <span class="finding-tag">${it.tag}</span>
+            <div class="finding-desc">${it.desc}</div>
+            <div class="finding-sel">${it.sel}</div>
+          </div>
+        `;
+        container.appendChild(row);
+      });
+
+      switchTab(activeTab);
+    }
+
+    function switchTab(tab) {
+      activeTab = tab;
+      const btns = document.querySelectorAll('.tab-btn');
+      btns.forEach((b, i) => {
+        b.classList.toggle('active', ['css', 'defuser', 'surge', 'userscript'][i] === tab);
+      });
+
+      const display = document.getElementById('code-display');
+      if (!currentReport) return;
+
+      if (tab === 'css') {
+        display.textContent = currentReport.synthesizedRules.cssCosmetic;
+      } else if (tab === 'defuser') {
+        display.textContent = currentReport.synthesizedRules.defuserScriptlet;
+      } else if (tab === 'surge') {
+        display.textContent = currentReport.synthesizedRules.surgeUrlRegex.join('\n') || '# 该页面未发现以固定路径下发的独立广告脚本';
+      } else if (tab === 'userscript') {
+        display.textContent = currentReport.synthesizedRules.userscriptCode;
+      }
+    }
+
+    function copyCurrentCode() {
+      const code = document.getElementById('code-display').textContent;
+      navigator.clipboard.writeText(code).then(() => {
+        showToast('已复制到剪贴板！');
+      }).catch(() => {
+        showToast('复制失败，请手动选取', true);
+      });
+    }
+
+    async function autoSyncAll() {
+      if (!currentReport) return;
+      const btn = document.getElementById('btn-autosync-action');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> <span>正在全端自动合流...</span>';
+      }
+      try {
+        let success = false;
+        let msg = '';
+        let surgeRulesAdded = 0;
+        let selectorsMerged = 0;
+
+        // 优先调用后端专用的全端原子合流接口（自动合流进 AdBlockHub 母核）
+        try {
+          const res = await fetch('/api/v1/ad-hunter/auto-sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ report: currentReport })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success) {
+              success = true;
+              msg = data.message;
+              surgeRulesAdded = data.surgeRulesAdded || 0;
+              selectorsMerged = data.selectorsMerged || 0;
+            }
+          }
+        } catch (_) {}
+
+        // 前端弹性双活调度：若服务处于热备未重启态，自动串联调用在线的 Surge 模块下发与 Userscript 同步
+        if (!success) {
+          const surgeRes = await fetch('/api/v1/ad-hunter/deploy-surge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ report: currentReport })
+          });
+          const surgeData = await surgeRes.json();
+          surgeRulesAdded = (surgeData && surgeData.rulesAdded) || 0;
+
+          const fileName = (currentReport.cmsFamily.id || 'adhunter-auto') + '-adblock';
+          await fetch('/api/v1/ad-hunter/deploy-userscript', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fileName,
+              content: currentReport.synthesizedRules.userscriptCode
+            })
+          });
+          msg = `已全端联动下发：Surge 模块 (+${surgeRulesAdded} 条零域名规则) + Safari 扩展自动安装就绪！`;
+          success = true;
+        }
+
+        showToast(msg);
+        const badge = document.getElementById('sync-status-badge');
+        if (badge) {
+          badge.style.display = 'inline-flex';
+          badge.textContent = `🟢 已全端秒级生效 (Surge +${surgeRulesAdded} · 扩展联动就绪)`;
+        }
+      } catch (e) {
+        showToast(e.message || '全端合流失败', true);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> ⚡ 一键全端自动化合流（Surge模块 + Safari全局母核即时生效）';
+        }
+      }
+    }
+
+    async function deployToSurge() {
+      if (!currentReport) return;
+      try {
+        const res = await fetch('/api/v1/ad-hunter/deploy-surge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ report: currentReport })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || '下发失败');
+        showToast(data.message || '已成功写入 Surge 规则库！');
+      } catch (e) {
+        showToast(e.message || '部署失败', true);
+      }
+    }
+
+    async function deployToUserscript() {
+      if (!currentReport) return;
+      try {
+        const fileName = (currentReport.cmsFamily.id || 'adhunter-auto') + '-adblock';
+        const res = await fetch('/api/v1/ad-hunter/deploy-userscript', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fileName,
+            content: currentReport.synthesizedRules.userscriptCode
+          })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || '保存失败');
+        showToast('已写入 Safari userscripts: ' + fileName + '.user.js');
+      } catch (e) {
+        showToast(e.message || '保存失败', true);
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+{
+  "contributors" : [
+
+  ],
+  "author" : {
+    "name" : "DTZSGHNR",
+    "homepage" : "https:\/\/github.com\/Nanako718",
+    "email" : "2753086015@qq.com"
+  },
+  "runInApp" : false,
+  "name" : "油价",
+  "icon" : "car.fill",
+  "remoteResource" : {
+    "autoUpdateInterval" : 600,
+    "hash" : "a0863545ab7fa7c3932e1c4cc6f2a7c4",
+    "url" : "https:\/\/sdl.dtzsghnr.cn\/d\/油价.zip"
+  },
+  "localizedDescriptions" : {
+    "zh" : "",
+    "fr" : "",
+    "ja" : "",
+    "pt" : "",
+    "es" : "",
+    "en" : "",
+    "de" : "",
+    "it" : "",
+    "ru" : ""
+  },
+  "color" : "rgba(28, 140, 255,1)",
+  "intentInputTypes" : [
+
+  ],
+  "description" : "一个显示中石化油价趋势的小组件，支持自动定位和多种油号显示。",
+  "version" : "1.0.4",
+  "iconImage" : null,
+  "localizedNames" : {
+    "zh" : "",
+    "fr" : "",
+    "ja" : "",
+    "pt" : "",
+    "es" : "",
+    "en" : "",
+    "de" : "",
+    "it" : "",
+    "ru" : ""
+  }
+}

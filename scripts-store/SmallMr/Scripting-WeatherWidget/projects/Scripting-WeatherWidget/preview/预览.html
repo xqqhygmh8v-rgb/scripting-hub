@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>中国天气 · 大号组件预览</title>
+<style>
+  :root {
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+    --orange: #ff9500;
+    --blue: #0a84ff;
+    --red: #ff3b30;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; font-family: var(--font); }
+  body {
+    padding: 54px 44px 64px;
+    color: #f8fafc;
+    background:
+      radial-gradient(1200px 700px at 12% -10%, rgba(59, 130, 246, .20), transparent 60%),
+      radial-gradient(900px 600px at 92% 8%, rgba(139, 92, 246, .14), transparent 62%),
+      linear-gradient(160deg, #0a0f14 0%, #0d131a 46%, #0a0f14 100%);
+  }
+
+  .page { width: 1080px; margin: 0 auto; }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: .22em;
+    color: #7dd3fc; opacity: .9;
+  }
+  h1 {
+    margin: 12px 0 8px; font-size: 44px; line-height: 1.06;
+    letter-spacing: -.03em; font-weight: 700;
+  }
+  .sub { margin: 0; color: #94a3b8; font-size: 14px; }
+  .chips { display: flex; gap: 8px; margin-top: 20px; flex-wrap: wrap; }
+  .chips span {
+    font-size: 11px; color: #cbd5e1; border: 1px solid rgba(255,255,255,.12);
+    background: rgba(255,255,255,.045); border-radius: 999px; padding: 5px 11px;
+  }
+
+  .showcase {
+    border-radius: 36px; padding: 34px 36px 40px; margin-top: 34px;
+    border: 1px solid rgba(255,255,255,.08);
+  }
+  .showcase.dark {
+    background:
+      radial-gradient(700px 420px at 20% 0%, rgba(56, 189, 248, .12), transparent 65%),
+      radial-gradient(700px 500px at 96% 30%, rgba(168, 85, 247, .10), transparent 65%),
+      linear-gradient(150deg, #111a23 0%, #0c1219 55%, #101821 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 30px 80px rgba(0,0,0,.45);
+  }
+  .showcase.light {
+    background:
+      radial-gradient(760px 420px at 12% 0%, rgba(125, 211, 252, .34), transparent 62%),
+      radial-gradient(760px 480px at 92% 36%, rgba(196, 181, 253, .28), transparent 64%),
+      linear-gradient(150deg, #eaf3fc 0%, #f4f8fc 58%, #e9f1fa 100%);
+    border-color: rgba(15,23,42,.06);
+    box-shadow: 0 24px 60px rgba(30, 64, 110, .12);
+    color: #0f172a;
+  }
+  .sectionhead {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 26px;
+  }
+  .sectionhead h2 { margin: 0; font-size: 16px; font-weight: 700; }
+  .sectionhead span {
+    font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: #64748b;
+  }
+
+  .widget {
+    width: 364px; height: 382px; border-radius: 28px; padding: 12px 12px 16px;
+    display: flex; flex-direction: column; overflow: hidden;
+    color: var(--text); background: var(--bg);
+    box-shadow: 0 22px 46px rgba(0,0,0,.35), 0 2px 5px rgba(0,0,0,.18);
+    gap: 6px;
+  }
+  .light .widget {
+    box-shadow: 0 20px 42px rgba(30, 64, 110, .16), 0 2px 4px rgba(30, 64, 110, .08);
+  }
+  .darkw {
+    --bg: #000000;
+    --text: #f2f2f7;
+    --sub: #aeaeb2;
+    --chip: rgba(255,255,255,.08);
+    --clock: rgba(242,242,247,.9);
+    --clock-sub: rgba(174,174,178,.9);
+  }
+  .lightw {
+    --bg: #ffffff;
+    --text: #1c1c1e;
+    --sub: #8e8e93;
+    --chip: rgba(0,0,0,.04);
+    --clock: rgba(28,28,30,.9);
+    --clock-sub: rgba(142,142,147,.9);
+  }
+
+  .l-head { display: flex; align-items: center; gap: 4px; height: 115px; flex: none; }
+  .l-left { width: 120px; flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+  .l-year { font-size: 22px; font-weight: 700; line-height: 1.1; white-space: nowrap; }
+  .l-chip {
+    display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 6px;
+    background: rgba(175,82,222,.15);
+  }
+  .darkw .l-chip { background: rgba(191,90,242,.19); }
+  .l-chip span { font-size: 12px; font-weight: 700; color: #af52de; line-height: 1.25; }
+  .darkw .l-chip span { color: #bf5af2; }
+  .l-schedule { display: flex; align-items: center; gap: 6px; height: 28px; }
+  .l-bar { width: 3px; height: 28px; border-radius: 2px; flex: none; }
+  .l-bar.green { background: rgba(52,199,89,.38); }
+  .darkw .l-bar.green { background: rgba(48,209,88,.38); }
+  .l-bar.orange { background: rgba(255,149,0,.38); }
+  .darkw .l-bar.orange { background: rgba(255,159,10,.38); }
+  .l-schedule span { font-size: 13px; color: var(--text); white-space: nowrap; }
+  .l-gauge { width: 88px; height: 88px; flex: none; display: flex; align-items: center; justify-content: center; }
+  .l-refreshwrap { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; }
+  .l-refresh {
+    width: 32px; height: 32px; border-radius: 50%; background: var(--chip);
+    display: flex; align-items: center; justify-content: center; color: var(--sub);
+  }
+  .l-refresh svg { width: 14px; height: 14px; }
+  .l-hero { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; }
+  .l-hero .disc {
+    width: 88px; height: 88px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    background: transparent;
+  }
+  .darkw .l-hero .disc { background: transparent; }
+  .l-hero svg { width: 62px; height: 62px; }
+  .l-right { width: 96px; flex: none; display: flex; flex-direction: column; align-items: center; }
+  .l-day { font-size: 68px; font-weight: 700; line-height: .92; letter-spacing: -.045em; }
+  .l-greet { font-size: 14px; font-weight: 600; color: var(--sub); white-space: nowrap; margin-top: 2px; }
+
+  .l-week { display: flex; align-items: center; height: 48px; flex: none; }
+  .l-weekcell { width: 48.57px; display: flex; flex-direction: column; align-items: center; gap: 1px; }
+  .l-wd { font-size: 10px; color: var(--sub); line-height: 1.1; }
+  .l-wdnum {
+    width: 34px; height: 26px; display: flex; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 600; border-radius: 10px;
+  }
+  .l-wdlunar { font-size: 8px; color: var(--sub); line-height: 1.2; }
+  .l-wdnum.today { color: #ff3b30; background: rgba(255,59,48,.14); }
+  .darkw .l-wdnum.today { color: #ff453a; background: rgba(255,69,58,.20); }
+
+  .l-weather { display: flex; align-items: center; gap: 10px; height: 50px; flex: none; }
+  .l-icon { width: 36px; height: 36px; flex: none; }
+  .l-temp { font-size: 36px; font-weight: 700; letter-spacing: -.035em; line-height: 1; white-space: nowrap; }
+  .l-cond { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .l-hl { font-size: 14px; color: var(--sub); line-height: 1.15; white-space: nowrap; }
+  .l-city { font-size: 13px; color: var(--sub); line-height: 1.15; white-space: nowrap; }
+  .l-rightinfo { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+  .l-rightinfo span { font-size: 12px; color: var(--sub); line-height: 1.15; white-space: nowrap; }
+
+  .l-next { display: flex; gap: 16px; align-items: center; height: 26px; flex: none; }
+  .l-nextcard { width: 162px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .l-nextcard .lab { font-size: 13px; color: var(--sub); white-space: nowrap; }
+  .l-nextcard .val { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; }
+  .l-nextcard svg { width: 22px; height: 22px; flex: none; }
+
+  .l-spacer { flex: 1 1 auto; min-height: 0; }
+  .l-life { display: flex; gap: 6px; flex: none; height: 40px; }
+  .l-lifeitem {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  }
+  .l-lifeitem .lab { font-size: 11px; color: var(--sub); line-height: 1.1; text-align: center; }
+  .l-lifeitem .val { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.15; white-space: nowrap; }
+
+  .note { margin: 18px 4px 0; color: #94a3b8; font-size: 11px; }
+  .light .note { color: #64748b; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="eyebrow">SCRIPTING WIDGET · LARGE · 364 × 382</div>
+  <h1>中国天气 · 大号组件</h1>
+  <p class="sub">杭州 · 2026 年 11 月 18 日 · 数据示例来自中国天气网</p>
+  <div class="chips">
+    <span>日历 + 时钟</span><span>今日天气</span><span>明天 / 后天</span><span>生活指数</span>
+  </div>
+
+  <section class="showcase dark">
+    <div class="sectionhead"><h2>深色模式</h2><span>Dark</span></div>
+    <div class="widget darkw l-widget">
+      <div class="l-head">
+        <div class="l-left">
+          <div class="l-year">2026 11月</div>
+          <div class="l-chip"><span>日程</span></div>
+          <div class="l-schedule"><div class="l-bar green"></div><span>小雪 11-22</span></div>
+          <div class="l-schedule"><div class="l-bar orange"></div><span>大雪 12-07</span></div>
+        </div>
+        <div style="flex:1"></div>
+        <div class="l-right">
+          <div class="l-day">18</div>
+          <div class="l-greet">下午好！</div>
+        </div>
+      </div>
+
+      <div class="l-week" id="week-dark"></div>
+
+      <div class="l-spacer"></div>
+
+      <div class="l-weather">
+        <svg class="l-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="15.2" cy="8.6" r="4.6" fill="#FF9500"/>
+          <path d="M6.2 18.4h10.9a3.7 3.7 0 0 0 .4-7.4 5.6 5.6 0 0 0-10.7 1.4 3.3 3.3 0 0 0-.6 6z" fill="#0A84FF"/>
+        </svg>
+        <div class="l-temp">13°</div>
+        <div class="l-cond">
+          <div class="l-hl">10°-8°</div>
+          <div class="l-city">杭州 多云</div>
+        </div>
+        <div class="l-rightinfo">
+          <span>AQI 42</span>
+          <span>西北风 3级</span>
+        </div>
+      </div>
+
+      <div class="l-spacer"></div>
+
+      <div class="l-next">
+        <div class="l-nextcard">
+          <span class="lab">明天</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="15" cy="9" r="4.5" fill="#FF9500"/><path d="M6 18h10.5a3.5 3.5 0 0 0 .4-7 5.4 5.4 0 0 0-10.2 1.3A3.2 3.2 0 0 0 6 18z" fill="#0A84FF"/></svg>
+          <span class="val">14°-10°</span>
+        </div>
+        <div class="l-nextcard">
+          <span class="lab">后天</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="15" cy="9" r="4.5" fill="#FF9500"/><path d="M6 18h10.5a3.5 3.5 0 0 0 .4-7 5.4 5.4 0 0 0-10.2 1.3A3.2 3.2 0 0 0 6 18z" fill="#FF9500"/></svg>
+          <span class="val">15°-10°</span>
+        </div>
+      </div>
+
+      <div class="l-spacer"></div>
+      <div class="l-spacer"></div>
+
+      <div class="l-life">
+        <div class="l-lifeitem"><span class="lab">穿衣</span><span class="val">热</span></div>
+        <div class="l-lifeitem"><span class="lab">洗车</span><span class="val">不宜</span></div>
+        <div class="l-lifeitem"><span class="lab">紫外线</span><span class="val">最弱</span></div>
+        <div class="l-lifeitem"><span class="lab">感冒</span><span class="val">少发</span></div>
+      </div>
+    </div>
+    <p class="note">HTML 近似渲染，用于确认信息层级和密度；真机由 SwiftUI / SF Symbols 绘制，细节会略有差异。</p>
+  </section>
+
+  <section class="showcase light">
+    <div class="sectionhead"><h2>浅色模式</h2><span>Light</span></div>
+    <div class="widget lightw l-widget">
+      <div class="l-head">
+        <div class="l-left">
+          <div class="l-year">2026 11月</div>
+          <div class="l-chip"><span>日程</span></div>
+          <div class="l-schedule"><div class="l-bar green"></div><span>小雪 11-22</span></div>
+          <div class="l-schedule"><div class="l-bar orange"></div><span>大雪 12-07</span></div>
+        </div>
+        <div style="flex:1"></div>
+        <div class="l-right">
+          <div class="l-day">18</div>
+          <div class="l-greet">下午好！</div>
+        </div>
+      </div>
+
+      <div class="l-week" id="week-light"></div>
+
+      <div class="l-spacer"></div>
+
+      <div class="l-weather">
+        <svg class="l-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="15.2" cy="8.6" r="4.6" fill="#FF9500"/>
+          <path d="M6.2 18.4h10.9a3.7 3.7 0 0 0 .4-7.4 5.6 5.6 0 0 0-10.7 1.4 3.3 3.3 0 0 0-.6 6z" fill="#0A84FF"/>
+        </svg>
+        <div class="l-temp">13°</div>
+        <div class="l-cond">
+          <div class="l-hl">10°-8°</div>
+          <div class="l-city">杭州 多云</div>
+        </div>
+        <div class="l-rightinfo">
+          <span>AQI 42</span>
+          <span>西北风 3级</span>
+        </div>
+      </div>
+
+      <div class="l-spacer"></div>
+
+      <div class="l-next">
+        <div class="l-nextcard">
+          <span class="lab">明天</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="15" cy="9" r="4.5" fill="#FF9500"/><path d="M6 18h10.5a3.5 3.5 0 0 0 .4-7 5.4 5.4 0 0 0-10.2 1.3A3.2 3.2 0 0 0 6 18z" fill="#0A84FF"/></svg>
+          <span class="val">14°-10°</span>
+        </div>
+        <div class="l-nextcard">
+          <span class="lab">后天</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="15" cy="9" r="4.5" fill="#FF9500"/><path d="M6 18h10.5a3.5 3.5 0 0 0 .4-7 5.4 5.4 0 0 0-10.2 1.3A3.2 3.2 0 0 0 6 18z" fill="#FF9500"/></svg>
+          <span class="val">15°-10°</span>
+        </div>
+      </div>
+
+      <div class="l-spacer"></div>
+      <div class="l-spacer"></div>
+
+      <div class="l-life">
+        <div class="l-lifeitem"><span class="lab">穿衣</span><span class="val">热</span></div>
+        <div class="l-lifeitem"><span class="lab">洗车</span><span class="val">不宜</span></div>
+        <div class="l-lifeitem"><span class="lab">紫外线</span><span class="val">最弱</span></div>
+        <div class="l-lifeitem"><span class="lab">感冒</span><span class="val">少发</span></div>
+      </div>
+    </div>
+    <p class="note">HTML 近似渲染，用于确认信息层级和密度；真机由 SwiftUI / SF Symbols 绘制，细节会略有差异。</p>
+  </section>
+</div>
+
+<script>
+  function renderGauge(id, percent) {
+    const host = document.getElementById(id)
+    const cx = 44, cy = 44, radius = 39.5, w = 7
+    const circ = 2 * Math.PI * radius
+    const dash = (circ * percent / 100).toFixed(1)
+    host.innerHTML = `<svg viewBox="0 0 88 88" width="88" height="88">
+      <circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="rgba(120,120,128,.18)" stroke-width="${w}"/>
+      <circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="#0A84FF" stroke-width="${w}"
+        stroke-linecap="round" stroke-dasharray="${dash} ${circ.toFixed(1)}"
+        transform="rotate(-90 ${cx} ${cy})"/>
+      <text x="${cx}" y="${cy + 1}" text-anchor="middle" font-size="23" font-weight="700" fill="var(--text)">${percent}%</text>
+      <text x="${cx}" y="${cy + 16}" text-anchor="middle" font-size="10" font-weight="600" fill="#0A84FF">湿度</text>
+    </svg>`
+  }
+
+  function renderWeek(id) {
+    const host = document.getElementById(id)
+    const labels = ["一","二","三","四","五","六","日"]
+    const dates = [16,17,18,19,20,21,22]
+    const lunar = ["初八","初九","初十","十一","十二","十三","小雪"]
+    host.innerHTML = labels.map((label, i) =>
+      `<div class="l-weekcell"><div class="l-wd">${label}</div><div class="l-wdnum${dates[i] === 18 ? " today" : ""}">${dates[i]}</div><div class="l-wdlunar">${lunar[i]}</div></div>`
+    ).join("")
+  }
+
+  renderWeek("week-dark")
+  renderWeek("week-light")
+</script>
+</body>
+</html>

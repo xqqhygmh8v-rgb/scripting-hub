@@ -1,0 +1,168 @@
+import { Device } from "scripting"
+import { DEFAULT_CAIS_SETTINGS, type CaisSettings, type KeyboardCustomAction, type KeyboardMenuBuiltinAction } from "../types"
+import { normalizeFavoriteDelimiter } from "../utils/favorite_fields"
+
+const SETTINGS_KEY = "cais_settings_v1"
+const LEGACY_SHARED_OPTIONS = { shared: true }
+
+function getStorage(): any {
+  return (globalThis as any).Storage
+}
+
+function removeLegacySharedSettings(): void {
+  try {
+    getStorage()?.remove?.(SETTINGS_KEY, LEGACY_SHARED_OPTIONS)
+  } catch {
+  }
+}
+
+function writeSettingsRaw(raw: string): boolean {
+  const st = getStorage()
+  try {
+    if (typeof st?.set === "function") {
+      return st.set(SETTINGS_KEY, raw) !== false
+    } else if (typeof st?.setString === "function") {
+      st.setString(SETTINGS_KEY, raw)
+      return true
+    }
+  } catch {
+  }
+  return false
+}
+
+function sanitizeCustomActionMode(value: any): KeyboardCustomAction["mode"] {
+  if (value === "regex" || value === "regexExtract") return "regexExtract"
+  if (value === "regexRemove") return "regexRemove"
+  if (value === "javascript") return "javascript"
+  if (value === "networkRequest") return "networkRequest"
+  return "template"
+}
+
+function systemMajorVersion(): number {
+  const version = String(Device.systemVersion ?? "")
+  const match = version.match(/\d+/)
+  return match ? Number(match[0]) : 0
+}
+
+function defaultNativeGlassEffect(): boolean {
+  return systemMajorVersion() >= 26
+}
+
+function sanitizeSettings(raw: any): CaisSettings {
+  const monitorIntervalMs = Number(raw?.monitorIntervalMs ?? DEFAULT_CAIS_SETTINGS.monitorIntervalMs)
+  const maxItems = Number(raw?.maxItems ?? DEFAULT_CAIS_SETTINGS.maxItems)
+  const lanSharingPort = Number(raw?.lanSharingPort ?? DEFAULT_CAIS_SETTINGS.lanSharingPort)
+  const appContentLineLimit = Number(raw?.appContentLineLimit ?? DEFAULT_CAIS_SETTINGS.appContentLineLimit)
+  const keyboardMaxItems = Number(raw?.keyboardMaxItems ?? DEFAULT_CAIS_SETTINGS.keyboardMaxItems)
+  const defaultBuiltins = DEFAULT_CAIS_SETTINGS.keyboardMenu.builtins
+  const rawBuiltins = raw?.keyboardMenu?.builtins ?? {}
+  const builtinKeys = Object.keys(defaultBuiltins) as KeyboardMenuBuiltinAction[]
+  const builtins = builtinKeys.reduce((result, key) => {
+    result[key] = Boolean(rawBuiltins[key] ?? defaultBuiltins[key])
+    return result
+  }, {} as Record<KeyboardMenuBuiltinAction, boolean>)
+  const builtinOrder = Array.isArray(raw?.keyboardMenu?.builtinOrder)
+    ? raw.keyboardMenu.builtinOrder
+      .filter((key: any) => builtinKeys.includes(key))
+      .map((key: any) => key as KeyboardMenuBuiltinAction)
+    : undefined
+  const ungroupedBuiltins = Array.isArray(raw?.keyboardMenu?.ungroupedBuiltins)
+    ? raw.keyboardMenu.ungroupedBuiltins.filter((key: any) => builtinKeys.includes(key))
+    : DEFAULT_CAIS_SETTINGS.keyboardMenu.ungroupedBuiltins
+  const customActions = Array.isArray(raw?.keyboardMenu?.customActions)
+    ? raw.keyboardMenu.customActions
+      .map((item: any): KeyboardCustomAction => ({
+        id: String(item?.id ?? `custom_${Date.now()}`),
+        title: String(item?.title ?? "").trim(),
+        mode: sanitizeCustomActionMode(item?.mode),
+        template: String(item?.template ?? ""),
+        regex: String(item?.regex ?? ""),
+        regexRemoveAll: Boolean(item?.regexRemoveAll ?? false),
+        script: String(item?.script ?? ""),
+        writeToClipboard: Boolean(item?.writeToClipboard ?? true),
+        enabled: Boolean(item?.enabled ?? true),
+      }))
+      .filter((item: KeyboardCustomAction) => item.title && (
+        item.mode === "template" ? item.template :
+        item.mode === "javascript" || item.mode === "networkRequest" ? item.script :
+        item.regex
+      ))
+      .slice(0, 12)
+    : []
+  return {
+    captureText: Boolean(raw?.captureText ?? DEFAULT_CAIS_SETTINGS.captureText),
+    captureImages: Boolean(raw?.captureImages ?? DEFAULT_CAIS_SETTINGS.captureImages),
+    monitorIntervalMs: Math.max(100, Math.min(10000, monitorIntervalMs || DEFAULT_CAIS_SETTINGS.monitorIntervalMs)),
+    duplicatePolicy: raw?.duplicatePolicy === "skip" ? "skip" : "bump",
+    maxItems: Math.max(50, Math.min(800, maxItems || DEFAULT_CAIS_SETTINGS.maxItems)),
+    iCloudSync: Boolean(raw?.iCloudSync ?? DEFAULT_CAIS_SETTINGS.iCloudSync),
+    iCloudSyncImages: Boolean(raw?.iCloudSyncImages ?? DEFAULT_CAIS_SETTINGS.iCloudSyncImages),
+    lanSharingEnabled: Boolean(raw?.lanSharingEnabled ?? DEFAULT_CAIS_SETTINGS.lanSharingEnabled),
+    lanSharingPort: Number.isInteger(lanSharingPort) && lanSharingPort >= 1024 && lanSharingPort <= 65535
+      ? lanSharingPort
+      : DEFAULT_CAIS_SETTINGS.lanSharingPort,
+    appContentLineLimit: Math.max(1, Math.min(12, appContentLineLimit || DEFAULT_CAIS_SETTINGS.appContentLineLimit)),
+    appClipRowGlassEffect: Boolean(raw?.appClipRowGlassEffect ?? defaultNativeGlassEffect()),
+    homeScreenEmbeddedNavigation: Boolean(
+      raw?.homeScreenEmbeddedNavigation ?? DEFAULT_CAIS_SETTINGS.homeScreenEmbeddedNavigation,
+    ),
+    homeScreenNavigationAnimation: Boolean(
+      raw?.homeScreenNavigationAnimation ?? DEFAULT_CAIS_SETTINGS.homeScreenNavigationAnimation,
+    ),
+    keyboardShowTitle: Boolean(raw?.keyboardShowTitle ?? DEFAULT_CAIS_SETTINGS.keyboardShowTitle),
+    keyboardNativeGlassEffect: Boolean(raw?.keyboardNativeGlassEffect ?? defaultNativeGlassEffect()),
+    showRimeKeyboardSwitch: Boolean(raw?.showRimeKeyboardSwitch ?? DEFAULT_CAIS_SETTINGS.showRimeKeyboardSwitch),
+    inputClicks: Boolean(raw?.hapticEngineClicks ?? DEFAULT_CAIS_SETTINGS.hapticEngineClicks)
+      ? false
+      : Boolean(raw?.inputClicks ?? DEFAULT_CAIS_SETTINGS.inputClicks),
+    hapticEngineClicks: Boolean(raw?.hapticEngineClicks ?? DEFAULT_CAIS_SETTINGS.hapticEngineClicks),
+    launchAnimationEnabled: Boolean(raw?.launchAnimationEnabled ?? DEFAULT_CAIS_SETTINGS.launchAnimationEnabled),
+    favoriteFieldDelimiter: normalizeFavoriteDelimiter(
+      raw?.favoriteFieldDelimiter,
+      DEFAULT_CAIS_SETTINGS.favoriteFieldDelimiter,
+    ),
+    favoriteFieldPrivacyEnabled: Boolean(raw?.favoriteFieldPrivacyEnabled ?? DEFAULT_CAIS_SETTINGS.favoriteFieldPrivacyEnabled),
+    favoriteFieldPrivateKeywords: String(raw?.favoriteFieldPrivateKeywords ?? "").slice(0, 2000),
+    keyboardMaxItems: [10, 20, 30, 40, 50].includes(keyboardMaxItems) ? keyboardMaxItems : DEFAULT_CAIS_SETTINGS.keyboardMaxItems,
+    keyboardMenu: {
+      grouped: Boolean(raw?.keyboardMenu?.grouped ?? DEFAULT_CAIS_SETTINGS.keyboardMenu.grouped),
+      ungroupedBuiltins,
+      builtins,
+      builtinOrder,
+      customActions,
+    },
+  }
+}
+
+export function loadSettings(): CaisSettings {
+  const st = getStorage()
+  try {
+    const raw = st?.get?.(SETTINGS_KEY) ?? st?.getString?.(SETTINGS_KEY)
+    if (raw != null) {
+      const fixed = sanitizeSettings(typeof raw === "string" ? JSON.parse(raw) : raw)
+      removeLegacySharedSettings()
+      return fixed
+    }
+  } catch {
+  }
+  try {
+    const raw = st?.get?.(SETTINGS_KEY, LEGACY_SHARED_OPTIONS) ?? st?.getString?.(SETTINGS_KEY, LEGACY_SHARED_OPTIONS)
+    if (raw != null) {
+      const fixed = sanitizeSettings(typeof raw === "string" ? JSON.parse(raw) : raw)
+      if (writeSettingsRaw(JSON.stringify(fixed))) removeLegacySharedSettings()
+      return fixed
+    }
+  } catch {
+  }
+  return sanitizeSettings({})
+}
+
+export function defaultSettings(): CaisSettings {
+  return sanitizeSettings({})
+}
+
+export function saveSettings(settings: CaisSettings): CaisSettings {
+  const fixed = sanitizeSettings(settings)
+  if (writeSettingsRaw(JSON.stringify(fixed))) removeLegacySharedSettings()
+  return fixed
+}

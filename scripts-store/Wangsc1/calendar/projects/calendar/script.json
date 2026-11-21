@@ -1,0 +1,16 @@
+{
+  "name": "calendar",
+  "icon": "calendar",
+  "color": "#e74748",
+  "version": "1.8.21",
+  "description": "Chinese lunar and rotating shift calendar with solar terms, holiday updates, home screen widgets and light/dark themes",
+  "localizedNames": {
+    "zh": "日历"
+  },
+  "localizedDescriptions": {
+    "zh": "农历与倒班日历：首页及日、周、月小组件，支持节气、休班、班次排序循环、假日自动刷新与日夜外观"
+  },
+  "remoteResource": {
+    "url": "https://github.com/Wangsc1/calendar"
+  }
+}

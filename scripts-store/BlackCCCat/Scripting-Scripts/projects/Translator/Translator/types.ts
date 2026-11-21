@@ -1,0 +1,90 @@
+export type LanguageOption = {
+  code: string
+  label: string
+  promptName: string
+}
+
+export type BuiltInTranslationEngineKind =
+  | "apple_intelligence"
+  | "assistant"
+  | "system_translation"
+  | "system_translation_offline"
+  | "google_translate"
+
+export type KnownTranslationEngineKind =
+  | BuiltInTranslationEngineKind
+
+export type AiApiCompatibilityMode =
+  | "custom"
+  | "newapi"
+  | "anthropic"
+  | "deepseek"
+  | "openai"
+  | "gemini"
+  | "minimax"
+  | "openrouter"
+  | "siliconflow"
+  | "qwen"
+
+export type TranslationEngineKind =
+  | KnownTranslationEngineKind
+  | "ai_api"
+  | "deeplx"
+  | "deepl"
+
+export type TranslationEngineOption = {
+  id: KnownTranslationEngineKind
+  label: string
+  systemImage: string
+  isDefault?: boolean
+}
+
+export type TranslationEngineConfig = {
+  apiKey?: string
+  compatibilityMode?: AiApiCompatibilityMode
+  baseUrl?: string
+  userAgent?: string
+  model?: string
+  assistantProviderId?: "openai" | "gemini" | "anthropic" | "deepseek" | "openrouter" | "grok" | "custom"
+  assistantCustomProvider?: string
+  assistantModelId?: string
+}
+
+export type TranslatorEngineEntry = {
+  id: string
+  kind: TranslationEngineKind
+  label: string
+  systemImage: string
+  enabled: boolean
+  isBuiltIn: boolean
+  config?: TranslationEngineConfig
+}
+
+export type TranslatorSettings = {
+  engines: TranslatorEngineEntry[]
+  defaultTargetLanguageCode: string
+  defaultSourceLanguageCode: string
+}
+
+export type TranslationRequest = {
+  sourceText: string
+  sourceLanguageCode: string
+  targetLanguageCode: string
+  photoContext?: { before?: string; after?: string }
+}
+
+export type TranslationResult = {
+  translatedText: string
+}
+
+export type TranslationProgressCallbacks = {
+  onPartialText?: (text: string) => void | Promise<void>
+}
+
+export type EngineTranslationState = {
+  engineId: string
+  engineName: string
+  translatedText: string
+  errorText: string
+  isTranslating: boolean
+}

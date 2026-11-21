@@ -1,0 +1,126 @@
+import {
+  Script,
+  Navigation,
+  NavigationStack,
+  TabView,
+  VStack,
+  Label,
+  Widget,
+  useState,
+  useObservable,
+  VirtualNode,
+} from "scripting"
+import { FuelCode } from "./src/types"
+import {
+  getOilPriceSource,
+  getPreferredFuel,
+  setPreferredFuel,
+  getSearchRadiusKm,
+  setSearchRadiusKm,
+  OilPriceSource,
+  setOilPriceSource,
+} from "./src/settings"
+import { HomePage } from "./src/HomePage"
+import { NearbyPage } from "./src/NearbyPage"
+import { SettingsPage } from "./src/SettingsPage"
+import { useMarkdownReleaseNotesSheet } from "./src/ReleaseNotesSheet"
+import { Theme } from "./src/theme"
+import { invalidateOilPriceCache } from "./src/service"
+
+/** 给页面套上导航标题的容器 */
+function Page({
+  title,
+  children,
+}: {
+  title: string
+  children: VirtualNode
+}) {
+  return (
+    <VStack
+      navigationTitle={title}
+      navigationBarTitleDisplayMode="inline"
+      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+    >
+      {children}
+    </VStack>
+  )
+}
+
+function App() {
+  const selection = useObservable<number>(0)
+  const releaseNotesSheet = useMarkdownReleaseNotesSheet({
+    markdownFile: "changelog.md",
+    storageKey: "today-oil-price:release-notes:last-seen-hash",
+    title: "更新内容",
+  })
+  const [preferred, setPreferred] = useState<FuelCode>(getPreferredFuel())
+  const [radiusKm, setRadiusKm] = useState<number>(getSearchRadiusKm())
+  const [oilPriceSource, setOilPriceSourceState] =
+    useState<OilPriceSource>(getOilPriceSource())
+
+  function changePreferred(code: FuelCode) {
+    setPreferredFuel(code)
+    setPreferred(code)
+    Widget.reloadAll()
+  }
+
+  function changeRadius(km: number) {
+    setSearchRadiusKm(km)
+    setRadiusKm(km)
+  }
+
+  function changeOilPriceSource(source: OilPriceSource) {
+    if (source === oilPriceSource) {
+      return
+    }
+    setOilPriceSource(source)
+    invalidateOilPriceCache()
+    setOilPriceSourceState(source)
+    Widget.reloadAll()
+  }
+
+  return (
+    <TabView selection={selection} tint={Theme.orange} sheet={releaseNotesSheet}>
+      <NavigationStack
+        tabItem={<Label title="油价" systemImage="fuelpump.fill" />}
+        tag={0}
+      >
+        <Page title="今日油价">
+          <HomePage preferred={preferred} oilPriceSource={oilPriceSource} />
+        </Page>
+      </NavigationStack>
+
+      <NavigationStack
+        tabItem={<Label title="附近油站" systemImage="mappin.and.ellipse" />}
+        tag={1}
+      >
+        <Page title="附近油站">
+          <NearbyPage radiusKm={radiusKm} />
+        </Page>
+      </NavigationStack>
+
+      <NavigationStack
+        tabItem={<Label title="设置" systemImage="gearshape.fill" />}
+        tag={2}
+      >
+        <Page title="设置">
+          <SettingsPage
+            preferred={preferred}
+            radiusKm={radiusKm}
+            oilPriceSource={oilPriceSource}
+            onPreferredChange={changePreferred}
+            onRadiusChange={changeRadius}
+            onOilPriceSourceChange={changeOilPriceSource}
+          />
+        </Page>
+      </NavigationStack>
+    </TabView>
+  )
+}
+
+async function run() {
+  await Navigation.present({ element: <App /> })
+  Script.exit()
+}
+
+run()

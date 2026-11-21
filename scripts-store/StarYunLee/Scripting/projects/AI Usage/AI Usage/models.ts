@@ -1,0 +1,191 @@
+import type { Color } from "scripting";
+
+export const PROVIDER_IDS = [
+  "codex",
+  "grok",
+  "claude",
+  "antigravity",
+  "cursor",
+  "kimi",
+  "copilot",
+  "zai",
+  "minimax",
+  "workbuddy",
+  "deepseek",
+] as const;
+
+export type ProviderId = (typeof PROVIDER_IDS)[number];
+
+export type DisplayMode = "used" | "remaining";
+
+export type AuthSheet = {
+  provider: ProviderId;
+  profileId: string;
+  authorizationInput: string;
+  authorizationUrl?: string;
+  status: string;
+  deviceCode?: string;
+  authorizationRegion?: "intl" | "cn";
+  resumed?: boolean;
+  sessionId?: number;
+};
+
+export type UsageWindowKind = "quota" | "balance" | "status" | "notice";
+
+export type UsageBalanceView = {
+  currency: string;
+  total: string;
+  paid: string | null;
+  granted: string | null;
+  isAvailable: boolean;
+};
+
+export type UsageWindowView = {
+  id: string;
+  label: string;
+  usedPercent: number | null;
+  remainingPercent: number | null;
+  resetAt: string | null;
+  kind?: UsageWindowKind;
+  detail?: string | null;
+  balance?: UsageBalanceView;
+};
+
+export type UsageCard = {
+  key: string;
+  provider: ProviderId;
+  accountId: string;
+  title: string;
+  planLabel: string | null;
+  authorized: boolean;
+  windows: UsageWindowView[];
+  resetCredits: {
+    available: number;
+    nearestExpiration: string | null;
+    expirations: string[];
+  } | null;
+  fetchedAt: string | null;
+  source: "live" | "cache" | "error" | "empty";
+  errorMessage?: string;
+  refreshing: boolean;
+  refreshStatus?: "success" | "failure";
+};
+
+export type ProviderMeta = {
+  id: ProviderId;
+  title: string;
+  connectTitle: string;
+  subtitle: string;
+  accent: Color;
+  pastePlaceholder?: string;
+  capabilities: {
+    widget: boolean;
+    fixedWidgetLayout?: boolean;
+  };
+};
+
+export const PROVIDER_META: Record<ProviderId, ProviderMeta> = {
+  codex: {
+    id: "codex",
+    title: "Codex",
+    connectTitle: "连接 ChatGPT 账户",
+    subtitle: "连接 ChatGPT 账户，查看用量与重置时间。",
+    accent: "#10A37F",
+    pastePlaceholder: "localhost:1455/auth/callback?code=…&state=…",
+    capabilities: { widget: true },
+  },
+  grok: {
+    id: "grok",
+    title: "Grok",
+    connectTitle: "连接 xAI 账户",
+    subtitle: "连接 xAI 账户，查看每周用量与重置次数。",
+    accent: "#111111",
+    pastePlaceholder: "127.0.0.1:56122/callback?code=… 或一次性代码",
+    capabilities: { widget: true },
+  },
+  claude: {
+    id: "claude",
+    title: "Claude",
+    connectTitle: "连接 Anthropic 账户",
+    subtitle: "连接 Anthropic 账户，查看 5 小时与每周用量。",
+    accent: "#D97757",
+    pastePlaceholder: "粘贴 code#state",
+    capabilities: { widget: true },
+  },
+  antigravity: {
+    id: "antigravity",
+    title: "Antigravity",
+    connectTitle: "连接 Google Antigravity 账户",
+    subtitle: "连接 Google 账户，查看 Antigravity 的模型配额与重置时间。",
+    accent: "#3B82F6",
+    pastePlaceholder: "localhost:51121/oauth-callback?code=…&state=…",
+    capabilities: { widget: true },
+  },
+  cursor: {
+    id: "cursor",
+    title: "Cursor",
+    connectTitle: "连接 Cursor 账户",
+    subtitle: "连接 Cursor 账户，查看 Auto、所有、第三方模型和 Grok Bot 用量。",
+    accent: "#111827",
+    capabilities: { widget: true },
+  },
+  kimi: {
+    id: "kimi",
+    title: "Kimi Code",
+    connectTitle: "连接 Kimi Code 账户",
+    subtitle: "连接 Kimi Code 账户，查看滚动额度与每周额度。",
+    accent: "#111827",
+    capabilities: { widget: true },
+  },
+  copilot: {
+    id: "copilot",
+    title: "GitHub Copilot",
+    connectTitle: "连接 GitHub Copilot 账户",
+    subtitle: "使用 GitHub 设备授权查看高级请求、聊天和代码补全额度。",
+    accent: "#24292F",
+    capabilities: { widget: true },
+  },
+  zai: {
+    id: "zai",
+    title: "Z.ai",
+    connectTitle: "连接 Z.ai 账户",
+    subtitle: "连接 Z.ai 账户，查看 5 小时、每周、每月和 Web Search 用量。",
+    accent: "#111111",
+    pastePlaceholder: "粘贴 Z.ai / 智谱 API Key",
+    capabilities: { widget: true },
+  },
+  minimax: {
+    id: "minimax",
+    title: "MiniMax",
+    connectTitle: "连接 MiniMax Token Plan",
+    subtitle: "明确选择国际站或国内站，查看 5 小时与每周用量。",
+    accent: "#E85D04",
+    pastePlaceholder: "粘贴所选站点的 MiniMax Subscription Key",
+    capabilities: { widget: true },
+  },
+  workbuddy: {
+    id: "workbuddy",
+    title: "WorkBuddy",
+    connectTitle: "连接 WorkBuddy 账户",
+    subtitle: "连接 WorkBuddy 国内版或国际版，查看套餐积分、今日到期与签到状态。",
+    accent: "#00B3A4",
+    capabilities: { widget: true, fixedWidgetLayout: true },
+  },
+  deepseek: {
+    id: "deepseek",
+    title: "DeepSeek",
+    connectTitle: "连接 DeepSeek API 账户",
+    subtitle: "使用 API Key 查看账户余额、充值余额与赠金余额。",
+    accent: "#4D6BFE",
+    pastePlaceholder: "粘贴 DeepSeek API Key",
+    capabilities: { widget: true, fixedWidgetLayout: true },
+  },
+};
+
+export const PROVIDERS = PROVIDER_IDS.map((id) => PROVIDER_META[id]);
+
+export type AppHost = "index" | "home_screen";
+
+export function providerMeta(id: ProviderId) {
+  return PROVIDER_META[id];
+}

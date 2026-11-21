@@ -1,0 +1,787 @@
+import { getDashboardLanguage, localize } from "../utils/localization"
+import {
+  Button,
+  Capsule,
+  DisclosureGroup,
+  FlowLayout,
+  HStack,
+  Image,
+  ProgressView,
+  RoundedRectangle,
+  Spacer,
+  Text,
+  useState,
+  VStack,
+} from "scripting"
+import {
+  AccountQuotaState,
+  QuotaSnapshot,
+  QuotaWindow,
+  SubscriptionAccount,
+} from "../models/types"
+import {
+  CodexResetStatus,
+  formatCodexResetLocalTime,
+  formatScheduledResetHeadline,
+  hasVisibleCodexResetPreview,
+} from "../services/codex_reset_feed"
+import { getProviderMeta, localizeAccountName } from "../utils/providers_catalog"
+import {
+  formatFailureDescription,
+  formatPeriodBadgeText,
+  formatRelativeCountdown,
+  formatShortDateTime,
+  formatWalletAmount,
+  formatWindowQuotaBreakdown,
+  formatWindowRemainingFraction,
+  formatWindowSubtitle,
+} from "../utils/quota_formatting"
+import {
+  accountHealthSummary,
+  adaptiveSecondaryButtonStyle,
+  formatAccountRegionBadge,
+  formatAccountTypeBadge,
+  maskIdentity,
+  remainingQuotaColor,
+} from "../utils/theme"
+import { ProviderIconView } from "./ProviderIconView"
+
+export function AccountQuotaRow(props: {
+  account: SubscriptionAccount
+  state: AccountQuotaState
+  protectAccountIdentity?: boolean
+  codexResetStatus?: CodexResetStatus | null
+  zoomSource?: { id: string | number; namespace: any }
+  onRefresh: () => void
+  onOpenDetail: () => void
+}) {
+  const {
+    account,
+    state,
+    protectAccountIdentity = false,
+    codexResetStatus,
+    onRefresh,
+    onOpenDetail,
+  } = props
+  const meta = getProviderMeta(account.provider)
+  const isEnglish = getDashboardLanguage() === "en"
+  const HeaderLayout = isEnglish ? FlowLayout : HStack
+  const wrapText = isEnglish ? { horizontal: false, vertical: true } : undefined
+
+  const snapshot: QuotaSnapshot | undefined =
+    state.type === "loaded"
+      ? state.snapshot
+      : state.type === "loading"
+        ? state.previous
+        : state.type === "failed"
+          ? state.previous
+          : undefined
+
+  const isLoading = state.type === "loading"
+  const health = accountHealthSummary(snapshot)
+  const accountTypeBadge = formatAccountTypeBadge(
+    account.provider,
+    snapshot?.providerPlanName,
+    meta.loginMethod
+  )
+  const regionBadge = formatAccountRegionBadge(
+    account.provider,
+    account.region || snapshot?.region
+  )
+
+  const isWorkBuddyGlobal =
+    account.provider === "workBuddy" &&
+    (account.region === "global" || snapshot?.region === "global")
+  const defaultProviderName = isWorkBuddyGlobal
+    ? "Workbuddy AI"
+    : meta.displayName
+  const rawDisplayName = account.displayName?.trim() || ""
+  const titleText = account.id.startsWith("demo-")
+    ? defaultProviderName
+    : rawDisplayName === "WorkBuddy" && isWorkBuddyGlobal
+      ? "Workbuddy AI"
+      : rawDisplayName || defaultProviderName
+
+  const walletWindows = (snapshot?.windows ?? []).filter((w) =>
+    Boolean(w.wallet)
+  )
+  const quotaWindows = (snapshot?.windows ?? []).filter((w) => !w.wallet)
+  const visibleQuotaWindows = quotaWindows.slice(0, 5)
+  const hiddenQuotaWindows = quotaWindows.slice(5)
+  const [isMoreQuotaExpanded, setIsMoreQuotaExpanded] = useState(false)
+
+  const identity = account.id.startsWith("demo-")
+    ? localize(snapshot?.accountIdentity)?.trim() || null
+    : snapshot?.accountIdentity?.trim() || null
+  const [maskOverride, setMaskOverride] = useState<boolean | null>(null)
+  const isMasked =
+    maskOverride !== null ? maskOverride : protectAccountIdentity
+  const displayedIdentity = identity
+    ? isMasked
+      ? maskIdentity(identity)
+      : identity
+    : null
+
+  return (
+    <VStack
+      alignment="leading"
+      spacing={12}
+      padding={{ vertical: 6 }}
+      frame={{ maxWidth: "infinity", alignment: "leading" }}
+      matchedTransitionSource={props.zoomSource}
+    >
+      {/* 卡片头部：品牌图标 + [供应商名称 + 区域胶囊 + 账户类型胶囊] + 次行仅展示钱包/余量状态 */}
+      <HStack alignment="center" spacing={isEnglish ? 8 : 12}>
+        <ProviderIconView
+          provider={account.provider}
+          size={42}
+          dimmed={!account.isEnabled}
+        />
+
+        <VStack
+          alignment="leading"
+          spacing={4}
+          frame={isEnglish ? { maxWidth: "infinity", alignment: "leading" } : undefined}
+        >
+          <HeaderLayout spacing={6}>
+            <Text
+              font={isEnglish ? "subheadline" : "headline"}
+              fontWeight="semibold"
+              foregroundStyle={account.isEnabled ? "label" : "secondaryLabel"}
+              fixedSize={wrapText}
+              lineLimit={isEnglish ? undefined : 1}
+            >
+              {localizeAccountName(account.provider, titleText)}
+            </Text>
+
+            {regionBadge ? (
+              <Text
+                font="caption2"
+                fontWeight="medium"
+                foregroundStyle="secondaryLabel"
+                padding={{ horizontal: 6, vertical: 1.5 }}
+                background={<Capsule fill="quaternarySystemFill" />}
+                lineLimit={isEnglish ? undefined : 1}
+                fixedSize={wrapText ?? { horizontal: true, vertical: false }}
+                layoutPriority={isEnglish ? undefined : 2}
+              >
+                {localize(regionBadge)}
+              </Text>
+            ) : null}
+
+            <Text
+              font="caption2"
+              fontWeight="semibold"
+              foregroundStyle="accentColor"
+              padding={{ horizontal: 7, vertical: 2 }}
+              background={<Capsule fill="tertiarySystemFill" />}
+              lineLimit={isEnglish ? undefined : 1}
+              fixedSize={wrapText ?? { horizontal: true, vertical: false }}
+              layoutPriority={isEnglish ? undefined : 2}
+            >
+              {localize(accountTypeBadge)}
+            </Text>
+          </HeaderLayout>
+
+          <HeaderLayout spacing={6}>
+            <Text
+              font={isEnglish ? "caption2" : "caption"}
+              fontWeight="medium"
+              foregroundStyle={health.color}
+              fixedSize={wrapText}
+              lineLimit={isEnglish ? undefined : 1}
+            >
+              {localize(`● ${health.label}`)}
+            </Text>
+
+            {snapshot?.codexResetCards?.availableCount !== undefined ? (
+              <Text
+                font="caption2"
+                fontWeight="bold"
+                foregroundStyle="systemIndigo"
+                padding={{ horizontal: 6, vertical: 1 }}
+                background={<Capsule fill="quaternarySystemFill" />}
+                fixedSize={wrapText}
+                lineLimit={isEnglish ? undefined : 1}
+              >
+                {localize(`🎟️ 重置卡 ${snapshot.codexResetCards.availableCount} 次`)}
+              </Text>
+            ) : null}
+          </HeaderLayout>
+        </VStack>
+
+        {!isEnglish ? <Spacer /> : null}
+
+        <HStack alignment="center" spacing={isEnglish ? 6 : 8}>
+          {isLoading ? (
+            <ProgressView
+              progressViewStyle="circular"
+              controlSize="small"
+              frame={{ width: 28, height: 28 }}
+            />
+          ) : (
+            <Button
+              title={localize("刷新")}
+              systemImage="arrow.clockwise"
+              labelStyle="iconOnly"
+              buttonStyle={adaptiveSecondaryButtonStyle()}
+              buttonBorderShape="circle"
+              controlSize="small"
+              action={onRefresh}
+            />
+          )}
+          <Button
+            title={localize("设置")}
+            systemImage="slider.horizontal.3"
+            labelStyle="iconOnly"
+            buttonStyle={adaptiveSecondaryButtonStyle()}
+            buttonBorderShape="circle"
+            controlSize="small"
+            action={onOpenDetail}
+          />
+        </HStack>
+      </HStack>
+
+      {snapshot ? (
+        <VStack
+          alignment="leading"
+          spacing={10}
+          frame={{ maxWidth: "infinity", alignment: "leading" }}
+        >
+          {/* Codex 专用：官方/第三方重置预告横幅（有预告时显示，无预告时不显示） */}
+          {account.provider === "codex" &&
+          codexResetStatus &&
+          hasVisibleCodexResetPreview(codexResetStatus) ? (
+            <CodexResetNoticeView status={codexResetStatus} />
+          ) : null}
+
+          {/* 模块 A：API 钱包与多币种余额（每个币种独立占一行，避免并排拥挤） */}
+          {walletWindows.length > 0 ? (
+            <VStack
+              alignment="leading"
+              spacing={8}
+              frame={{ maxWidth: "infinity", alignment: "leading" }}
+            >
+              {walletWindows.map((win) => (
+                <WalletMetricTile
+                  key={win.id}
+                  provider={account.provider}
+                  window={win}
+                />
+              ))}
+            </VStack>
+          ) : null}
+
+          {/* 模块 B：周期订阅限流与配额进度条 */}
+          {quotaWindows.length > 0 ? (
+            <VStack
+              alignment="leading"
+              spacing={8}
+              frame={{ maxWidth: "infinity", alignment: "leading" }}
+            >
+              {visibleQuotaWindows.map((win) => (
+                <QuotaProgressCard key={win.id} window={win} />
+              ))}
+              {hiddenQuotaWindows.length > 0 ? (
+                <DisclosureGroup
+                  title={localize(`其余 ${hiddenQuotaWindows.length} 项配额`)}
+                  isExpanded={isMoreQuotaExpanded}
+                  onChanged={setIsMoreQuotaExpanded}
+                >
+                  <VStack
+                    alignment="leading"
+                    spacing={8}
+                    frame={{ maxWidth: "infinity", alignment: "leading" }}
+                  >
+                    {hiddenQuotaWindows.map((win) => (
+                      <QuotaProgressCard key={win.id} window={win} />
+                    ))}
+                  </VStack>
+                </DisclosureGroup>
+              ) : null}
+            </VStack>
+          ) : null}
+
+          {account.provider === "muse" && snapshot.museAdditionalTokens ? (
+            <VStack
+              alignment="leading"
+              spacing={7}
+              padding={12}
+              frame={{ maxWidth: "infinity", alignment: "leading" }}
+              background={
+                <RoundedRectangle
+                  cornerRadius={12}
+                  style="continuous"
+                  fill="quaternarySystemFill"
+                />
+              }
+            >
+              <Text font="caption2" fontWeight="semibold" foregroundStyle="accentColor">
+                {localize("额外 Tokens")}
+              </Text>
+              {snapshot.museAdditionalTokens.remainingPercentage !== undefined ? (
+                <ProgressView
+                  value={snapshot.museAdditionalTokens.remainingPercentage}
+                  total={100}
+                  progressViewStyle="linear"
+                  tint={remainingQuotaColor(
+                    snapshot.museAdditionalTokens.remainingPercentage,
+                    snapshot.museAdditionalTokens.remainingPercentage <= 0
+                  )}
+                />
+              ) : null}
+              <Text font="subheadline" fontWeight="medium" foregroundStyle="label" lineLimit={2}>
+                {localize(snapshot.museAdditionalTokens.value)}
+              </Text>
+            </VStack>
+          ) : null}
+
+          {/* 刷新异常横幅（若上次刷新失败但保留了缓存快照） */}
+          {state.type === "failed" ? (
+            <HStack
+              spacing={8}
+              padding={{ horizontal: 10, vertical: 8 }}
+              frame={{ maxWidth: "infinity", alignment: "leading" }}
+              background={
+                <RoundedRectangle
+                  cornerRadius={10}
+                  style="continuous"
+                  fill="quaternarySystemFill"
+                />
+              }
+            >
+              <Image
+                systemName="exclamationmark.triangle.fill"
+                font="caption"
+                foregroundStyle="systemOrange"
+              />
+              <Text font="caption" foregroundStyle="systemOrange">
+                {formatFailureDescription(
+                  state.failure,
+                  account.provider,
+                  state.detail
+                )}
+              </Text>
+            </HStack>
+          ) : null}
+
+          {/* 卡片底部：账号信息 + 最后同步时间 */}
+          <HStack alignment="center" spacing={6}>
+            {identity && displayedIdentity ? (
+              <Button
+                buttonStyle="plain"
+                action={() => {
+                  setMaskOverride(!isMasked)
+                  HapticFeedback.lightImpact()
+                }}
+              >
+                <HStack alignment="center" spacing={4}>
+                  <Image
+                    systemName="person.crop.circle"
+                    font="caption2"
+                    foregroundStyle="secondaryLabel"
+                  />
+                  <Text
+                    font="caption2"
+                    fontWeight="medium"
+                    foregroundStyle="secondaryLabel"
+                    fixedSize={wrapText}
+                    lineLimit={isEnglish ? undefined : 1}
+                  >
+                    {displayedIdentity}
+                  </Text>
+                  <Image
+                    systemName={isMasked ? "eye.slash" : "eye"}
+                    font="caption2"
+                    foregroundStyle="tertiaryLabel"
+                  />
+                </HStack>
+              </Button>
+            ) : null}
+            <Spacer />
+            <Text font="caption2" foregroundStyle="secondaryLabel">
+              {localize(`数据同步于 ${formatShortDateTime(snapshot.collectedAt) ?? "刚刚"}`)}
+            </Text>
+          </HStack>
+        </VStack>
+      ) : state.type === "failed" ? (
+        <VStack
+          alignment="leading"
+          spacing={8}
+          padding={12}
+          frame={{ maxWidth: "infinity", alignment: "leading" }}
+          background={
+            <RoundedRectangle
+              cornerRadius={12}
+              style="continuous"
+              fill="quaternarySystemFill"
+            />
+          }
+        >
+          <Text font="subheadline" fontWeight="medium" foregroundStyle="systemRed">
+            {formatFailureDescription(
+              state.failure,
+              account.provider,
+              state.detail
+            )}
+          </Text>
+          <HStack spacing={12}>
+            <Button
+              title={localize("立即重试")}
+              systemImage="arrow.clockwise"
+              buttonStyle="borderless"
+              font="caption"
+              action={onRefresh}
+            />
+            <Spacer />
+            <Button
+              title={localize("检查凭证或重登")}
+              systemImage="key.fill"
+              buttonStyle="borderless"
+              font="caption"
+              action={onOpenDetail}
+            />
+          </HStack>
+        </VStack>
+      ) : (
+        <HStack
+          padding={12}
+          frame={{ maxWidth: "infinity", alignment: "leading" }}
+          background={
+            <RoundedRectangle
+              cornerRadius={12}
+              style="continuous"
+              fill="quaternarySystemFill"
+            />
+          }
+        >
+          <Text font="subheadline" foregroundStyle="secondaryLabel">
+            {localize(isLoading
+              ? "正在直连供应商接口拉取实时配额…"
+              : "尚无快照数据，点击右上角刷新按钮拉取")}
+          </Text>
+          <Spacer />
+        </HStack>
+      )}
+    </VStack>
+  )
+}
+
+function WalletMetricTile(props: {
+  provider: SubscriptionAccount["provider"]
+  window: QuotaWindow
+}) {
+  const { provider, window } = props
+  const wallet = window.wallet
+  if (!wallet) return null
+
+  const hasBreakdown =
+    wallet.toppedUp !== undefined || wallet.granted !== undefined
+  const isEnglish = getDashboardLanguage() === "en"
+  const wrapText = isEnglish ? { horizontal: false, vertical: true } : undefined
+  const BreakdownLayout = isEnglish ? FlowLayout : HStack
+
+  return (
+    <VStack
+      alignment="leading"
+      spacing={6}
+      padding={12}
+      frame={{ maxWidth: "infinity", alignment: "leading" }}
+      background={
+        <RoundedRectangle
+          cornerRadius={12}
+          style="continuous"
+          fill="quaternarySystemFill"
+        />
+      }
+    >
+      <HStack alignment="center" spacing={8}>
+        <ProviderIconView provider={provider} size={20} />
+        <Text
+          font={isEnglish ? "footnote" : "subheadline"}
+          fontWeight="medium"
+          foregroundStyle="label"
+          lineLimit={isEnglish ? undefined : 1} fixedSize={wrapText}
+        >
+          {localize(window.name)}
+        </Text>
+        <Spacer />
+        <Text
+          font={isEnglish ? "headline" : "title3"}
+          fontWeight="bold"
+          monospacedDigit={true}
+          foregroundStyle="label"
+          lineLimit={isEnglish ? undefined : 1} fixedSize={wrapText}
+        >
+          {formatWalletAmount(wallet.total, wallet)}
+        </Text>
+      </HStack>
+
+      <HStack alignment="center" spacing={10}>
+        {hasBreakdown ? (
+          <BreakdownLayout spacing={12}>
+            {wallet.toppedUp !== undefined ? (
+              <Text
+                font="caption2"
+                foregroundStyle="secondaryLabel"
+                lineLimit={isEnglish ? undefined : 1} fixedSize={wrapText}
+              >
+                {localize(`充值 ${formatWalletAmount(wallet.toppedUp, wallet)}`)}
+              </Text>
+            ) : null}
+            {wallet.granted !== undefined ? (
+              <Text
+                font="caption2"
+                foregroundStyle="secondaryLabel"
+                lineLimit={isEnglish ? undefined : 1} fixedSize={wrapText}
+              >
+                {localize(`赠送 ${formatWalletAmount(wallet.granted, wallet)}`)}
+              </Text>
+            ) : null}
+          </BreakdownLayout>
+        ) : (
+          <Text font="caption2" foregroundStyle="secondaryLabel" lineLimit={isEnglish ? undefined : 1} fixedSize={wrapText}>
+            {localize(wallet.isMonetary ? "实时可用资金池" : "周期内可用计算点数")}
+          </Text>
+        )}
+
+        <Spacer />
+
+        <Text
+          font="caption2"
+          fontWeight="semibold"
+          foregroundStyle={wallet.isMonetary ? "systemBlue" : "systemPurple"}
+          padding={{ horizontal: 6, vertical: 1 }}
+          background={<Capsule fill="tertiarySystemFill" />}
+        >
+          {localize(wallet.isMonetary ? "可用余额" : "可用点数")}
+        </Text>
+      </HStack>
+    </VStack>
+  )
+}
+
+function QuotaProgressCard(props: { window: QuotaWindow }) {
+  const { window } = props
+  const remainingFraction = formatWindowRemainingFraction(window)
+  const breakdown = formatWindowQuotaBreakdown(window)
+  const countdown = formatRelativeCountdown(
+    window.resetsAt || window.expiresAt,
+    window.resetSemantics
+  )
+  const periodLabel = formatPeriodBadgeText(window)
+  const subtitle = formatWindowSubtitle(window)
+  const isEnglish = getDashboardLanguage() === "en"
+  const wrapText = isEnglish ? { horizontal: false, vertical: true } : undefined
+  const statusColor = remainingQuotaColor(
+    breakdown.remainingPercent,
+    window.isExhausted
+  )
+
+  return (
+    <VStack
+      alignment="leading"
+      spacing={7}
+      padding={12}
+      frame={{ maxWidth: "infinity", alignment: "leading" }}
+      background={
+        <RoundedRectangle
+          cornerRadius={12}
+          style="continuous"
+          fill="quaternarySystemFill"
+        />
+      }
+    >
+      {isEnglish && subtitle ? (
+        <Text font="footnote" fontWeight="medium" fixedSize={wrapText}>
+          {localize(subtitle)}
+        </Text>
+      ) : null}
+      {/* 周期标签和重置倒计时 */}
+      <HStack alignment="center" spacing={6}>
+        <Text
+          font="caption2"
+          fontWeight="semibold"
+          foregroundStyle="accentColor"
+          padding={{ horizontal: 7, vertical: 2 }}
+          background={<Capsule fill="tertiarySystemFill" />}
+        >
+          {localize(periodLabel)}
+        </Text>
+        {!isEnglish && subtitle ? (
+          <Text
+            font="subheadline"
+            fontWeight="medium"
+            foregroundStyle="label"
+            lineLimit={1}
+          >
+            {localize(subtitle)}
+          </Text>
+        ) : null}
+        <Spacer />
+        {countdown ? (
+          <Text font="caption2" foregroundStyle="secondaryLabel" fixedSize={wrapText}>
+            {localize(countdown)}
+          </Text>
+        ) : null}
+      </HStack>
+
+      {/* 第二行：可视化剩余额度进度条（剩余越少越短，颜色由绿平滑过渡到红，耗尽时全灰） */}
+      {remainingFraction !== null ? (
+        <ProgressView
+          value={remainingFraction}
+          total={1}
+          progressViewStyle="linear"
+          tint={statusColor}
+        />
+      ) : null}
+
+      {/* 第三行：左侧突出显示「剩余可用」，右侧明确显示「已用 / 总额」 */}
+      <HStack alignment="center">
+        <Text
+          font={isEnglish ? "caption2" : "caption"}
+          fixedSize={wrapText}
+          fontWeight="semibold"
+          monospacedDigit={true}
+          foregroundStyle={window.spentAmount !== undefined ? "systemBlue" : window.isUnlimited ? "systemGreen" : statusColor}
+        >
+          {localize(breakdown.primaryRemainingText)}
+        </Text>
+        <Spacer />
+        <Text
+          font={isEnglish ? "caption2" : "caption"}
+          fixedSize={wrapText}
+          monospacedDigit={true}
+          foregroundStyle="secondaryLabel"
+        >
+          {localize(breakdown.secondaryUsedText)}
+        </Text>
+      </HStack>
+    </VStack>
+  )
+}
+
+function CodexResetNoticeView(props: { status: CodexResetStatus }) {
+  const { status } = props
+  const scheduled = status.data.scheduledReset
+  const watch = status.data.activeWatch
+
+  if (scheduled) {
+    const headline = formatScheduledResetHeadline(scheduled.scheduledFor)
+    const localTimeText = scheduled.scheduledFor
+      ? `${formatCodexResetLocalTime(scheduled.scheduledFor)} · 北京时间`
+      : null
+
+    return (
+      <VStack
+        alignment="leading"
+        spacing={5}
+        padding={{ horizontal: 10, vertical: 8 }}
+        background={
+          <RoundedRectangle
+            cornerRadius={10}
+            style="continuous"
+            fill="quaternarySystemFill"
+          />
+        }
+        frame={{ maxWidth: "infinity", alignment: "leading" }}
+      >
+        <HStack spacing={6} alignment="center">
+          <Image
+            systemName="calendar.badge.clock"
+            font="caption"
+            foregroundStyle="systemOrange"
+          />
+          <Text font="caption" fontWeight="semibold" foregroundStyle="label">
+            {localize("Codex 重置预告")}</Text>
+          <Spacer />
+          <Text
+            font="caption2"
+            fontWeight="bold"
+            foregroundStyle="systemOrange"
+            padding={{ horizontal: 6, vertical: 2 }}
+            background={
+              <RoundedRectangle
+                cornerRadius={6}
+                fill="systemOrange"
+                opacity={0.16}
+              />
+            }
+          >
+            {localize(headline)}
+          </Text>
+        </HStack>
+
+        <HStack spacing={6} alignment="center">
+          {localTimeText ? (
+            <Text font="caption2" foregroundStyle="secondaryLabel">
+              {localize(localTimeText)}
+            </Text>
+          ) : null}
+          <Text font="caption2" foregroundStyle="tertiaryLabel">
+            {localize("第三方预告 · Codex Resets")}</Text>
+        </HStack>
+      </VStack>
+    )
+  }
+
+  if (watch) {
+    const chanceText =
+      watch.resetChancePercent != null
+        ? `预测概率 ${watch.resetChancePercent}%`
+        : "AI 重置预测"
+    return (
+      <VStack
+        alignment="leading"
+        spacing={5}
+        padding={{ horizontal: 10, vertical: 8 }}
+        background={
+          <RoundedRectangle
+            cornerRadius={10}
+            style="continuous"
+            fill="quaternarySystemFill"
+          />
+        }
+        frame={{ maxWidth: "infinity", alignment: "leading" }}
+      >
+        <HStack spacing={6} alignment="center">
+          <Image
+            systemName="sparkles"
+            font="caption"
+            foregroundStyle="systemIndigo"
+          />
+          <Text font="caption" fontWeight="semibold" foregroundStyle="label">
+            {localize("Codex 重置预测")}</Text>
+          <Spacer />
+          <Text
+            font="caption2"
+            fontWeight="bold"
+            foregroundStyle="systemIndigo"
+            padding={{ horizontal: 6, vertical: 2 }}
+            background={
+              <RoundedRectangle
+                cornerRadius={6}
+                fill="systemIndigo"
+                opacity={0.16}
+              />
+            }
+          >
+            {localize(chanceText)}
+          </Text>
+        </HStack>
+
+        <HStack spacing={6} alignment="center">
+          <Text font="caption2" foregroundStyle="secondaryLabel">
+            {localize(watch.forecastWindow)}
+          </Text>
+          <Text font="caption2" foregroundStyle="tertiaryLabel">
+            {`${localize("有效至")}${formatCodexResetLocalTime(watch.expiresAt)} ${localize("· 非官方")}`}
+          </Text>
+        </HStack>
+      </VStack>
+    )
+  }
+
+  return null
+}
+

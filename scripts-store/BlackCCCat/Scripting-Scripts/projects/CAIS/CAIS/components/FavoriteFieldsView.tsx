@@ -1,0 +1,609 @@
+import {
+  Button,
+  Device,
+  EmptyView,
+  Form,
+  HStack,
+  Image,
+  LazyVStack,
+  Navigation,
+  NavigationStack,
+  Picker,
+  Section,
+  ScrollView,
+  Spacer,
+  Text,
+  TextField,
+  Toggle,
+  VStack,
+  useObservable,
+  useState,
+} from "scripting"
+import type { VirtualNode } from "scripting"
+
+import type { FavoriteFormat, FavoriteGroup } from "../types"
+import type { NavigationZoomNamespace, NavigationZoomTransition } from "../utils/navigation_zoom"
+import { makeId } from "../utils/common"
+import {
+  normalizeFavoriteDelimiter,
+  parseFavoriteFields,
+  displayFavoriteFieldValue,
+  privateRulesForItem,
+  type FavoriteField,
+  type PrivateFieldRule,
+} from "../utils/favorite_fields"
+import { FieldPrivacyRulesView } from "./FieldPrivacyRulesView"
+
+export type FavoriteDraft = {
+  title: string
+  content: string
+  format: FavoriteFormat
+  fieldDelimiter?: string
+  fieldPrivacyOverride?: boolean
+  fieldPrivateKeywords?: string
+  favoriteGroupId?: string
+  favoriteGroupManual?: boolean
+}
+
+function presentCopyToast(
+  presented: ReturnType<typeof useObservable<boolean>>,
+  setMessage: (value: string) => void,
+  message: string,
+) {
+  setMessage(message)
+  presented.setValue(false)
+  ;(globalThis as any).setTimeout?.(() => presented.setValue(true), 0)
+}
+
+function FavoriteFieldContent(props: { field: FavoriteField; privateKeywords: PrivateFieldRule[]; revealed?: boolean }) {
+  return (
+    <VStack spacing={5} frame={{ maxWidth: "infinity", alignment: "leading" as any }}>
+      <HStack spacing={8} frame={{ maxWidth: "infinity", alignment: "center" as any }}>
+        <Text
+          font="headline"
+          frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+          multilineTextAlignment="leading"
+        >
+          {props.field.name}
+        </Text>
+        <Spacer />
+        <Image systemName="doc.on.doc" foregroundStyle="systemBlue" />
+      </HStack>
+      <Text
+        foregroundStyle="secondaryLabel"
+        frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+        multilineTextAlignment="leading"
+      >
+        {props.revealed ? props.field.value : displayFavoriteFieldValue(props.field, props.privateKeywords)}
+      </Text>
+    </VStack>
+  )
+}
+
+export function FavoriteEditorView(props: {
+  initial?: FavoriteDraft
+  preferredFormat?: FavoriteFormat
+  favoriteGroups: FavoriteGroup[]
+  defaultDelimiter: string
+  privateKeywords: PrivateFieldRule[]
+  defaultPrivacyPatterns: string
+  onPreviewCopy: (field: FavoriteField) => Promise<string | void> | string | void
+  onEditContentInEditor?: (content: string) => Promise<string | null>
+  renderEmbeddedContentEditor?: (
+    content: string,
+    onSave: (content: string) => void,
+    onCancel: () => void,
+  ) => VirtualNode
+  embedded?: boolean
+  navigationTransition?: NavigationZoomTransition
+  zoomNamespace?: NavigationZoomNamespace
+  onCancel?: () => void
+  onSave?: (draft: FavoriteDraft) => void
+  renderFieldContextMenu?: (
+    field: FavoriteField,
+    copy: () => void,
+  ) => VirtualNode
+}) {
+  const dismiss = Navigation.useDismiss()
+  const copyToastPresented = useObservable(false)
+  const [title, setTitle] = useState(props.initial?.title ?? "")
+  const [content, setContent] = useState(props.initial?.content ?? "")
+  const [format, setFormat] = useState<FavoriteFormat>(props.initial?.format ?? props.preferredFormat ?? "plain")
+  const [favoriteGroupId, setFavoriteGroupId] = useState(props.initial?.favoriteGroupId ?? "")
+  const [favoriteGroupSelectionChanged, setFavoriteGroupSelectionChanged] = useState(false)
+  const [copyToastMessage, setCopyToastMessage] = useState("")
+  const [customDelimiterEnabled, setCustomDelimiterEnabled] = useState(Boolean(props.initial?.fieldDelimiter))
+  const [customDelimiter, setCustomDelimiter] = useState(
+    props.initial?.fieldDelimiter ?? normalizeFavoriteDelimiter(props.defaultDelimiter),
+  )
+  const [customPrivacyEnabled, setCustomPrivacyEnabled] = useState(Boolean(props.initial?.fieldPrivacyOverride))
+  const [customPrivacyPatterns, setCustomPrivacyPatterns] = useState(
+    props.initial?.fieldPrivateKeywords ?? props.defaultPrivacyPatterns,
+  )
+  const [privacyRulesPresented, setPrivacyRulesPresented] = useState(false)
+  const [privacyRulesSessionId, setPrivacyRulesSessionId] = useState("")
+  const [expandedEditorContent, setExpandedEditorContent] = useState<string | undefined>(undefined)
+  const [expandedEditorPresented, setExpandedEditorPresented] = useState(false)
+  const globalDelimiter = normalizeFavoriteDelimiter(props.defaultDelimiter)
+  const delimiter = customDelimiterEnabled ? customDelimiter : globalDelimiter
+  const parsed = format === "fields" && delimiter
+    ? parseFavoriteFields(content, delimiter)
+    : null
+  const effectivePrivateRules = privateRulesForItem(
+    { fieldPrivacyOverride: customPrivacyEnabled, fieldPrivateKeywords: customPrivacyPatterns },
+    props.privateKeywords,
+  )
+
+  async function copyPreviewField(field: FavoriteField) {
+    const message = await props.onPreviewCopy(field)
+    if (!message) return
+    presentCopyToast(copyToastPresented, setCopyToastMessage, message)
+  }
+
+  async function editContentInEditor() {
+    if (props.renderEmbeddedContentEditor) {
+      setExpandedEditorContent(content)
+      setExpandedEditorPresented(true)
+      return
+    }
+    const next = await props.onEditContentInEditor?.(content)
+    if (next != null) setContent(next)
+  }
+
+  async function editPrivacyRules() {
+    if (props.embedded) {
+      setPrivacyRulesSessionId(makeId("privacy-rules"))
+      setPrivacyRulesPresented(true)
+      return
+    }
+    const value = await Navigation.present<string | null>({
+      element: <FieldPrivacyRulesView
+        key={makeId("privacy-rules")}
+        initial={customPrivacyPatterns}
+      />,
+      modalPresentationStyle: "pageSheet",
+    })
+    if (value != null) setCustomPrivacyPatterns(value)
+  }
+
+  function cancel() {
+    if (props.onCancel) {
+      props.onCancel()
+    } else {
+      dismiss(null)
+    }
+  }
+
+  async function save() {
+    if (!content.trim()) {
+      await Dialog.alert({ message: "内容不能为空" })
+      return
+    }
+    if (format === "fields" && customDelimiterEnabled && !customDelimiter) {
+      await Dialog.alert({ message: "独立分隔符不能为空" })
+      return
+    }
+    if (parsed?.errors.length) {
+      await Dialog.alert({ title: "无法保存", message: parsed.errors[0] })
+      return
+    }
+    const draft = {
+      title,
+      content,
+      format,
+      fieldDelimiter: format === "fields" && customDelimiterEnabled ? delimiter : undefined,
+      fieldPrivacyOverride: format === "fields" && customPrivacyEnabled,
+      fieldPrivateKeywords: format === "fields" && customPrivacyEnabled ? customPrivacyPatterns : undefined,
+      favoriteGroupId: favoriteGroupId || undefined,
+      favoriteGroupManual: favoriteGroupSelectionChanged
+        ? Boolean(favoriteGroupId)
+        : props.initial?.favoriteGroupManual ?? Boolean(favoriteGroupId),
+    } satisfies FavoriteDraft
+    if (props.onSave) {
+      props.onSave(draft)
+    } else {
+      dismiss(draft)
+    }
+  }
+
+  const form = (
+    <Form
+        navigationTransition={props.navigationTransition}
+        navigationTitle={props.initial ? "编辑收藏" : "添加收藏"}
+        navigationBarTitleDisplayMode="inline"
+        tabBarVisibility={props.embedded ? "visible" : undefined}
+        formStyle="grouped"
+        toast={{
+          isPresented: copyToastPresented,
+          message: copyToastMessage,
+          duration: 2,
+          position: "bottom",
+        }}
+        presentationDetents={[0.82, "large"]}
+        presentationDragIndicator="visible"
+        toolbar={{
+          topBarLeading: props.embedded
+            ? undefined
+            : <Button title="取消" role="cancel" action={cancel} />,
+          topBarTrailing: <Button title="保存" disabled={!content.trim()} action={() => void save()} />,
+        }}
+        navigationDestination={props.embedded ? {
+          isPresented: expandedEditorPresented || privacyRulesPresented,
+          onChanged: (isPresented: boolean) => {
+            if (!isPresented) {
+              setExpandedEditorPresented(false)
+              setExpandedEditorContent(undefined)
+              setPrivacyRulesPresented(false)
+            }
+          },
+          content: privacyRulesPresented ? <FieldPrivacyRulesView
+            key={privacyRulesSessionId}
+            initial={customPrivacyPatterns}
+            embedded
+            navigationTransition={props.zoomNamespace ? {
+              type: "zoom",
+              sourceID: "favorite-privacy-rules",
+              namespace: props.zoomNamespace,
+            } : undefined}
+            onSave={(value) => {
+              setCustomPrivacyPatterns(value)
+              setPrivacyRulesPresented(false)
+            }}
+          /> : expandedEditorContent !== undefined && props.renderEmbeddedContentEditor
+            ? props.renderEmbeddedContentEditor(
+                expandedEditorContent,
+                (nextContent) => {
+                  setContent(nextContent)
+                  setExpandedEditorPresented(false)
+                },
+                () => setExpandedEditorPresented(false),
+              )
+            : <EmptyView />,
+        } : undefined}
+      >
+        <Section>
+          <Picker
+            title="收藏类型"
+            pickerStyle="segmented"
+            value={format === "fields" ? 1 : 0}
+            onChanged={(value: number) => setFormat(value === 1 ? "fields" : "plain")}
+          >
+            <Text tag={0}>普通收藏</Text>
+            <Text tag={1}>字段收藏</Text>
+          </Picker>
+        </Section>
+
+        {format === "fields" ? (
+          <Section
+            header={<Text>分隔规则</Text>}
+            footer={(
+              <Text>
+                {customDelimiterEnabled
+                  ? "独立分隔符仅用于当前收藏，并覆盖全局设置。"
+                  : `当前使用全局分隔符“${globalDelimiter}”。`}
+              </Text>
+            )}
+          >
+            <Toggle
+              value={customDelimiterEnabled}
+              onChanged={setCustomDelimiterEnabled}
+              toggleStyle="switch"
+            >
+              <Text>使用独立分隔符</Text>
+            </Toggle>
+            {customDelimiterEnabled ? (
+              <TextField
+                title="独立分隔符"
+                value={customDelimiter}
+                prompt={globalDelimiter}
+                onChanged={(value: string) => setCustomDelimiter(
+                  value.replace(/[\r\n]/g, "").slice(0, 8),
+                )}
+              />
+            ) : null}
+          </Section>
+        ) : null}
+
+        {format === "fields" ? (
+          <Section header={<Text>隐私显示</Text>} footer={<Text>独立规则仅用于当前收藏，覆盖全局字段隐私规则。</Text>}>
+            <Toggle value={customPrivacyEnabled} onChanged={setCustomPrivacyEnabled} toggleStyle="switch">
+              <Text>使用独立隐私规则</Text>
+            </Toggle>
+            {customPrivacyEnabled ? (
+              <Button
+                buttonStyle="plain"
+                matchedTransitionSource={props.zoomNamespace ? {
+                  id: "favorite-privacy-rules",
+                  namespace: props.zoomNamespace,
+                } : undefined}
+                action={() => void editPrivacyRules()}
+              >
+                <HStack frame={{ maxWidth: "infinity", alignment: "leading" as any }}>
+                  <Text>子字段名规则</Text>
+                  <Spacer />
+                  <Text foregroundStyle="secondaryLabel" lineLimit={1}>
+                    {customPrivacyPatterns.trim().replace(/\s+/g, " ").slice(0, 26) || "不遮挡"}
+                  </Text>
+                  <Image systemName="chevron.right" foregroundStyle="tertiaryLabel" />
+                </HStack>
+              </Button>
+            ) : null}
+          </Section>
+        ) : null}
+
+        <Section header={<Text>标题</Text>}>
+          <TextField title="" value={title} prompt="可选，留空则自动生成" onChanged={setTitle} />
+        </Section>
+
+        <Section
+          header={(
+            <HStack frame={{ maxWidth: "infinity", alignment: "center" as any }}>
+              <Text>内容</Text>
+              <Spacer />
+              <Button
+                title=""
+                systemImage="rectangle.expand.vertical"
+                accessibilityLabel="展开编辑"
+                foregroundStyle="systemBlue"
+                buttonStyle="plain"
+                matchedTransitionSource={props.zoomNamespace ? {
+                  id: "favorite-content-expand",
+                  namespace: props.zoomNamespace,
+                } : undefined}
+                action={() => void editContentInEditor()}
+              />
+            </HStack>
+          )}
+          footer={format === "fields" ? (
+            <Text>{`使用“${delimiter}”开始一个子字段；后续不带分隔符的非空行会分别作为该字段的值。`}</Text>
+          ) : (
+            <Text>{"可使用 {{text}}、{{date}}、{{time}}、{{datetime}}、{{timestamp}}。"}</Text>
+          )}
+        >
+          <TextField
+            title=""
+            value={content}
+            prompt={format === "fields" ? `例如：姓名${delimiter}张三` : "输入你想收藏的内容"}
+            axis="vertical"
+            lineLimit={{ min: format === "fields" ? 8 : 5, max: 14 }}
+            frame={{ maxWidth: "infinity", alignment: "topLeading" as any }}
+            contentShape="rect"
+            onChanged={setContent}
+          />
+        </Section>
+
+        <Section
+          header={<Text>收藏分组</Text>}
+          footer={<Text>选择“自动匹配”时，将按照已有分组规则自动归类。</Text>}
+        >
+          <Picker
+            title="选择分组"
+            pickerStyle="menu"
+            value={favoriteGroupId}
+            onChanged={(value: string) => {
+              setFavoriteGroupId(value)
+              setFavoriteGroupSelectionChanged(true)
+            }}
+          >
+            <Text tag="">自动匹配</Text>
+            {props.favoriteGroups.map((group) => (
+              <Text key={group.id} tag={group.id}>{group.title}</Text>
+            ))}
+          </Picker>
+        </Section>
+
+        {format === "fields" ? (
+          <Section
+            header={(
+              <Text
+                font="headline"
+                frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+                multilineTextAlignment="leading"
+              >
+                子字段预览
+              </Text>
+            )}
+            footer={<Text>点击子字段可复制对应的值。</Text>}
+          >
+            {parsed?.fields.length ? parsed.fields.map((field) => (
+              <HStack
+                key={field.id}
+                frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+                background="rgba(0,0,0,0.001)"
+                contentShape={{ kind: "interaction", shape: { type: "rect" } } as any}
+                onTapGesture={() => void copyPreviewField(field)}
+                contextMenu={props.renderFieldContextMenu ? {
+                  menuItems: props.renderFieldContextMenu(field, () => void copyPreviewField(field)),
+                } : undefined}
+              >
+                <FavoriteFieldContent field={field} privateKeywords={effectivePrivateRules} />
+              </HStack>
+            )) : (
+              <Text foregroundStyle="secondaryLabel">输入内容后将在这里显示解析结果</Text>
+            )}
+            {parsed?.errors.length ? (
+              <Text foregroundStyle="systemRed">{parsed.errors[0]}</Text>
+            ) : null}
+          </Section>
+        ) : null}
+    </Form>
+  )
+
+  return props.embedded ? form : <NavigationStack>{form}</NavigationStack>
+}
+
+export function FavoriteFieldsDetailView(props: {
+  title: string
+  fields: FavoriteField[]
+  privateKeywords: PrivateFieldRule[]
+  cardGlassEffect: boolean
+  onCopy: (field: FavoriteField) => Promise<string | void> | string | void
+  onCopyAll: () => Promise<string | void> | string | void
+  embedded?: boolean
+  navigationTransition?: NavigationZoomTransition
+  renderFieldContextMenu?: (
+    field: FavoriteField,
+    copy: () => void,
+    reveal?: { action: () => void; revealed: boolean },
+  ) => VirtualNode
+}) {
+  const dismiss = Navigation.useDismiss()
+  const copyToastPresented = useObservable(false)
+  const [copyToastMessage, setCopyToastMessage] = useState("")
+  const [revealedFieldIds, setRevealedFieldIds] = useState<string[]>([])
+  const glassRows = props.cardGlassEffect && Number.parseInt(Device.systemVersion, 10) >= 26
+  const glassCardShape = { type: "rect", cornerRadius: 18 } as const
+
+  async function copyField(field: FavoriteField) {
+    const message = await props.onCopy(field)
+    if (!message) return
+    presentCopyToast(copyToastPresented, setCopyToastMessage, message)
+  }
+
+  async function copyAll() {
+    const message = await props.onCopyAll()
+    if (!message) return
+    presentCopyToast(copyToastPresented, setCopyToastMessage, message)
+  }
+
+  function fieldIsPrivate(field: FavoriteField) {
+    return displayFavoriteFieldValue(field, props.privateKeywords) !== field.value
+  }
+
+  function toggleFieldReveal(field: FavoriteField) {
+    setRevealedFieldIds((ids) => ids.includes(field.id)
+      ? ids.filter((id) => id !== field.id)
+      : [...ids, field.id])
+  }
+
+  function fieldMenu(field: FavoriteField, copy: () => void) {
+    return props.renderFieldContextMenu?.(field, copy, fieldIsPrivate(field)
+      ? { action: () => toggleFieldReveal(field), revealed: revealedFieldIds.includes(field.id) }
+      : undefined)
+  }
+
+  function fieldSwipeActions(field: FavoriteField) {
+    if (!fieldIsPrivate(field)) return undefined
+    return {
+      allowsFullSwipe: false,
+      actions: [<Button
+        title={revealedFieldIds.includes(field.id) ? "隐藏" : "查看"}
+        systemImage={revealedFieldIds.includes(field.id) ? "eye.slash" : "eye"}
+        tint="systemBlue"
+        action={() => toggleFieldReveal(field)}
+      />],
+    }
+  }
+
+  const copyToast = {
+    isPresented: copyToastPresented,
+    message: copyToastMessage,
+    duration: 2,
+    position: "bottom" as const,
+  }
+  const toolbar = {
+    topBarLeading: props.embedded
+      ? undefined
+      : <Button title="" systemImage="xmark" accessibilityLabel="关闭" role="cancel" action={() => dismiss()} />,
+    topBarTrailing: <Button title="" systemImage="doc.on.doc" accessibilityLabel="复制全部" action={() => void copyAll()} />,
+  }
+
+  if (glassRows) {
+    const page = (
+      <ScrollView
+        axes="vertical"
+        scrollContentBackground="hidden"
+        frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+        navigationTransition={props.navigationTransition}
+        navigationTitle={props.title}
+        navigationBarTitleDisplayMode="inline"
+        tabBarVisibility={props.embedded ? "visible" : undefined}
+        toast={copyToast}
+        presentationDetents={[0.72, "large"]}
+        presentationDragIndicator="visible"
+        toolbar={toolbar}
+      >
+        <LazyVStack
+          spacing={10}
+          swipeActionsContainer
+          frame={{ maxWidth: "infinity", alignment: "topLeading" as any }}
+          padding={{ top: 18, bottom: 24, leading: 20, trailing: 20 }}
+        >
+          <Text font="headline" foregroundStyle="secondaryLabel" frame={{ maxWidth: "infinity", alignment: "leading" as any }}>
+            子字段
+          </Text>
+          {props.fields.map((field) => {
+            const copy = () => void copyField(field)
+            return (
+              <HStack
+                key={field.id}
+                frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+                contentShape={{ kind: "contextMenuPreview", shape: glassCardShape } as any}
+                contextMenu={props.renderFieldContextMenu ? { menuItems: fieldMenu(field, copy)! } : undefined}
+                trailingSwipeActions={fieldSwipeActions(field)}
+              >
+                <HStack
+                  spacing={12}
+                  frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+                  padding={{ top: 14, bottom: 14, leading: 14, trailing: 14 }}
+                  contentShape={{ kind: "interaction", shape: glassCardShape } as any}
+                  onTapGesture={copy}
+                  glassEffect={glassCardShape}
+                >
+                  <FavoriteFieldContent field={field} privateKeywords={props.privateKeywords} revealed={revealedFieldIds.includes(field.id)} />
+                </HStack>
+              </HStack>
+            )
+          })}
+          <Text font="footnote" foregroundStyle="secondaryLabel" frame={{ maxWidth: "infinity", alignment: "leading" as any }}>
+            点击任意子字段可复制对应的值。
+          </Text>
+        </LazyVStack>
+      </ScrollView>
+    )
+    return props.embedded ? page : <NavigationStack>{page}</NavigationStack>
+  }
+
+  const form = (
+    <Form
+      navigationTransition={props.navigationTransition}
+      navigationTitle={props.title}
+      navigationBarTitleDisplayMode="inline"
+      tabBarVisibility={props.embedded ? "visible" : undefined}
+      formStyle="grouped"
+      toast={copyToast}
+      presentationDetents={[0.72, "large"]}
+      presentationDragIndicator="visible"
+      toolbar={toolbar}
+    >
+      <Section
+        header={(
+          <Text
+            font="headline"
+            frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+            multilineTextAlignment="leading"
+          >
+            子字段
+          </Text>
+        )}
+        footer={<Text>点击任意子字段可复制对应的值。</Text>}
+      >
+        {props.fields.map((field) => (
+          <HStack
+            key={field.id}
+            frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+            background="rgba(0,0,0,0.001)"
+            contentShape={{ kind: "interaction", shape: { type: "rect" } } as any}
+            onTapGesture={() => void copyField(field)}
+            contextMenu={props.renderFieldContextMenu ? { menuItems: fieldMenu(field, () => void copyField(field))! } : undefined}
+            trailingSwipeActions={fieldSwipeActions(field)}
+          >
+            <FavoriteFieldContent field={field} privateKeywords={props.privateKeywords} revealed={revealedFieldIds.includes(field.id)} />
+          </HStack>
+        ))}
+      </Section>
+    </Form>
+  )
+
+  return props.embedded ? form : <NavigationStack>{form}</NavigationStack>
+}

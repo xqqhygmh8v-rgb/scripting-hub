@@ -1,0 +1,613 @@
+import { antigravityBrandImage } from "./api"
+import { Button, Gauge, HStack, VStack, ZStack, Text, Spacer, Image, SVG, RoundedRectangle, Rectangle, GeometryReader, Widget, VirtualNode, modifiers } from "scripting"
+import { visibleAccounts, cachedLocalWidgetProjection, cachedWidgetUsage, loadUsage, LoadResult, Account, QuotaWindow, UsageData, fmtPct, fmtReset, fmtResetDays, fmtTime, fmtTokens, fmtUsd, widgetAccounts, getRefreshMinutes, getWidgetName, fmtDeepSeekMoney, fmtWorkBuddyNumber, fmtWorkBuddyCheckin, workBuddyBrandImage, CLAUDE_PATH, OPENAI_PATH, iconSvg, CLAUDE_SVG, OPENAI_SVG, DEEPSEEK_SVG } from "./api"
+
+import { RefreshUsageIntent } from "./app_intents"
+
+// ---------- 配色（浅色 / 深色自动切换） ----------
+type DC = { light: string; dark: string }
+const C = (light: string, dark: string): DC => ({ light, dark })
+
+// 渐变背景：浅色左上近白→右下冰蓝；深色保持蓝灰→蓝绿
+const BG = {
+  light: {
+    gradient: [
+      { color: "#FAFDFE", location: 0 },
+      { color: "#F2F8FC", location: 0.45 },
+      { color: "#DAEDF9", location: 0.75 },
+      { color: "#ADD9F3", location: 1 },
+    ],
+    startPoint: { x: 0.3, y: 0 },
+    endPoint: { x: 0.7, y: 1 },
+  },
+  dark: {
+    gradient: [
+      { color: "#25282F", location: 0 },
+      { color: "#232731", location: 0.45 },
+      { color: "#28303F", location: 0.75 },
+      { color: "#335A76", location: 1 },
+    ],
+    startPoint: { x: 0.3, y: 0 },
+    endPoint: { x: 0.7, y: 1 },
+  },
+} as any
+
+const FG = C("#1C1C1E", "#FFFFFF")
+const SUB = C("#5E6068", "#8E8E93")
+const SEG_OFF = C("rgba(0, 0, 0, 0.13)", "rgba(255, 255, 255, 0.14)")
+const DIVIDER = C("rgba(0, 0, 0, 0.12)", "rgba(255, 255, 255, 0.10)")
+const GREEN = C("#2E9E4F", "#7ED957")
+const ORANGE = C("#D9770B", "#FF9F0A")
+const RED = C("#D93025", "#FF453A")
+// SVG 里只能写具体颜色，按模式各生成一份
+const LCD_ON = C("#1C1C1E", "#FFFFFF")
+const LCD_OFF = C("#B9BCC3", "#363A44")
+
+function levelColor(remaining: number | null): DC {
+  if (remaining == null) return SUB
+  if (remaining <= 20) return RED
+  if (remaining <= 60) return ORANGE
+  return GREEN
+}
+
+// ---------- 七段数码管数字 ----------
+const SEG: Record<string, [number, number, number, number]> = {
+  a: [1.7, 0, 6.6, 2.4], b: [7.6, 1.7, 2.4, 6.9], c: [7.6, 9.4, 2.4, 6.9],
+  d: [1.7, 15.6, 6.6, 2.4], e: [0, 9.4, 2.4, 6.9], f: [0, 1.7, 2.4, 6.9], g: [1.7, 7.8, 6.6, 2.4],
+}
+const DIGIT: Record<string, string> = {
+  "0": "abcdef", "1": "bc", "2": "abged", "3": "abgcd", "4": "fgbc",
+  "5": "afgcd", "6": "afgedc", "7": "abc", "8": "abcdefg", "9": "abcdfg", "-": "g", " ": "",
+}
+
+function lcdSvg(value: number | null, on: string, off: string): string {
+  const s = value == null ? " --" : String(Math.max(0, Math.min(100, Math.round(value)))).padStart(3, " ")
+  const W = 10, GAP = 3.2, H = 18
+  let rects = ""
+  for (let i = 0; i < 3; i++) {
+    const ox = i * (W + GAP)
+    const segs = DIGIT[s[i]] ?? ""
+    for (const k of Object.keys(SEG)) {
+      const [x, y, w, h] = SEG[k]
+      const lit = segs.includes(k)
+      if (!lit) continue // 只画点亮笔画，去掉暗色底影
+      rects += `<rect x="${(ox + x).toFixed(1)}" y="${y}" width="${w}" height="${h}" rx="0.9" fill="${lit ? on : off}"/>`
+    }
+  }
+  const vw = 3 * W + 2 * GAP
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${vw * 8}" height="${H * 8}" viewBox="0 0 ${vw} ${H}">${rects}</svg>`
+}
+
+// 数码管百分比：height 为数字高度
+function Lcd({ value, height, muted = false }: { value: number | null; height: number; muted?: boolean }) {
+  const width = height * (36.4 / 18)
+  return <HStack alignment="bottom" spacing={2}>
+    <SVG
+      code={{
+        light: lcdSvg(value, muted ? SUB.light : LCD_ON.light, LCD_OFF.light),
+        dark: lcdSvg(value, muted ? SUB.dark : LCD_ON.dark, LCD_OFF.dark),
+      }}
+      resizable
+      frame={{ width, height }}
+    />
+    <Text font={Math.max(9, height * 0.42)} fontWeight="bold" foregroundStyle={muted ? SUB : levelColor(value)}>%</Text>
+  </HStack>
+}
+
+// ---------- 分段进度条（剩余额度） ----------
+function SegBar({ remaining, count, height, fixedHeight = false, muted = false }: { remaining: number | null; count: number; height: number; fixedHeight?: boolean; muted?: boolean }) {
+  const lit = remaining == null ? 0 : Math.round((Math.max(0, Math.min(100, remaining)) / 100) * count)
+  const head = levelColor(remaining)
+  const segs: VirtualNode[] = []
+  for (let i = 0; i < count; i++) {
+    const color = i < lit ? (muted ? SUB : i < lit - 1 ? FG : head) : SEG_OFF
+    segs.push(fixedHeight
+      ? <RoundedRectangle fill={color} cornerRadius={height * 0.3}
+          modifiers={modifiers().frame({ height }).frame({ maxWidth: "infinity" })} />
+      : <RoundedRectangle fill={color} cornerRadius={height * 0.3} frame={{ maxWidth: "infinity", height }} />)
+  }
+  return <HStack spacing={height * 0.45}>{segs}</HStack>
+}
+
+// Same-screen Medium reference: outer horizontal padding 14, half-width cell, inner edge padding 10.
+// Small and Medium bars have different available widths; preserve both and use Medium as the target.
+function largeSegmentLayout(width: number, widgetWidth: number) {
+  const mediumBarWidth = (widgetWidth - 28) / 2 - 10
+  const target = Math.max(1, (mediumBarWidth - (MEDIUM_SCALE.segs - 1) * MEDIUM_SCALE.bar * 0.45) / MEDIUM_SCALE.segs)
+  const gap = 5 * 0.45
+  const count = Math.max(1, Math.round((width + gap) / (target + gap)))
+  return { count, target, segmentWidth: (width - (count - 1) * gap) / count }
+}
+function LargeSegBar({ remaining, muted = false }: { remaining: number | null; muted?: boolean }) {
+  // Root owns the only horizontal inset (14pt each side); Large's bar occupies that full content width.
+  const width = Widget.displaySize.width - 28
+  return <VStack spacing={0} fixedSize={{ horizontal: false, vertical: true }}>
+    <SegBar remaining={remaining} count={largeSegmentLayout(width, Widget.displaySize.width).count} height={5} fixedHeight muted={muted} />
+  </VStack>
+}
+
+// ---------- 图标 / 名称 ----------
+// 图标路径来自 Simple Icons（CC0）
+function ProviderIcon({ provider, size, muted = false }: { provider: string; size: number; muted?: boolean }) {
+  // SVG paths have explicit fills; changing only the parent's foregroundStyle cannot gray them.
+  const graySvg = (path: string) => ({ light: iconSvg(path, SUB.light), dark: iconSvg(path, SUB.dark) })
+  if (provider === "antigravity") return <Image image={antigravityBrandImage(muted)} renderingMode="original" resizable frame={{ width: size, height: size }} />
+  if (provider === "workbuddy") return <Image image={workBuddyBrandImage(muted)} renderingMode="original" resizable frame={{ width: size, height: size }} />
+  if (provider === "deepseek") return <SVG code={DEEPSEEK_SVG} resizable frame={{ width: size, height: size }} />
+  if (provider === "claude") return <SVG code={muted ? graySvg(CLAUDE_PATH) : CLAUDE_SVG} resizable frame={{ width: size, height: size }} />
+  if (provider === "openai") return <SVG code={muted ? graySvg(OPENAI_PATH) : OPENAI_SVG} resizable frame={{ width: size, height: size }} />
+  return <Image systemName="sparkle" font={size * 0.85} foregroundStyle={muted ? SUB : FG} frame={{ width: size, height: size }} />
+}
+
+function shortName(acc: Account) {
+  return getWidgetName(acc.id) || acc.name.replace(/@.*$/, "")
+}
+
+function providerName(p: string) {
+  return p === "antigravity" ? "Antigravity" : p === "workbuddy" ? "WorkBuddy" : p === "claude" ? "Claude" : p === "openai" ? "Codex" : p === "deepseek" ? "DeepSeek" : p
+}
+
+export function isQuotaExhausted(acc: Account): boolean {
+  if (acc.provider === "workbuddy") return acc.credits?.reliable === true && acc.credits?.remaining === 0
+  return [acc.fiveHour.remainingPercent, acc.sevenDay.remainingPercent].some(v => typeof v === "number" && Number.isFinite(v) && v === 0)
+}
+
+// DeepSeek balances are money, never rolling quota percentages or fabricated subscription limits.
+function BalanceRows({ acc, font = 9, compact = false }: { acc: Account; font?: number; compact?: boolean }) {
+  const b = acc.balance
+  const main = b?.money.map(m => `账户余额 ${fmtDeepSeekMoney(m.currency, m.total)}`).join(" · ") || "余额未提供"
+  const detail = b?.money.map(m => b.auth === "网页Token" ? `7日 ${fmtDeepSeekMoney(m.currency, m.weekCost)}` : `充值 ${fmtDeepSeekMoney(m.currency, m.toppedUp)} 赠送 ${fmtDeepSeekMoney(m.currency, m.granted)}`).join(" · ") || "明细未提供"
+  const status = `${b?.available === false ? "不可用" : b?.available == null ? "状态未提供" : ""}${b?.error ? " 读取失败/可重试" : ""}`.trim()
+  return <VStack alignment="leading" spacing={compact ? 3 : 6}>
+    <Text font={font + 3} fontWeight="semibold" monospacedDigit foregroundStyle={FG} lineLimit={2} minScaleFactor={0.65}>{main}</Text>
+    <Text font={font} foregroundStyle={SUB} lineLimit={1} minScaleFactor={0.65}>{detail}</Text>
+    {status ? <Text font={font - 1} foregroundStyle={b?.error ? RED : SUB} lineLimit={1} minScaleFactor={0.65}>{status}</Text> : null}
+  </VStack>
+}
+
+// Credits retain their own observation time and expiry; never label package expiry as quota reset.
+function CreditsRows({ acc, font = 8, compact = false, fullWidth = false, alignExpiryBottom = false }: { acc: Account; font?: number; compact?: boolean; fullWidth?: boolean; alignExpiryBottom?: boolean }) {
+  const c = acc.credits, muted = isQuotaExhausted(acc)
+  const amount = (n: number | null | undefined) => c?.reliable && typeof n === "number" && Number.isFinite(n) && n >= 0 ? n.toFixed(2) : "未提供"
+  const remaining = amount(c?.remaining), capacity = amount(c?.capacity)
+  const usedPct = c?.reliable && typeof c.used === "number" && Number.isFinite(c.used) && c.used >= 0 && typeof c.capacity === "number" && Number.isFinite(c.capacity) && c.capacity > 0 ? (c.used / c.capacity * 100).toFixed(2) + "%" : "未提供"
+  const packages = (c?.packages ?? []).filter(p => p.expiresAt && Date.parse(p.expiresAt) > Date.now() && p.remaining != null && p.remaining > 0).sort((a,b) => a.expiresAt!.localeCompare(b.expiresAt!))
+  const expiry = packages[0]
+  const stamp = (iso: string) => new Date(Date.parse(iso) + 8 * 3600000).toISOString().slice(2,16).replace("T", " ")
+  const status = c?.error?.includes("重新登录") ? "登录失效/请重新登录" : c?.error ? c.reliable ? "读取失败/此前快照" : "读取失败/积分未知" : c?.reliable ? "" : c?.status === "partial" ? "积分明细不完整" : "积分未可靠提供"
+  const checkin = fmtWorkBuddyCheckin(c?.checkin)
+  const expiryAmount = expiry && typeof expiry.remaining === "number" && Number.isFinite(expiry.remaining) && expiry.remaining >= 0 ? expiry.remaining.toFixed(2) : "未提供"
+  return <VStack alignment="leading" spacing={compact ? 3 : 6}
+    frame={fullWidth ? { maxWidth: "infinity", alignment: "leading" as any } : undefined}>
+    <Text font={font + 3} fontWeight="semibold" monospacedDigit foregroundStyle={muted ? SUB : FG} lineLimit={1} minScaleFactor={0.65}>{`账户: 个人 · 中国区 | ${checkin}`}</Text>
+    <Text font={font + 3} fontWeight="semibold" monospacedDigit foregroundStyle={muted ? SUB : FG} lineLimit={1} minScaleFactor={0.65}
+      offset={alignExpiryBottom ? { x: 0, y: 1 } : undefined}>{`积分：已用 ${usedPct}（${capacity}/${remaining}）`}</Text>
+    <Text font={font + 3} fontWeight="semibold" monospacedDigit foregroundStyle={SUB} lineLimit={1} minScaleFactor={0.65}
+      offset={alignExpiryBottom ? { x: 0, y: 2 } : undefined}>{expiry ? `${expiryAmount}积分 到期 ${stamp(expiry.expiresAt!)}${packages.length > 1 ? ` 等${packages.length}包` : ""}` : "有效期未提供"}</Text>
+    {status ? <Text font={font - 1} foregroundStyle={c?.error ? RED : SUB} lineLimit={1} minScaleFactor={0.6}>{status}</Text> : null}
+  </VStack>
+}
+
+function AccountTitle({ acc, font }: { acc: Account; font: number }) {
+  const showReset = typeof acc.resetCredits === "number" && Number.isFinite(acc.resetCredits) && acc.resetCredits > 0
+  // Same full-width container as the quota rows: trailing reset text aligns to the entire LCD/% right edge.
+  // Keep the original default-center title alignment for BOTH sources; reset must not lower the username.
+  // RE uses the same font and center axis as the username, while retaining the full-width trailing edge.
+  return <HStack spacing={5}
+    frame={showReset ? { maxWidth: "infinity" } : undefined}>
+    <ProviderIcon provider={acc.provider} size={font + 1} muted={isQuotaExhausted(acc)} />
+    <Text font={font} fontWeight="semibold" foregroundStyle={isQuotaExhausted(acc) ? SUB : FG} lineLimit={1}>{providerName(acc.provider)}</Text>
+    <Text font={font - 3} foregroundStyle={SUB} lineLimit={1}>{shortName(acc)}</Text>
+    {acc.enabled && !acc.available ? <Text font={font - 3} foregroundStyle={RED}>不可用</Text> : null}
+    {showReset ? <Spacer /> : null}
+    {showReset ? <Text font={font - 3} monospacedDigit foregroundStyle={SUB} lineLimit={1}
+      fixedSize={{ horizontal: true, vertical: true }}>RE:{acc.resetCredits}</Text> : null}
+  </HStack>
+}
+
+function RefreshTime({ data }: { data: UsageData }) {
+  return <HStack spacing={3}>
+    <Button intent={RefreshUsageIntent(undefined)} buttonStyle="plain" frame={{ width: 12, height: 12 }}>
+      <Image systemName="arrow.triangle.2.circlepath" font={9} foregroundStyle={SUB} />
+    </Button>
+    <Text font={9} monospacedDigit foregroundStyle={SUB}>{fmtTime(data.fetchedAt)}</Text>
+  </HStack>
+}
+
+type Win = { muted?: boolean; label: string; w: QuotaWindow; fmt: (iso: string | null) => string }
+const windowsOf = (a: Account): Win[] => [
+  { label: "5h", w: a.fiveHour, muted: isQuotaExhausted(a), fmt: fmtReset },
+  { label: "7d", w: a.sevenDay, muted: isQuotaExhausted(a), fmt: fmtResetDays },
+]
+
+// Each intrinsic column owns BOTH periods: no Grid flexible-column compression or spanning headings.
+type StatColumn = { label: string; today: string; month: string }
+// Conservative SF text-width budget, NOT native text measurement. Fixed-size text is the no-ellipsis guard.
+function statTextBudget(text: string, font: number): number {
+  let em = 0
+  for (const ch of text) em += /[0-9]/.test(ch) ? 0.7 : ch === "." ? 0.4 : ch === "$" ? 0.8 : /[MW%]/.test(ch) ? 1 : /[\u0000-\u007f]/.test(ch) ? 0.85 : 1
+  return (em + 0.25) * font // reserve scales with the single shared font factor
+}
+function statsWidthBudget(columns: StatColumn[], labelFont: number, valueFont: number, gap: number, width: number) {
+  const columnWidths = columns.map(c => Math.max(statTextBudget(c.label, labelFont), statTextBudget(c.today, valueFont),
+    statTextBudget(c.month, valueFont), statTextBudget("今日", labelFont)))
+  const natural = columnWidths.reduce((sum, w) => sum + w, 0) + gap * (columns.length - 1)
+  const scale = Math.min(1, Math.max(1, width) / natural)
+  return { columnWidths, natural, scale, fitted: natural * scale }
+}
+function PeriodStats({ columns, labelFont, valueFont, gap, verticalGap, contentWidth, sizingValueFont = valueFont }: {
+  columns: StatColumn[]; labelFont: number; valueFont: number; gap: number; verticalGap: number; contentWidth?: number; sizingValueFont?: number
+}) {
+  // Bound reader height to six text lines + the existing inter-period/label gaps, rather than filling the widget.
+  const height = 4 * Math.ceil(labelFont * 1.2) + 2 * Math.ceil(valueFont * 1.2) + 3 * verticalGap + 2
+  const render = (width: number) => {
+      // Large keeps the old 12pt width budget so title fitting remains identical while values render at 11pt.
+      const { scale } = statsWidthBudget(columns, labelFont, sizingValueFont, gap, width)
+      const cells: VirtualNode[] = []
+      columns.forEach((c, i) => {
+        if (i > 0) cells.push(<Spacer frame={{ minWidth: gap * scale, maxWidth: "infinity" }} />)
+        const period = (heading: string, value: string) => <VStack alignment="leading" spacing={verticalGap}>
+          <Text font={labelFont * scale} foregroundStyle={SUB} opacity={i === 0 ? 1 : 0}
+            fixedSize={{ horizontal: true, vertical: true }} lineLimit={1}>{heading}</Text>
+          <VStack alignment="leading" spacing={1}>
+            <Text font={labelFont * scale} foregroundStyle={SUB} fixedSize={{ horizontal: true, vertical: true }} lineLimit={1}>{c.label}</Text>
+            <Text font={valueFont * scale} fontWeight="semibold" monospacedDigit foregroundStyle={FG}
+              fixedSize={{ horizontal: true, vertical: true }} lineLimit={1}>{value}</Text>
+          </VStack>
+        </VStack>
+        cells.push(<VStack alignment="leading" spacing={verticalGap} fixedSize={{ horizontal: true, vertical: true }}>
+          {period("今日", c.today)}
+          {period("本月", c.month)}
+        </VStack>)
+      })
+      return <HStack alignment="top" spacing={0} frame={{ width, alignment: "leading" as any }}
+        fixedSize={contentWidth != null ? { horizontal: false, vertical: true } : undefined}>{cells}</HStack>
+  }
+  // Large: known full content width, natural content height. No greedy reader or estimated-height reservation.
+  if (contentWidth != null) return render(contentWidth)
+  // Small retains its existing bounded reader and statistics geometry.
+  return <GeometryReader frame={{ height }}>{proxy => render(proxy.size.width)}</GeometryReader>
+}
+
+// Same Parrot summary scope as Large, not per-account totals.
+
+// Measured descent below digits, as a fraction of the value font (IMG_4469 @3x, 9pt value font):
+// 7px = 2.333pt => 2.333 / 9 em. See SmallStats(medium) for the measurement.
+const VALUE_DIGIT_DESCENT_EM = (7 / 3) / 9
+function mediumThreeStatsLayout(height: number) {
+  const half = Math.max(1, height - 38) / 2
+  // 7/9pt, zero inter-heading/period gaps: ceil-line model 60pt; keep 6pt to the divider.
+  let scale = Math.min(1, Math.max(1, half - 6) / 60)
+  // Rounded text-line budget is stepwise: verify it rather than assume a linear font-height reduction.
+  while (scale > 0.1 && 4 * Math.ceil(7 * scale * 1.2) + 2 * Math.ceil(9 * scale * 1.2) + 2 > half - 6) scale -= 0.01
+  return { half, labelFont: 7 * scale, valueFont: 9 * scale, verticalGap: 0 }
+}
+function SmallStats({ data, medium = false }: { data: UsageData; medium?: boolean }) {
+  const today = data.today, month = data.month
+  if (!today || !month) return <Text font={7} foregroundStyle={SUB} lineLimit={2}>今日/本月统计未提供</Text>
+  const values = (m: NonNullable<UsageData["today"]>) => {
+    const inputSide = m.inputTokens + m.cacheReadTokens + m.cacheCreationTokens
+    return [fmtTokens(m.cacheReadTokens + m.cacheCreationTokens),
+      inputSide > 0 ? (m.cacheReadTokens / inputSide * 100).toFixed(1) + "%" : "--",
+      fmtTokens(m.totalTokens), fmtUsd(m.costUsd)]
+  }
+  const t = values(today), m = values(month)
+  const layout = medium ? mediumThreeStatsLayout(Widget.displaySize.height) : null
+  const stats = <PeriodStats labelFont={layout?.labelFont ?? 7} valueFont={layout?.valueFont ?? 9} gap={2} verticalGap={layout?.verticalGap ?? 2}
+    contentWidth={medium ? (Widget.displaySize.width - 28) / 2 - 10 : undefined}
+    columns={["缓存", "缓存率", "Token", "花费"].map((label, i) => ({ label, today: t[i], month: m[i] }))} />
+  if (!layout) return stats
+  // Medium-3 top row is bottom-aligned with the right weekly SegBar. 1.7.19 device capture IMG_4469
+  // (3px per pt: both 1pt dividers are 3px; card 164pt tall puts the divider at 12+63pt = y276 as measured):
+  // weekly bar bottom y255, divider y275-277; last month digits bottom y248 (all 4 columns).
+  // Period pitch is 82px (today heading y96 -> month heading y178); today digits end y166, 12px before
+  // the next heading glyph, and month digits likewise end 7px above the shared bottom y255. Equal
+  // bottom anchors are already in the tree (HStack bottom + bottomLeading + padding 7), and a 9pt SF
+  // value line typically has ~0.24em (~2.2pt = 6.5px) descent below digits, consistent with 7px.
+  // Conclusion: the gap is the value Text's descent, not padding/alignment. Render-only offset
+  // (no layout size change) by the measured 7px; divider and every account cell stay put.
+  return <VStack offset={{ x: 0, y: layout.valueFont * VALUE_DIGIT_DESCENT_EM }}>{stats}</VStack>
+}
+
+// ---------- 小号：上下两个账号，各自5h在上、7d在下 ----------
+// Shared single/double geometry: 1.7.13 moved up 3pt, 1.7.14 another 2pt; lower account retains its 4pt inset.
+function smallRegionLayout(height: number) {
+  const dividerY = Math.max(74, Math.min(height * 0.56, height - 57)) - 5
+  return { dividerY, lowerY: dividerY + 1 + 4, lowerHeight: height - dividerY - 1, fits: height >= 131 }
+}
+function Small({ data }: { data: UsageData }) {
+  const s: Scale = { title: 11, label: 8, lcd: 10, bar: 3, segs: 10, gap: 1 }
+  const accounts = data.accounts.slice(0, 2), single = accounts.length === 1
+  const account = (acc: Account) => <VStack alignment="leading" spacing={acc.provider === "deepseek" ? 6 : 3}>
+    <AccountTitle acc={acc} font={s.title} />
+    {acc.provider === "workbuddy" ? <CreditsRows acc={acc} font={7} compact alignExpiryBottom /> : acc.provider === "deepseek" ? <BalanceRows acc={acc} font={8} /> : windowsOf(acc).map(x => <QuadWindow label={x.label} w={x.w} fmt={x.fmt} muted={x.muted} s={s} rowToBarGap={MEDIUM_SCALE.gap} />)}
+  </VStack>
+  return <GeometryReader>
+    {proxy => {
+      const region = smallRegionLayout(proxy.size.height)
+      return <VStack alignment="leading" spacing={0} frame={{ width: proxy.size.width, height: proxy.size.height }}>
+        <VStack alignment="leading" spacing={0}
+          frame={{ height: region.dividerY, maxWidth: "infinity", alignment: "topLeading" as any }}>
+          {single ? <SmallStats data={data} /> : account(accounts[0])}
+        </VStack>
+        <Rectangle fill={DIVIDER} frame={{ maxWidth: "infinity", height: 1 }} />
+        <VStack alignment="leading" spacing={0} padding={{ top: 4 }}
+          frame={{ height: region.lowerHeight, maxWidth: "infinity", alignment: "topLeading" as any }}>
+          {account(single ? accounts[0] : accounts[1])}
+        </VStack>
+      </VStack>
+    }}
+  </GeometryReader>
+}
+
+// ---------- 四宫格：每格一个账号，5小时在上、7d在下 ----------
+type Scale = { title: number; label: number; lcd: number; bar: number; segs: number; gap: number }
+const MEDIUM_SCALE: Scale = { title: 12, label: 9, lcd: 11, bar: 4, segs: 10, gap: 2 }
+
+// "5h/7d" label and countdown use the Small two-account baseline in Small and Medium:
+// 8pt monospaced text, zero layout gap; the separator supplies exactly one space on either side.
+const QUOTA_TEXT_FONT = 8
+function QuadWindow({ label, w, fmt, s, muted = false, fixedLcd = false, rowToBarGap = s.gap }: Win & { s: Scale; fixedLcd?: boolean; rowToBarGap?: number }) {
+  const lcd = <Lcd value={w.remainingPercent} height={s.lcd} muted={muted} />
+  return <VStack alignment="leading" spacing={rowToBarGap}>
+    <HStack alignment="bottom" spacing={0}>
+      <Text font={QUOTA_TEXT_FONT} monospaced foregroundStyle={SUB} lineLimit={1}>{label}</Text>
+      <Text font={QUOTA_TEXT_FONT} monospaced monospacedDigit foregroundStyle={SUB} lineLimit={1}>{` · ${fmt(w.resetsAt)}`}</Text>
+      <Spacer />
+      {fixedLcd ? <HStack spacing={0} fixedSize={{ horizontal: true, vertical: false }}>{lcd}</HStack> : lcd}
+    </HStack>
+    <SegBar remaining={w.remainingPercent} count={s.segs} height={s.bar} muted={muted} />
+  </VStack>
+}
+
+function Quad({ acc, s, fixedLcd = false, intrinsic = false, alignCreditsBottom = false }: { acc?: Account; s: Scale; fixedLcd?: boolean; intrinsic?: boolean; alignCreditsBottom?: boolean }) {
+  if (!acc) return <VStack frame={{ maxWidth: "infinity", maxHeight: "infinity" }}><Spacer /></VStack>
+  return <VStack alignment="leading" spacing={s.gap + (acc.provider === "deepseek" ? 4 : 1)}
+    fixedSize={intrinsic ? { horizontal: false, vertical: true } : undefined}
+    frame={intrinsic ? { maxWidth: "infinity", alignment: "leading" as any } : { maxWidth: "infinity", maxHeight: "infinity", alignment: "leading" as any }}>
+    <AccountTitle acc={acc} font={s.title} />
+    {acc.provider === "workbuddy" ? <CreditsRows acc={acc} font={7} compact alignExpiryBottom={alignCreditsBottom} /> : acc.provider === "deepseek" ? <BalanceRows acc={acc} font={8} /> : windowsOf(acc).map(x => <QuadWindow label={x.label} w={x.w} fmt={x.fmt} muted={x.muted} s={s} fixedLcd={fixedLcd} />)}
+  </VStack>
+}
+
+// 十字分隔线画在底层，竖线贯穿整个高度、横线贯穿整个宽度
+function QuadGrid({ accounts, s, fixedLcd = false, statsData }: { accounts: Account[]; s: Scale; fixedLcd?: boolean; statsData?: UsageData }) {
+  const a = accounts.slice(0, 4)
+  const pad = s.gap * 2 + 3
+  const cell = (acc?: Account, top = false, left = false, statistics = false) =>
+    <VStack
+      padding={{ top: top ? 0 : pad, bottom: top ? pad : 0, leading: left ? 0 : 10, trailing: left ? 10 : 0 }}
+      frame={{ maxWidth: "infinity", maxHeight: "infinity", alignment: statsData && top ? "bottomLeading" as any : "topLeading" as any }}
+    >
+      {statistics && statsData ? <SmallStats data={statsData} medium />
+        : statsData && top ? <Quad acc={acc} s={s} fixedLcd={fixedLcd} intrinsic alignCreditsBottom /> : <Quad acc={acc} s={s} fixedLcd={fixedLcd} alignCreditsBottom />}
+    </VStack>
+  return <ZStack frame={{ maxWidth: "infinity", maxHeight: "infinity" }}>
+    <Rectangle fill={DIVIDER} frame={{ width: 1, maxHeight: "infinity" }} />
+    <Rectangle fill={DIVIDER} frame={{ maxWidth: "infinity", height: 1 }} />
+    <VStack spacing={0}>
+      <HStack alignment={statsData ? "bottom" : undefined} spacing={0}>{statsData ? cell(undefined, true, true, true) : cell(a[0], true, true)}{cell(a[statsData ? 0 : 1], true, false)}</HStack>
+      <HStack spacing={0}>{cell(a[statsData ? 1 : 2], false, true)}{cell(a[statsData ? 2 : 3], false, false)}</HStack>
+    </VStack>
+  </ZStack>
+}
+
+// Shared source-wide Parrot six-column summary, not selected-account totals.
+function summaryColumns(data: UsageData): StatColumn[] | null {
+  if (!data.today || !data.month) return null
+  const values = (m: NonNullable<UsageData["today"]>) => {
+    const inputSide = m.inputTokens + m.cacheReadTokens + m.cacheCreationTokens
+    return [fmtTokens(m.inputTokens), fmtTokens(m.outputTokens), fmtTokens(m.cacheReadTokens + m.cacheCreationTokens),
+      inputSide > 0 ? (m.cacheReadTokens / inputSide * 100).toFixed(1) + "%" : "--", fmtTokens(m.totalTokens), fmtUsd(m.costUsd)]
+  }
+  const today = values(data.today), month = values(data.month)
+  return ["输入", "输出", "缓存", "缓存率", "Token", "花费"].map((label, i) => ({ label, today: today[i], month: month[i] }))
+}
+
+function mediumTwoLayout(height: number) {
+  // Root vertical padding 12×2 + refresh reservation 14; divider remains halfway.
+  const contentHeight = Math.max(1, height - 38), half = contentHeight / 2
+  // Compact six lines: 4×ceil(7×1.2)+2×ceil(8×1.2)+2 gaps = 58pt MODEL, not native measurement.
+  return { contentHeight, half, statsScale: Math.min(1, Math.max(1, half - 4) / 58) }
+}
+function MediumTwo({ data }: { data: UsageData }) {
+  const width = Widget.displaySize.width - 28
+  const { contentHeight, half, statsScale } = mediumTwoLayout(Widget.displaySize.height)
+  const columns = summaryColumns(data)
+  return <ZStack frame={{ width, height: contentHeight }}>
+    <VStack spacing={0}>
+      <Spacer frame={{ height: half }} />
+      <Rectangle fill={DIVIDER} modifiers={modifiers().frame({ width: 1, height: half })} />
+    </VStack>
+    <Rectangle fill={DIVIDER} modifiers={modifiers().frame({ height: 1 }).frame({ maxWidth: "infinity" })} />
+    <VStack spacing={0}>
+      <VStack alignment="leading" spacing={0}
+        modifiers={modifiers().padding({ bottom: 4 }).frame({ height: half }).frame({ maxWidth: "infinity", alignment: "topLeading" })}>
+        {columns ? <PeriodStats columns={columns} labelFont={7 * statsScale} valueFont={8 * statsScale}
+          gap={2} verticalGap={0} contentWidth={width} />
+          : <Text font={7} foregroundStyle={SUB}>Parrot今日/本月统计未提供</Text>}
+      </VStack>
+      <HStack spacing={0} modifiers={modifiers().frame({ height: half }).frame({ maxWidth: "infinity" })}>
+        {data.accounts.map((acc, i) => <VStack
+          padding={{ top: 7, bottom: 0, leading: i === 0 ? 0 : 10, trailing: i === 0 ? 10 : 0 }}
+          frame={{ maxWidth: "infinity", maxHeight: "infinity", alignment: "topLeading" as any }}>
+          <Quad acc={acc} s={MEDIUM_SCALE} fixedLcd />
+        </VStack>)}
+      </HStack>
+    </VStack>
+  </ZStack>
+}
+
+// ---------- 中号：四宫格，最多 4 个账号 ----------
+function Medium({ data }: { data: UsageData }) {
+  if (data.accounts.length === 2) return <MediumTwo data={data} />
+  if (data.accounts.length === 3) return <QuadGrid accounts={data.accounts} s={MEDIUM_SCALE} fixedLcd statsData={data} />
+  return <QuadGrid accounts={data.accounts} s={MEDIUM_SCALE} fixedLcd />
+}
+
+// ---------- 大号：顶部今日统计 + 从上到下四个账号 ----------
+function LargeQuota({ label, w, fmt, muted = false }: Win) {
+  return <VStack alignment="leading" spacing={MEDIUM_SCALE.gap}
+    modifiers={modifiers().fixedSize({ horizontal: false, vertical: true }).frame({ minHeight: 19, maxWidth: "infinity" })}>
+    <HStack alignment="bottom" spacing={5} frame={{ maxWidth: "infinity" }}>
+      <HStack spacing={0}>
+        <Text font={9} monospaced foregroundStyle={SUB} lineLimit={1}>{label}</Text>
+        <Text font={9} monospaced monospacedDigit foregroundStyle={SUB} lineLimit={1}>{` · ${fmt(w.resetsAt)}`}</Text>
+      </HStack>
+      <Spacer />
+      <Lcd value={w.remainingPercent} height={12} muted={muted} />
+    </HStack>
+    <LargeSegBar remaining={w.remainingPercent} muted={muted} />
+  </VStack>
+}
+
+function Large({ data }: { data: UsageData }) {
+  const m = data.today
+  const month = data.month
+  const contentWidth = Widget.displaySize.width - 28 // Root's 14pt horizontal inset on each side.
+  const columns = summaryColumns(data)
+  const hasCredits = data.accounts.slice(0, 4).some(acc => acc.provider === "workbuddy")
+  const denseCredits = hasCredits && data.accounts.length >= 4
+  return <VStack alignment="leading" spacing={denseCredits ? 1 : 3}
+    modifiers={modifiers().fixedSize({ horizontal: false, vertical: !hasCredits })
+      .frame({ maxWidth: "infinity", maxHeight: "infinity", alignment: "topLeading" })}>
+    {m && month ? <PeriodStats labelFont={9} valueFont={11} sizingValueFont={12} gap={4} verticalGap={denseCredits ? 1 : 3} contentWidth={contentWidth}
+      columns={columns!} /> : <Text font={10} foregroundStyle={SUB}>Parrot今日/本月统计未提供</Text>}
+    <Rectangle fill={DIVIDER} modifiers={modifiers().frame({ height: 1 }).frame({ maxWidth: "infinity" })} />
+    <VStack alignment="leading" spacing={denseCredits ? 1 : 2} fixedSize={{ horizontal: false, vertical: true }} frame={{ maxWidth: "infinity" }}>
+      {data.accounts.slice(0, 4).map((acc, i) => <VStack alignment="leading" spacing={1}
+        fixedSize={{ horizontal: false, vertical: true }} frame={{ maxWidth: "infinity" }}>
+        {/* Outer account-list gap 2 + this inset 1 => weekly bar to next divider 3 (formerly 2).
+            Account spacing 1 still controls divider→title and title→5h; only the two windows use gap 3. */}
+        {i > 0 ? <Rectangle fill={DIVIDER}
+          modifiers={modifiers().frame({ height: 1 }).frame({ maxWidth: "infinity" }).padding({ top: 1 })} /> : null}
+        <VStack spacing={0} fixedSize={{ horizontal: false, vertical: true }}><AccountTitle acc={acc} font={12} /></VStack>
+        <VStack alignment="leading" spacing={3} padding={acc.provider === "deepseek" ? { top: 3 } : undefined} fixedSize={{ horizontal: false, vertical: true }} frame={{ maxWidth: "infinity" }}>
+          {acc.provider === "workbuddy" ? <CreditsRows acc={acc} compact fullWidth /> : acc.provider === "deepseek" ? <BalanceRows acc={acc} font={8} /> : windowsOf(acc).map(x => <LargeQuota label={x.label} w={x.w} fmt={x.fmt} muted={x.muted} />)}
+        </VStack>
+      </VStack>)}
+    </VStack>
+  </VStack>
+}
+
+// Normalize only account setup empty states; statistics and network errors keep their real text.
+function accountEmptyText(error: string | null): string {
+  return error === "未配置：请在 Scripting 中运行本脚本进行设置" || error === "Sub2API额度未配置" || error === "请在脚本中添加官方账号" || error === "未配置"
+    ? "账号未配置" : error ?? "无数据"
+}
+
+function Message({ text }: { text: string }) {
+  return <VStack spacing={6}>
+    <Spacer />
+    <Image systemName="exclamationmark.triangle" font={20} foregroundStyle={ORANGE} />
+    <Text font={11} multilineTextAlignment="center" foregroundStyle={SUB}>{text}</Text>
+    <Spacer />
+  </VStack>
+}
+
+// ---------- 锁屏 accessory：只显示排序/参数后的第一个账号 ----------
+// No home-screen gradient, padding, dividers, statistics or footer; the system renders these in vibrant/tinted mode.
+const isAccessory = (f: string) => f.startsWith("accessory")
+function AccessoryRectangular({ acc }: { acc: Account }) {
+  const s: Scale = { title: 11, label: 8, lcd: 10, bar: 3, segs: 10, gap: 1 }
+  return <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity", maxHeight: "infinity", alignment: "leading" as any }}>
+    <AccountTitle acc={acc} font={s.title} />
+    {acc.provider === "workbuddy" ? <CreditsRows acc={acc} font={7} compact /> : acc.provider === "deepseek" ? <BalanceRows acc={acc} font={8} compact /> : windowsOf(acc).map(x => <QuadWindow label={x.label} w={x.w} fmt={x.fmt} muted={x.muted} s={s} fixedLcd rowToBarGap={MEDIUM_SCALE.gap} />)}
+  </VStack>
+}
+function AccessoryCircular({ acc }: { acc: Account }) {
+  if (acc.provider === "workbuddy") return <VStack spacing={1}><ProviderIcon provider="workbuddy" size={12} muted={isQuotaExhausted(acc)} /><Text font={12} fontWeight="semibold" monospacedDigit foregroundStyle={isQuotaExhausted(acc) ? SUB : undefined} lineLimit={2} minScaleFactor={0.6}>{acc.credits?.reliable ? fmtWorkBuddyNumber(acc.credits.remaining) : "未提供"}</Text><Text font={7}>{acc.credits?.error ? acc.credits.reliable ? "此前积分" : "积分未知" : "剩余积分"}</Text></VStack>
+  if (acc.provider === "deepseek") return <VStack spacing={1}><Text font={9}>DeepSeek</Text><Text font={11} monospacedDigit lineLimit={3} minScaleFactor={0.6}>{acc.balance?.money.map(m => `账户余额 ${fmtDeepSeekMoney(m.currency, m.total)}`).join(" · ") || "未提供"}</Text><Text font={7}>{acc.balance?.error ? "读取失败" : acc.balance?.available === false ? "不可用" : "余额"}</Text></VStack>
+  // One primary value: the 5h window remaining percentage.
+  const v = acc.fiveHour.remainingPercent
+  return <Gauge value={v == null ? 0 : Math.max(0, Math.min(100, v)) / 100} min={0} max={1}
+    gaugeStyle="accessoryCircularCapacity" foregroundStyle={isQuotaExhausted(acc) ? SUB : undefined}
+    label={<Text font={9}>5h</Text>}
+    currentValueLabel={<Text font={12} fontWeight="semibold" monospacedDigit>{fmtPct(v)}</Text>} />
+}
+function AccessoryInline({ acc }: { acc: Account }) {
+  if (acc.provider === "workbuddy") return <Text lineLimit={1} foregroundStyle={isQuotaExhausted(acc) ? SUB : undefined}>{`WorkBuddy 剩余积分 ${acc.credits?.reliable ? fmtWorkBuddyNumber(acc.credits.remaining) : "未提供"}${acc.credits?.error ? acc.credits.reliable ? " 此前快照" : " 读取失败" : ""}`}</Text>
+  if (acc.provider === "deepseek") return <Text lineLimit={1}>{`DeepSeek ${acc.balance?.money.map(m => `账户余额 ${fmtDeepSeekMoney(m.currency, m.total)}`).join(" · ") || "余额未提供"}${acc.balance?.available === false ? " 不可用" : ""}${acc.balance?.error ? " 读取失败" : ""}`}</Text>
+  return <Text lineLimit={1} foregroundStyle={isQuotaExhausted(acc) ? SUB : undefined}>{`${providerName(acc.provider)} 5h ${fmtPct(acc.fiveHour.remainingPercent)} · 周 ${fmtPct(acc.sevenDay.remainingPercent)}`}</Text>
+}
+function AccessoryRoot({ data, error, family }: { data: UsageData | null; error: string | null; family: string }) {
+  const acc = data ? widgetAccounts(data.accounts, Widget.parameter ?? "")[0] : undefined
+  if (!acc) return <Text font={11} lineLimit={2} multilineTextAlignment="center">
+    {!data ? accountEmptyText(error) : data.accounts.length ? "请检查小组件参数" : "账号未配置"}
+  </Text>
+  if (family === "accessoryCircular") return <AccessoryCircular acc={acc} />
+  if (family === "accessoryInline") return <AccessoryInline acc={acc} />
+  return <AccessoryRectangular acc={acc} />
+}
+
+function Root({ data, error }: { data: UsageData | null; error: string | null }) {
+  if (data) data = { ...data, accounts: visibleAccounts(data.accounts) }
+  if (isAccessory(String(Widget.family ?? ""))) return <AccessoryRoot data={data} error={error} family={String(Widget.family)} />
+  let body: VirtualNode
+  let largeCredits = false
+  if (!data) body = <Message text={accountEmptyText(error)} />
+  else if (data.accounts.length === 0) body = <Message text="账号未配置" />
+  else {
+    const selected = widgetAccounts(data.accounts, Widget.parameter ?? "")
+    const sorted = { ...data, accounts: selected }
+    const f = Widget.family
+    largeCredits = (f === "systemLarge" || f === "systemExtraLarge") && selected.slice(0, 4).some(acc => acc.provider === "workbuddy")
+    if (!selected.length) body = <Message text="请按脚本账号列表检查小组件参数中的账号序号" />
+    else if (f === "systemSmall") body = <Small data={sorted} />
+    else if (f === "systemLarge" || f === "systemExtraLarge") body = <Large data={sorted} />
+    else body = <Medium data={sorted} />
+  }
+  return <ZStack
+    padding={{ horizontal: 14, vertical: 12 }}
+    frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+    widgetBackground={BG}
+  >
+    {largeCredits ? <VStack alignment="leading" spacing={0}
+      frame={{ maxWidth: "infinity", maxHeight: "infinity", alignment: "topLeading" as any }}>
+      <VStack alignment="leading" spacing={0}
+        frame={{ height: Math.max(1, Widget.displaySize.height - 24 - 18), maxWidth: "infinity", alignment: "topLeading" as any }}>{body}</VStack>
+      <Spacer />
+    </VStack> : <ZStack padding={{ bottom: data ? 14 : 0 }} frame={{ maxWidth: "infinity", maxHeight: "infinity" }}>{body}</ZStack>}
+    {data ? <VStack frame={{ maxWidth: "infinity", maxHeight: "infinity" }}>
+      <Spacer />
+      <HStack offset={{ x: 3, y: 6 }}><Spacer /><RefreshTime data={data} /></HStack>
+    </VStack> : null}
+  </ZStack>
+}
+
+// Conservative pre-view budget, not a claimed iOS deadline. Timers cannot preempt synchronous JS/native stalls.
+const WIDGET_LOAD_BUDGET_MS = 8000
+async function run() {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let r: LoadResult
+  let fallback = false
+  try {
+    // Install before invoking any cache/config/network initialization; catch synchronous failures too.
+    const deadline = new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), WIDGET_LOAD_BUDGET_MS) })
+    const read = Promise.resolve().then(() => cachedLocalWidgetProjection() ?? loadUsage())
+    const result = await Promise.race([read, deadline])
+    if (result == null) fallback = true
+    r = result ?? { data: null, stale: false, error: null }
+  } catch {
+    fallback = true
+    r = { data: null, stale: false, error: null }
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+  if (fallback) {
+    // Read CURRENT source/config caches, not the source captured by the losing request.
+    try { r = cachedWidgetUsage() }
+    catch { r = { data: null, stale: false, error: null } }
+  }
+  let minutes = 15
+  try { minutes = getRefreshMinutes() } catch { /* storage unavailable: keep the existing default */ }
+  const view = fallback && !r.data
+    ? <Text font={11} lineLimit={3} multilineTextAlignment="center">暂时无法读取用量，请打开脚本刷新</Text>
+    : <Root data={r.data} error={r.error} />
+  // Only this path submits a view. Do not schedule another present or depend on JS surviving it.
+  Widget.present(view, {
+    reloadPolicy: { policy: "after", date: new Date(Date.now() + minutes * 60 * 1000) },
+  })
+}
+
+run()

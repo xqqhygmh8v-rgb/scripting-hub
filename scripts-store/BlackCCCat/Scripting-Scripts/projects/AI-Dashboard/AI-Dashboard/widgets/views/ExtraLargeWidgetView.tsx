@@ -1,0 +1,125 @@
+import { localize } from "../../utils/localization"
+import {
+  Divider,
+  Image,
+  Spacer,
+  Text,
+  VStack,
+} from "scripting"
+import { MediumAccountCard } from "./MediumWidgetView"
+import type { WidgetRenderData } from "../types"
+
+/**
+ * 超大号小组件视图 (iPad 特大尺寸)
+ * 统一采用 3 个中号卡片垂直拼接的原生极简布局
+ * - 未填参数时：默认垂直拼接前 3 个账号；
+ * - 填入参数时：优先将匹配的供应商（支持单供应商多账号自动合并成对，如 WorkBuddy 前 6 个账号）置顶拼接展示。
+ */
+export function ExtraLargeWidgetView(props: {
+  data: WidgetRenderData
+}) {
+  const { data } = props
+  const accounts = data.accounts
+
+  if (!accounts || accounts.length === 0) {
+    return (
+      <VStack
+        alignment="leading"
+        spacing={8}
+        padding={16}
+        frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+      >
+        <Image
+          systemName="chart.bar.doc.horizontal.fill"
+          font={22}
+          foregroundStyle="accentColor"
+        />
+        <Text font="headline" fontWeight="bold">
+          {localize("AI 额度看板")}</Text>
+        <Spacer />
+        <Text font="caption2" foregroundStyle="secondaryLabel">
+          {localize("暂未配置监控账号，请在应用内添加供应商")}</Text>
+      </VStack>
+    )
+  }
+
+  const adaptTransparent =
+    data.widgetQuotaAdaptTransparent ?? data.widgetConnectionAdaptTransparent
+
+  if (accounts.length === 1) {
+    return (
+      <VStack
+        alignment="leading"
+        spacing={0}
+        frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+        widgetURL="ai-dashboard://overview"
+      >
+        <MediumAccountCard
+          account={accounts[0]}
+          lastUpdatedAt={data.lastUpdatedAt}
+          heightMode="normal"
+          showUpdatedAt={true}
+          adaptTransparent={adaptTransparent}
+        />
+      </VStack>
+    )
+  }
+
+  if (accounts.length === 2) {
+    return (
+      <VStack
+        alignment="leading"
+        spacing={0}
+        frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+        widgetURL="ai-dashboard://overview"
+      >
+        <MediumAccountCard
+          account={accounts[0]}
+          lastUpdatedAt={data.lastUpdatedAt}
+          heightMode="normal"
+          showUpdatedAt={true}
+          adaptTransparent={adaptTransparent}
+        />
+        <Divider />
+        <MediumAccountCard
+          account={accounts[1]}
+          heightMode="normal"
+          showUpdatedAt={false}
+          adaptTransparent={adaptTransparent}
+        />
+      </VStack>
+    )
+  }
+
+  // 拼接 3 个中号卡片（统一在首个卡片右上角显示小组件刷新时间）
+  return (
+    <VStack
+      alignment="leading"
+      spacing={0}
+      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+      widgetURL="ai-dashboard://overview"
+    >
+      <MediumAccountCard
+        account={accounts[0]}
+        lastUpdatedAt={data.lastUpdatedAt}
+        heightMode="normal"
+        showUpdatedAt={true}
+        adaptTransparent={adaptTransparent}
+      />
+      <Divider />
+      <MediumAccountCard
+        account={accounts[1]}
+        heightMode="normal"
+        showUpdatedAt={false}
+        adaptTransparent={adaptTransparent}
+      />
+      <Divider />
+      <MediumAccountCard
+        account={accounts[2]}
+        heightMode="normal"
+        showUpdatedAt={false}
+        adaptTransparent={adaptTransparent}
+      />
+    </VStack>
+  )
+}

@@ -1,0 +1,1758 @@
+import {
+  Button,
+  Device,
+  ForEach,
+  GeometryReader,
+  Group,
+  HStack,
+  Image,
+  LazyHGrid,
+  LazyHStack,
+  Menu,
+  Picker,
+  ProgressView,
+  Script,
+  ScrollView,
+  Text,
+  VStack,
+  type Font,
+  useEffect,
+  useMemo,
+  useObservable,
+  useRef,
+  useState,
+  ZStack,
+} from "scripting"
+
+import type {
+  CaisSettings,
+  ClipItem,
+  ClipListScope,
+  KeyboardCustomAction,
+  KeyboardMenuBuiltinAction,
+  MonitorStatus,
+} from "../types"
+import { captureCurrentClipboard, startClipboardMonitor } from "../services/clipboard_capture"
+import { writeClipToPasteboard, writeImageToPasteboard } from "../services/pasteboard_adapter"
+import {
+  addClipFromPayload,
+  getClips,
+  getFullClipContent,
+  softDeleteClip,
+  toggleFavorite,
+  togglePinned,
+} from "../storage/clip_repository"
+import { readClipDataVersion } from "../storage/change_signal"
+import { readClipDatabaseRevision, readDatabaseDataVersion } from "../storage/database"
+import { loadSettings } from "../storage/settings_store"
+import { imagePreviewPath } from "../storage/image_store"
+import { clipTitle, isLikelyURL, summarizeContent } from "../utils/common"
+import { disposeCaisFeedback, playCaisFeedback, prepareCaisFeedback } from "../utils/feedback"
+import { renderRuntimeTemplate } from "../utils/template"
+import { PipStatusView } from "./PipStatusView"
+import { TokenSelectionPanel } from "./TokenSelectionPanel"
+import { readPipControlState, requestPipStart, requestPipStop } from "../services/pip_control"
+import { selectedTokenText, tokenizeWords, type CaisToken } from "../utils/tokenize"
+import { clearCurrentClipboardIfMatchesDeletedItem } from "../services/clipboard_cleanup"
+import { recognizeTextFromImagePath } from "../services/image_text_recognition"
+import { displayFavoriteFieldsContent, displayFavoriteItemTitle, favoriteDelimiterForItem, isFieldFavorite, parseFavoriteFields, privateFieldKeywords, privateRulesForItem, type FavoriteField, type PrivateFieldRule } from "../utils/favorite_fields"
+import {
+  applyBuiltinMenuAction,
+  applyCustomMenuAction,
+  customActionSystemImage,
+  groupMenuBuiltins,
+  getOrderedMenuBuiltins,
+  menuBuiltinSystemImage,
+  menuBuiltinTitle,
+  presentInAppBrowser,
+  type MenuActionResult,
+} from "../utils/menu_actions"
+import { FavoriteFieldsPanel } from "./FavoriteFieldsPanel"
+import { FavoriteFieldActionMenu } from "./FavoriteFieldActionMenu"
+
+const TAB_FAVORITE = 0
+const TAB_CLIPS = 1
+const KEYBOARD_ROOT_SIDE_PADDING = 6
+const CLIP_SCROLL_SIDE_PADDING = 8
+const CLIP_GRID_SPACING = 10
+const KEYBOARD_TILE_PREVIEW_LIMIT = 1200
+const KEYBOARD_LAYOUT_KEY = "cais_keyboard_row_count_v1"
+const KEYBOARD_TAB_KEY = "cais_keyboard_active_tab_v1"
+const RIME_KEYBOARD_SCRIPT_NAME = "Scripting Rime Keyboard"
+const KEYBOARD_EXIT_FEEDBACK_DELAY_MS = 90
+const hideKeyboardScrollEffects = Number(
+  String(Device.systemVersion ?? "").match(/\d+/)?.[0] ?? 0,
+) >= 26
+const LEGACY_SHARED_STORAGE_OPTIONS = { shared: true }
+let deleteRepeatTimer: any = null
+let lastPastedText = ""
+let keyboardRefreshGeneration = 0
+let keyboardLifecycleGeneration = 0
+let activeKeyboardScope: ClipListScope = "clipboard"
+let lastKeyboardItemsByScope: Record<ClipListScope, ClipItem[]> = { favorites: [], clipboard: [] }
+let lastKeyboardItemsKeyByScope: Record<ClipListScope, string> = { favorites: "", clipboard: "" }
+let lastKeyboardItemsVersionByScope: Record<ClipListScope, number> = { favorites: 0, clipboard: 0 }
+let lastKeyboardHasMoreByScope: Record<ClipListScope, boolean> = { favorites: false, clipboard: false }
+let lastKeyboardLoadedHasMoreByScope: Record<ClipListScope, boolean> = { favorites: false, clipboard: false }
+let keyboardMonitorStopper: (() => void) | null = null
+let keyboardMonitorStartTimer: any = null
+let currentFeedbackSettings: CaisSettings | null = null
+let currentKeyboardNativeGlassEffect = true
+
+export type KeyboardInitialState = {
+  items: ClipItem[]
+  hasMore: boolean
+  settings: CaisSettings
+  loaded: boolean
+  scope: ClipListScope
+}
+
+type KeyboardLayoutMode = "twoByTwo" | "oneByTwo" | "twoByThree"
+type KeyboardTokenPage = {
+  title: string
+  tokens: CaisToken[]
+  selectedIds: string[]
+}
+type KeyboardFavoriteFieldsPage = {
+  title: string
+  fields: FavoriteField[]
+  privateRules: PrivateFieldRule[]
+}
+
+function keyboard(): any {
+  return (globalThis as any).CustomKeyboard
+}
+
+function rimeKeyboardScript(): any {
+  const scripts = keyboard()?.allScripts
+  if (!Array.isArray(scripts)) return null
+  return scripts.find((script: any) =>
+    script?.name === RIME_KEYBOARD_SCRIPT_NAME ||
+    script?.localizedName === RIME_KEYBOARD_SCRIPT_NAME
+  ) ?? null
+}
+
+function storage(): any {
+  return (globalThis as any).Storage
+}
+
+function readKeyboardTab(): number {
+  try {
+    const saved = storage()?.get?.(KEYBOARD_TAB_KEY)
+    return saved != null && Number(saved) === TAB_FAVORITE ? TAB_FAVORITE : TAB_CLIPS
+  } catch {
+    return TAB_CLIPS
+  }
+}
+
+function writeKeyboardTab(tab: number) {
+  try {
+    storage()?.set?.(KEYBOARD_TAB_KEY, tab)
+  } catch {
+  }
+}
+
+function readKeyboardLayout(): KeyboardLayoutMode {
+  const st = storage()
+  try {
+    const raw = st?.get?.(KEYBOARD_LAYOUT_KEY) ?? st?.getString?.(KEYBOARD_LAYOUT_KEY)
+    if (raw != null) {
+      removeLegacySharedKeyboardLayout()
+      return normalizeKeyboardLayout(raw)
+    }
+  } catch {
+  }
+  try {
+    const raw = st?.get?.(KEYBOARD_LAYOUT_KEY, LEGACY_SHARED_STORAGE_OPTIONS) ?? st?.getString?.(KEYBOARD_LAYOUT_KEY, LEGACY_SHARED_STORAGE_OPTIONS)
+    if (raw == null) return "twoByTwo"
+    const value = normalizeKeyboardLayout(raw)
+    writeKeyboardLayout(value)
+    return value
+  } catch {
+    return "twoByTwo"
+  }
+}
+
+function normalizeKeyboardLayout(value: any): KeyboardLayoutMode {
+  if (value === "oneByTwo" || value === "1x2" || Number(value) === 1) return "oneByTwo"
+  if (value === "twoByThree" || value === "2x3") return "twoByThree"
+  return "twoByTwo"
+}
+
+function removeLegacySharedKeyboardLayout() {
+  try {
+    storage()?.remove?.(KEYBOARD_LAYOUT_KEY, LEGACY_SHARED_STORAGE_OPTIONS)
+  } catch {
+  }
+}
+
+function writeKeyboardLayout(value: KeyboardLayoutMode) {
+  const st = storage()
+  try {
+    if (typeof st?.set === "function") {
+      if (st.set(KEYBOARD_LAYOUT_KEY, value) !== false) removeLegacySharedKeyboardLayout()
+    } else if (typeof st?.setString === "function") {
+      st.setString(KEYBOARD_LAYOUT_KEY, value)
+      removeLegacySharedKeyboardLayout()
+    }
+  } catch {
+  }
+}
+
+function playClick() {
+  playCaisFeedback(currentFeedbackSettings ?? undefined)
+}
+
+function useNativeKeyboardGlassEffect(): boolean {
+  return currentKeyboardNativeGlassEffect
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const setTimeoutFn = (globalThis as any).setTimeout
+    if (typeof setTimeoutFn === "function") setTimeoutFn(resolve, ms)
+    else resolve()
+  })
+}
+
+function insertKeyboardText(text: string) {
+  if (!text) return
+  keyboard()?.insertText?.(text)
+  lastPastedText = text
+}
+
+function returnKeySymbol(type?: string): string {
+  switch (type) {
+    case "search": return "magnifyingglass"
+    case "send": return "paperplane.fill"
+    case "go": return "arrow.right.circle.fill"
+    case "done": return "checkmark"
+    case "next": return "arrow.right"
+    case "continue": return "arrow.right"
+    default: return "return.left"
+  }
+}
+
+function IconButton(props: {
+  systemImage: string
+  disabled?: boolean
+  tint?: string
+  frame?: any
+  onPress: () => void | Promise<void>
+  onLongPress?: () => void | Promise<void>
+}) {
+  const tint: any = props.disabled ? "secondaryLabel" : props.tint ?? "label"
+  const touchFrame = props.frame ?? { width: 34, height: 36 }
+  const width = Number(touchFrame.width ?? 34)
+  const height = Number(touchFrame.height ?? 36)
+  const visualFrame = { width, height }
+  const nativeGlass = useNativeKeyboardGlassEffect()
+  return (
+    <ZStack
+      alignment="center"
+      frame={touchFrame}
+      background={"rgba(0,0,0,0.001)" as any}
+      contentShape="rect"
+      onLongPressGesture={props.onLongPress && !props.disabled ? {
+        minDuration: 450,
+        perform: () => {
+          playClick()
+          void props.onLongPress?.()
+        },
+      } : undefined}
+    >
+      <ZStack
+        alignment="center"
+        disabled={props.disabled}
+        frame={visualFrame}
+        background={nativeGlass ? "clear" : { style: "secondarySystemFill", shape: { type: "rect", cornerRadius: 8 } } as any}
+        glassEffect={nativeGlass ? { type: "rect", cornerRadius: 8 } as any : undefined}
+        clipShape={{ type: "rect", cornerRadius: 8 }}
+        onTapGesture={!nativeGlass && !props.disabled ? () => {
+          playClick()
+          void props.onPress()
+        } : undefined}
+      >
+        {nativeGlass ? (
+          <Button
+            action={() => {
+              if (props.disabled) return
+              playClick()
+              void props.onPress()
+            }}
+            controlSize="mini"
+            disabled={props.disabled}
+            frame={visualFrame}
+          >
+            <VStack frame={visualFrame} />
+          </Button>
+        ) : null}
+        <Image
+          systemName={props.systemImage}
+          font="title3"
+          foregroundStyle={tint}
+          allowsHitTesting={false}
+        />
+      </ZStack>
+    </ZStack>
+  )
+}
+
+function BottomKey(props: {
+  title?: string
+  systemImage?: string
+  tint?: string
+  width?: number
+  onPress: () => void | Promise<void>
+  onLongPress?: () => void
+  onLongPressEnd?: () => void
+}) {
+  const touchFrame = props.width
+    ? { width: props.width, height: 42 }
+    : { maxWidth: "infinity" as any, height: 42 }
+  function keyContent(width: number) {
+    const visualFrame = { width, height: 42 }
+    const nativeGlass = useNativeKeyboardGlassEffect()
+    return (
+      <ZStack
+        alignment="center"
+        frame={visualFrame}
+        background={nativeGlass ? "clear" : { style: "secondarySystemFill", shape: { type: "rect", cornerRadius: 8 } } as any}
+        glassEffect={nativeGlass ? { type: "rect", cornerRadius: 8 } as any : undefined}
+        clipShape={{ type: "rect", cornerRadius: 8 }}
+        onTapGesture={!nativeGlass ? () => {
+          playClick()
+          void props.onPress()
+        } : undefined}
+      >
+        {nativeGlass ? (
+          <Button
+            action={() => {
+              playClick()
+              void props.onPress()
+            }}
+            controlSize="mini"
+            frame={visualFrame}
+          >
+            <VStack frame={visualFrame} />
+          </Button>
+        ) : null}
+        <HStack
+          frame={visualFrame}
+          allowsHitTesting={false}
+        >
+          {props.systemImage ? (
+            <Image systemName={props.systemImage} font="title3" foregroundStyle={props.tint as any} />
+          ) : (
+            <Text font="title3" lineLimit={1} foregroundStyle={props.tint as any}>{props.title ?? ""}</Text>
+          )}
+        </HStack>
+      </ZStack>
+    )
+  }
+  return (
+    <ZStack
+      alignment="center"
+      frame={touchFrame}
+      background={"rgba(0,0,0,0.001)" as any}
+      contentShape="rect"
+      onLongPressGesture={props.onLongPress ? {
+        minDuration: 350,
+        perform: props.onLongPress,
+        onPressingChanged: (pressing: boolean) => {
+          if (!pressing) props.onLongPressEnd?.()
+        },
+      } : undefined}
+    >
+      {props.width ? keyContent(props.width) : (
+        <GeometryReader>
+          {(proxy) => keyContent(Math.max(1, proxy.size.width))}
+        </GeometryReader>
+      )}
+    </ZStack>
+  )
+}
+
+function characterCount(value: string | null | undefined): number {
+  return Array.from(String(value ?? "")).length
+}
+
+function selectedKeyboardText(): string {
+  return String(keyboard()?.selectedText ?? "")
+}
+
+function renderClipOutput(item: ClipItem, content: string): string {
+  return item.manualFavorite ? renderRuntimeTemplate(content, selectedKeyboardText()) : content
+}
+
+function clipListKey(items: ClipItem[]): string {
+  return items.map((item) => [
+    item.id,
+    item.updatedAt,
+    item.favorite ? "f" : "",
+    item.pinned ? "p" : "",
+    item.favoritePinned ? "fp" : "",
+    item.manualFavorite ? "m" : "",
+    item.favoriteFormat ?? "plain",
+    item.fieldDelimiter ?? "",
+    item.fieldDelimiterOverride ? "d" : "",
+    item.fieldPrivacyOverride ? "private" : "",
+    item.fieldPrivateKeywords ?? "",
+    item.contentHash,
+    item.linkPreview?.fetchedAt ?? "",
+    item.imagePath ?? "",
+  ].join(":")).join("|")
+}
+
+function clipTileWidth(columns: number): number {
+  const availableWidth = Device.screen.width - KEYBOARD_ROOT_SIDE_PADDING * 2 - CLIP_SCROLL_SIDE_PADDING * 2
+  const minWidth = columns >= 3 ? 80 : 132
+  return Math.max(minWidth, Math.floor((availableWidth - CLIP_GRID_SPACING * (columns - 1)) / columns))
+}
+
+function clipTileHeight(availableHeight: number, rows: number): number {
+  return Math.max(1, Math.floor((Math.max(1, availableHeight) - CLIP_GRID_SPACING * (rows - 1)) / rows))
+}
+
+function keyboardLayoutRows(layout: KeyboardLayoutMode): 1 | 2 {
+  return layout === "oneByTwo" ? 1 : 2
+}
+
+function keyboardLayoutColumns(layout: KeyboardLayoutMode): 2 | 3 {
+  return layout === "twoByThree" ? 3 : 2
+}
+
+function nextKeyboardLayout(layout: KeyboardLayoutMode): KeyboardLayoutMode {
+  if (layout === "twoByTwo") return "oneByTwo"
+  if (layout === "oneByTwo") return "twoByThree"
+  return "twoByTwo"
+}
+
+function keyboardLayoutIcon(layout: KeyboardLayoutMode): string {
+  if (layout === "oneByTwo") return "square.split.2x1"
+  if (layout === "twoByThree") return "square.grid.3x2"
+  return "square.grid.2x2"
+}
+
+type ClipTileMetrics = {
+  padding: number
+  spacing: number
+  showTitle: boolean
+  contentLineLimit: number
+  iconFont: Font
+}
+
+function clipTileMetrics(height: number, titleEnabled = true): ClipTileMetrics {
+  const compact = height > 0 && height < 96
+  const tiny = height > 0 && height < 76
+  const minimal = height > 0 && height < 58
+  const padding = minimal ? 6 : compact ? 8 : 10
+  const spacing = minimal ? 2 : compact ? 4 : 6
+  const showTitle = titleEnabled && !compact
+  const reservedHeight =
+    padding * 2 +
+    (showTitle ? 21 + spacing : 0)
+  const estimatedLineHeight = height >= 128 ? 11 : 12
+  const dynamicLineLimit = Math.max(1, Math.floor(Math.max(0, height - reservedHeight) / estimatedLineHeight))
+  const contentLineLimit = tiny ? 1 : Math.max(1, Math.min(dynamicLineLimit, 18))
+  return {
+    padding,
+    spacing,
+    showTitle,
+    contentLineLimit,
+    iconFont: tiny ? "caption2" : "caption",
+  }
+}
+
+function queryLimitForKeyboard(settings: CaisSettings): number {
+  return Math.max(1, Math.min(settings.keyboardMaxItems, settings.maxItems))
+}
+
+function keyboardScopeForTab(tab: number): ClipListScope {
+  return tab === TAB_FAVORITE ? "favorites" : "clipboard"
+}
+
+function cachedKeyboardItems(scope: ClipListScope): ClipItem[] {
+  return lastKeyboardItemsVersionByScope[scope] === readClipDataVersion() ? lastKeyboardItemsByScope[scope] : []
+}
+
+function rememberKeyboardItems(scope: ClipListScope, items: ClipItem[], hasMore: boolean, pageSize: number, version = readClipDataVersion()) {
+  lastKeyboardItemsByScope[scope] = items.slice(0, pageSize)
+  lastKeyboardItemsKeyByScope[scope] = clipListKey(items)
+  lastKeyboardItemsVersionByScope[scope] = version
+  lastKeyboardHasMoreByScope[scope] = hasMore || items.length > pageSize
+  lastKeyboardLoadedHasMoreByScope[scope] = hasMore
+}
+
+async function keyboardPage(settings: CaisSettings, scope: ClipListScope, offset: number) {
+  const pageSize = queryLimitForKeyboard(settings)
+  const rows = await getClips("", pageSize + 1, scope, offset)
+  return { items: rows.slice(0, pageSize), hasMore: rows.length > pageSize }
+}
+
+async function keyboardPrefix(settings: CaisSettings, scope: ClipListScope, count: number) {
+  const target = Math.max(queryLimitForKeyboard(settings), count)
+  const rows: ClipItem[] = []
+  while (rows.length <= target) {
+    const limit = Math.min(500, target + 1 - rows.length)
+    const page = await getClips("", limit, scope, rows.length)
+    rows.push(...page)
+    if (page.length < limit) break
+  }
+  return { items: rows.slice(0, target), hasMore: rows.length > target }
+}
+
+export async function preloadKeyboardInitialState(): Promise<KeyboardInitialState> {
+  const settings = loadSettings()
+  const scope = keyboardScopeForTab(readKeyboardTab())
+  const page = await keyboardPage(settings, scope, 0)
+  rememberKeyboardItems(scope, page.items, page.hasMore, queryLimitForKeyboard(settings))
+  return { items: page.items, hasMore: page.hasMore, settings, loaded: true, scope }
+}
+
+function ClipTile(props: {
+  item: ClipItem
+  scope: ClipListScope
+  settings: CaisSettings
+  privateKeywords: PrivateFieldRule[]
+  tileWidth: number
+  tileHeight: number
+  hideTitle?: boolean
+  onNearEnd?: () => void
+  onInsert: (item: ClipItem) => void | Promise<void>
+  onTokenize: (item: ClipItem) => void | Promise<void>
+  onStatus: (message: string) => void
+  onRefresh: () => void | Promise<void>
+}) {
+  const item = props.item
+  const isImage = item.kind === "image"
+  const previewPath = isImage ? imagePreviewPath(item.imagePath) : undefined
+  const tileFrame = { width: props.tileWidth, height: props.tileHeight }
+  const metrics = clipTileMetrics(props.tileHeight, props.settings.keyboardShowTitle && !props.hideTitle)
+  const showTitle = metrics.showTitle
+  const nativeGlass = useNativeKeyboardGlassEffect()
+  const fieldDelimiter = favoriteDelimiterForItem(item, props.settings.favoriteFieldDelimiter)
+  const privateRules = privateRulesForItem(item, props.privateKeywords)
+  const displayContent = isFieldFavorite(item)
+    ? displayFavoriteFieldsContent(item.content, fieldDelimiter, privateRules)
+    : item.kind === "url" && item.linkPreview?.summary
+      ? `${item.content}\n${item.linkPreview.summary}`
+      : item.content
+  return (
+    <ZStack
+      alignment="center"
+      frame={tileFrame}
+      background={"rgba(0,0,0,0.001)" as any}
+      contentShape="rect"
+      contextMenu={{
+        menuItems: (
+          <ClipTileMenu
+            item={item}
+            scope={props.scope}
+            settings={props.settings}
+            onRefresh={props.onRefresh}
+            onStatus={props.onStatus}
+            onTokenize={props.onTokenize}
+          />
+        ),
+      }}
+      onAppear={props.onNearEnd}
+    >
+      <ZStack
+        frame={tileFrame}
+        background={nativeGlass ? "clear" as any : { style: "systemBackground", shape: { type: "rect", cornerRadius: 10 } }}
+        glassEffect={nativeGlass ? { type: "rect", cornerRadius: 10 } as any : undefined}
+        clipShape={{ type: "rect", cornerRadius: 10 } as any}
+        clipped
+        onTapGesture={!nativeGlass ? () => {
+          playClick()
+          void props.onInsert(item)
+        } : undefined}
+      >
+        {nativeGlass ? (
+          <Button
+            action={() => {
+              playClick()
+              void props.onInsert(item)
+            }}
+            controlSize="mini"
+            frame={tileFrame}
+          >
+            <VStack frame={tileFrame} />
+          </Button>
+        ) : null}
+        <ZStack
+          frame={{ maxWidth: "infinity", maxHeight: "infinity", alignment: "topLeading" as any }}
+          allowsHitTesting={false}
+        >
+          <VStack
+            frame={{ maxWidth: "infinity", maxHeight: "infinity", alignment: "topLeading" as any }}
+            padding={metrics.padding}
+            spacing={metrics.spacing}
+            clipped
+          >
+            {isImage && previewPath ? (
+              <Image
+                filePath={previewPath}
+                resizable
+                scaleToFit
+                frame={{ maxWidth: "infinity", maxHeight: "infinity", alignment: "center" as any }}
+              />
+            ) : isImage ? (
+              <Image
+                systemName="photo"
+                font={props.tileHeight < 76 ? "title2" : "largeTitle"}
+                foregroundStyle="secondaryLabel"
+                frame={{ maxWidth: "infinity", maxHeight: "infinity", alignment: "center" as any }}
+              />
+            ) : (
+              <>
+                {showTitle ? (
+                  <Text
+                    font="headline"
+                    lineLimit={1}
+                    frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+                    multilineTextAlignment="leading"
+                  >
+                    {item.kind === "url" && item.title === clipTitle("url", item.content) && item.linkPreview?.title
+                      ? item.linkPreview.title
+                      : displayFavoriteItemTitle(item, fieldDelimiter, privateRules)}
+                  </Text>
+                ) : null}
+                <Text
+                  font="caption"
+                  foregroundStyle={showTitle ? "secondaryLabel" : "label"}
+                  lineLimit={metrics.contentLineLimit}
+                  frame={{ maxWidth: "infinity", alignment: "leading" as any }}
+                  multilineTextAlignment="leading"
+                >
+                  {summarizeContent(displayContent, KEYBOARD_TILE_PREVIEW_LIMIT)}
+                </Text>
+              </>
+            )}
+          </VStack>
+          {(props.scope === "favorites" ? item.favoritePinned : item.pinned) || item.favorite ? (
+            <HStack
+              spacing={4}
+              frame={{ maxWidth: "infinity", maxHeight: "infinity", alignment: "bottomTrailing" as any }}
+              padding={{ bottom: metrics.padding, trailing: metrics.padding }}
+            >
+              {(props.scope === "favorites" ? item.favoritePinned : item.pinned) ? <Image systemName="pin.fill" font={metrics.iconFont} foregroundStyle="systemOrange" /> : null}
+              {item.favorite ? <Image systemName="star.fill" font={metrics.iconFont} foregroundStyle="systemYellow" /> : null}
+            </HStack>
+          ) : null}
+        </ZStack>
+      </ZStack>
+    </ZStack>
+  )
+}
+
+function ClipTileMenu(props: {
+  item: ClipItem
+  scope: ClipListScope
+  settings: CaisSettings
+  onStatus: (message: string) => void
+  onRefresh: () => void | Promise<void>
+  onTokenize: (item: ClipItem) => void | Promise<void>
+}) {
+  const item = props.item
+  const isImage = item.kind === "image"
+  const builtins = props.settings.keyboardMenu.builtins
+
+  async function copyItem() {
+    try {
+      const fullContent = isImage ? undefined : renderClipOutput(item, await getFullClipContent(item.id))
+      await writeClipToPasteboard(item, fullContent)
+      if (fullContent) lastPastedText = fullContent
+      props.onStatus("已复制")
+    } catch (error: any) {
+      props.onStatus(String(error?.message ?? error ?? "复制失败"))
+    }
+  }
+
+  async function sourceText(): Promise<string> {
+    let source = selectedKeyboardText()
+    if (!source && !isImage) {
+      source = renderClipOutput(item, await getFullClipContent(item.id))
+    }
+    return source
+  }
+
+  async function saveMenuResult(result: MenuActionResult, source: string) {
+    const saveSettings = { ...props.settings, captureText: true, captureImages: true }
+    if (result.kind === "text") {
+      if (!result.text.trim() || result.text === source) return 0
+      const saved = await addClipFromPayload({ kind: "text", text: result.text }, saveSettings)
+      await props.onRefresh()
+      return saved.status !== "skipped" ? 1 : 0
+    }
+    if (result.kind === "texts") {
+      let savedCount = 0
+      for (const text of result.texts) {
+        if (!text.trim() || text === source) continue
+        const saved = await addClipFromPayload({ kind: "text", text }, saveSettings)
+        if (saved.status !== "skipped") savedCount += 1
+      }
+      await props.onRefresh()
+      return savedCount
+    }
+    if (result.kind === "image") {
+      const saved = await addClipFromPayload({
+        kind: "image",
+        image: result.image,
+        imageContentHash: result.imageContentHash,
+      }, saveSettings)
+      await props.onRefresh()
+      return saved.status !== "skipped" ? 1 : 0
+    }
+    return 0
+  }
+
+  async function handleMenuResult(result: MenuActionResult | null, source: string) {
+    if (!result) {
+      props.onStatus("当前条目不支持该功能")
+      return
+    }
+    if (result.kind === "openUrl") {
+      if (result.inApp) await presentInAppBrowser(result.url)
+      else await Safari.openURL(result.url)
+      return
+    }
+    if (result.kind === "none") {
+      props.onStatus(result.message ?? "没有返回内容")
+      return
+    }
+    if (result.kind === "text") {
+      const copied = result.writeToClipboard === true
+      if (copied) await Pasteboard.setString(result.text)
+      insertKeyboardText(result.text)
+      const saved = await saveMenuResult(result, source)
+      props.onStatus(saved ? (copied ? "已复制、上屏并保存" : "已上屏并保存") : (copied ? "已复制并上屏" : "已上屏"))
+      return
+    }
+    if (result.kind === "texts") {
+      const saved = await saveMenuResult(result, source)
+      props.onStatus(saved ? `已拆分保存 ${saved} 条` : "没有新的拆分结果")
+      return
+    }
+    await writeImageToPasteboard(result.image)
+    const saved = await saveMenuResult(result, source)
+    props.onStatus(saved ? "已写入剪贴板并保存" : "已写入剪贴板")
+  }
+
+  async function runBuiltinAction(action: KeyboardMenuBuiltinAction) {
+    const source = await sourceText()
+    if (!source && !(isImage && action === "base64Encode")) {
+      props.onStatus("当前条目不支持该功能")
+      return
+    }
+    if (isImage && action !== "base64Encode") {
+      props.onStatus("当前条目不支持该功能")
+      return
+    }
+    try {
+      const result = applyBuiltinMenuAction({
+        action,
+        source,
+        imagePath: item.imagePath,
+        isImage,
+      })
+      await handleMenuResult(result, source)
+    } catch (error: any) {
+      props.onStatus(String(error?.message ?? error ?? `${menuBuiltinTitle(action)}失败`))
+    }
+  }
+
+  async function runCustomAction(action: KeyboardCustomAction) {
+    const source = await sourceText()
+    if (!source || isImage) {
+      props.onStatus("当前条目不支持该自定义功能")
+      return
+    }
+    try {
+      await handleMenuResult(await applyCustomMenuAction(action, source), source)
+    } catch (error: any) {
+      props.onStatus(String(error?.message ?? error ?? "自定义功能执行失败"))
+    }
+  }
+
+  async function extractText() {
+    try {
+      const text = await recognizeTextFromImagePath(item.imagePath)
+      if (!text) {
+        props.onStatus("未识别到文字")
+        return
+      }
+      await handleMenuResult({ kind: "text", text }, "")
+    } catch (error: any) {
+      props.onStatus(String(error?.message ?? error ?? "文字提取失败"))
+    }
+  }
+
+  async function toggleItemPinned() {
+    await togglePinned(item, props.scope)
+    await props.onRefresh()
+    props.onStatus((props.scope === "favorites" ? item.favoritePinned : item.pinned) ? "已取消置顶" : "已置顶")
+  }
+
+  async function toggleItemFavorite() {
+    await toggleFavorite(item)
+    await props.onRefresh()
+    props.onStatus(item.favorite ? "已取消收藏" : "已收藏")
+  }
+
+  async function deleteItem() {
+    if (props.scope === "clipboard" && item.favorite) return
+    await clearCurrentClipboardIfMatchesDeletedItem(item)
+    await softDeleteClip(item)
+    await props.onRefresh()
+    props.onStatus(`已删除：${item.title}`)
+  }
+
+  function renderBuiltinAction(action: KeyboardMenuBuiltinAction) {
+    switch (action) {
+      case "tokenize":
+        return !isImage && builtins.tokenize ? (
+          <Button key={action} title={menuBuiltinTitle(action)} systemImage={menuBuiltinSystemImage(action)} action={() => void props.onTokenize(item)} />
+        ) : null
+      case "base64Encode":
+        return builtins.base64Encode ? (
+          <Button key={action} title={menuBuiltinTitle(action)} systemImage={menuBuiltinSystemImage(action)} action={() => void runBuiltinAction(action)} />
+        ) : null
+      case "base64Decode":
+        return !isImage && builtins.base64Decode ? (
+          <Button key={action} title={menuBuiltinTitle(action)} systemImage={menuBuiltinSystemImage(action)} action={() => void runBuiltinAction(action)} />
+        ) : null
+      case "cleanWhitespace":
+        return !isImage && builtins.cleanWhitespace ? (
+          <Button key={action} title={menuBuiltinTitle(action)} systemImage={menuBuiltinSystemImage(action)} action={() => void runBuiltinAction(action)} />
+        ) : null
+      case "removeBlankLines":
+        return !isImage && builtins.removeBlankLines ? (
+          <Button key={action} title={menuBuiltinTitle(action)} systemImage={menuBuiltinSystemImage(action)} action={() => void runBuiltinAction(action)} />
+        ) : null
+      case "splitLines":
+        return !isImage && builtins.splitLines ? (
+          <Button key={action} title={menuBuiltinTitle(action)} systemImage={menuBuiltinSystemImage(action)} action={() => void runBuiltinAction(action)} />
+        ) : null
+      case "uppercase":
+        return !isImage && builtins.uppercase ? (
+          <Button key={action} title={menuBuiltinTitle(action)} systemImage={menuBuiltinSystemImage(action)} action={() => void runBuiltinAction(action)} />
+        ) : null
+      case "lowercase":
+        return !isImage && builtins.lowercase ? (
+          <Button key={action} title={menuBuiltinTitle(action)} systemImage={menuBuiltinSystemImage(action)} action={() => void runBuiltinAction(action)} />
+        ) : null
+      case "textBold":
+      case "textItalic":
+      case "textBoldItalic":
+      case "textMonospaced":
+      case "monospacedDigits":
+      case "textUnderline":
+      case "textStrikethrough":
+        return !isImage && builtins[action] ? (
+          <Button key={action} title={menuBuiltinTitle(action)} systemImage={menuBuiltinSystemImage(action)} action={() => void runBuiltinAction(action)} />
+        ) : null
+      case "chineseAmount":
+        return !isImage && builtins.chineseAmount ? (
+          <Button key={action} title={menuBuiltinTitle(action)} systemImage={menuBuiltinSystemImage(action)} action={() => void runBuiltinAction(action)} />
+        ) : null
+      case "openUrl":
+        return builtins.openUrl && item.kind === "url" ? (
+          <Button key={action} title={menuBuiltinTitle(action)} systemImage={menuBuiltinSystemImage(action)} action={() => void runBuiltinAction(action)} />
+        ) : null
+      case "openUrlInApp":
+        return builtins.openUrlInApp && item.kind === "url" ? (
+          <Button key={action} title={menuBuiltinTitle(action)} systemImage={menuBuiltinSystemImage(action)} action={() => void runBuiltinAction(action)} />
+        ) : null
+      default:
+        return null
+    }
+  }
+
+  const availableBuiltinActions = getOrderedMenuBuiltins(props.settings).filter((action) => {
+    if (!builtins[action]) return false
+    if (action === "tokenize") return !isImage
+    if (action === "base64Encode") return true
+    if (action === "openUrl" || action === "openUrlInApp") return item.kind === "url"
+    return !isImage
+  })
+  const customActionButtons = !isImage
+    ? props.settings.keyboardMenu.customActions
+      .filter((action) => action.enabled)
+      .map((action) => (
+        <Button
+          key={action.id}
+          title={action.title}
+          systemImage={customActionSystemImage(action)}
+          action={() => runCustomAction(action)}
+        />
+      ))
+    : []
+
+  return (
+    <Group>
+      <Button title="复制" systemImage="doc.on.doc" action={() => void copyItem()} />
+      <Button
+        title={(props.scope === "favorites" ? item.favoritePinned : item.pinned) ? "取消置顶" : "置顶"}
+        systemImage={(props.scope === "favorites" ? item.favoritePinned : item.pinned) ? "pin.slash" : "pin"}
+        action={() => void toggleItemPinned()}
+      />
+      {!item.manualFavorite ? (
+        <Button
+          title={item.favorite ? "取消收藏" : "收藏"}
+          systemImage={item.favorite ? "star.slash" : "star"}
+          action={() => void toggleItemFavorite()}
+        />
+      ) : null}
+      {isImage ? (
+        <Button title="提取文字" systemImage="text.viewfinder" action={() => void extractText()} />
+      ) : null}
+      {props.settings.keyboardMenu.grouped
+        ? [
+            ...availableBuiltinActions
+              .filter((action) => props.settings.keyboardMenu.ungroupedBuiltins.includes(action))
+              .map((action) => renderBuiltinAction(action)),
+            ...groupMenuBuiltins(availableBuiltinActions, props.settings.keyboardMenu.ungroupedBuiltins).map((group) => (
+              <Menu key={group.id} title={group.title} systemImage={group.systemImage}>
+                {group.actions.map((action) => renderBuiltinAction(action))}
+              </Menu>
+            )),
+          ]
+        : availableBuiltinActions.map((action) => renderBuiltinAction(action))}
+      {customActionButtons.length
+        ? props.settings.keyboardMenu.grouped
+          ? <Menu title="自定义功能" systemImage="wand.and.stars">{customActionButtons}</Menu>
+          : customActionButtons
+        : null}
+      <Button
+        title="删除"
+        systemImage="trash"
+        role={props.scope === "clipboard" && item.favorite ? undefined : "destructive"}
+        tint={props.scope === "clipboard" && item.favorite ? "systemGray" : "systemRed"}
+        disabled={props.scope === "clipboard" && item.favorite}
+        action={() => void deleteItem()}
+      />
+    </Group>
+  )
+}
+
+export function KeyboardView(props: { initialState?: KeyboardInitialState } = {}) {
+  const traits = keyboard()?.useTraits?.()
+  const pipPresented = useObservable(false)
+  const initialTab = props.initialState?.loaded
+    ? props.initialState.scope === "favorites" ? TAB_FAVORITE : TAB_CLIPS
+    : readKeyboardTab()
+  const initialScope = keyboardScopeForTab(initialTab)
+  const initialItems = props.initialState?.loaded
+    ? props.initialState.items
+    : cachedKeyboardItems(initialScope)
+  const initialLoaded = Boolean(props.initialState?.loaded || initialItems.length)
+  const initialHasMore = props.initialState?.loaded
+    ? props.initialState.hasMore
+    : initialItems.length > 0 && lastKeyboardHasMoreByScope[initialScope]
+  const [activeTab, setActiveTab] = useState(initialTab)
+  activeKeyboardScope = keyboardScopeForTab(activeTab)
+  const items = useObservable<ClipItem[]>(() => initialItems)
+  const hasMoreRef = useRef(initialHasMore)
+  const nextOffsetRef = useRef(initialItems.length)
+  const loadingMoreRef = useRef<object | null>(null)
+  const refreshingRef = useRef(0)
+  const loadMorePendingRef = useRef(false)
+  const mountedRef = useRef(false)
+  const [settings] = useState<CaisSettings>(() => props.initialState?.settings ?? loadSettings())
+  const privateKeywords = useMemo(
+    () => privateFieldKeywords(settings.favoriteFieldPrivateKeywords, settings.favoriteFieldPrivacyEnabled),
+    [settings.favoriteFieldPrivateKeywords, settings.favoriteFieldPrivacyEnabled],
+  )
+  const [keyboardLayout, setKeyboardLayout] = useState<KeyboardLayoutMode>(() => readKeyboardLayout())
+  const [layoutRevision, setLayoutRevision] = useState(0)
+  const [tokenPage, setTokenPage] = useState<KeyboardTokenPage | null>(null)
+  const [favoriteFieldsPage, setFavoriteFieldsPage] = useState<KeyboardFavoriteFieldsPage | null>(null)
+  const [cursorMode, setCursorMode] = useState(false)
+  const [appPipActive, setAppPipActive] = useState(() => readPipControlState().active)
+  const [monitorStatus, setMonitorStatus] = useState<MonitorStatus>({
+    active: false,
+    lastMessage: "未启动",
+  })
+  const didHandleInitialTabEffect = useRef(false)
+  const [loading, setLoading] = useState(() => !initialLoaded)
+  currentFeedbackSettings = settings
+  currentKeyboardNativeGlassEffect = settings.keyboardNativeGlassEffect !== false
+
+  function selectKeyboardTab(tab: number) {
+    const next = tab === TAB_FAVORITE ? TAB_FAVORITE : TAB_CLIPS
+    if (next === activeTab) return
+    setActiveTab(next)
+    writeKeyboardTab(next)
+  }
+
+  useEffect(() => {
+    mountedRef.current = true
+    currentFeedbackSettings = settings
+    prepareCaisFeedback(settings)
+    const lifecycle = ++keyboardLifecycleGeneration
+    void boot(lifecycle)
+    if (loadMorePendingRef.current) {
+      loadMorePendingRef.current = false
+      void loadMore()
+    }
+    let lastSeenDatabaseDataVersion: number | null = null
+    let lastSeenClipDatabaseRevision: number | null = null
+    let checkingDatabaseDataVersion = false
+    let refreshQueued = false
+    let refreshRequested = false
+    let stopped = false
+
+    function scheduleRefresh() {
+      if (stopped) return
+      if (refreshQueued) {
+        refreshRequested = true
+        return
+      }
+      refreshQueued = true
+      void refresh(true, lifecycle, activeKeyboardScope).catch(() => {}).finally(() => {
+        refreshQueued = false
+        if (refreshRequested) {
+          refreshRequested = false
+          scheduleRefresh()
+        }
+      })
+    }
+
+    const timer = (globalThis as any).setInterval?.(() => {
+      const pipActive = readPipControlState().active
+      setAppPipActive((current) => current === pipActive ? current : pipActive)
+      if (checkingDatabaseDataVersion) return
+      checkingDatabaseDataVersion = true
+      void readDatabaseDataVersion().then(async (databaseVersion) => {
+        if (stopped) return
+        if (databaseVersion === lastSeenDatabaseDataVersion) return
+        const revision = await readClipDatabaseRevision()
+        if (stopped) return
+        if (lastSeenClipDatabaseRevision != null && revision !== lastSeenClipDatabaseRevision) {
+          scheduleRefresh()
+        }
+        lastSeenDatabaseDataVersion = databaseVersion
+        lastSeenClipDatabaseRevision = revision
+      }).catch(() => {}).finally(() => {
+        checkingDatabaseDataVersion = false
+      })
+    }, 900)
+    return () => {
+      mountedRef.current = false
+      loadMorePendingRef.current = false
+      stopped = true
+      if (keyboardLifecycleGeneration === lifecycle) keyboardLifecycleGeneration += 1
+      if (timer) (globalThis as any).clearInterval?.(timer)
+      if (keyboardMonitorStartTimer) {
+        ;(globalThis as any).clearTimeout?.(keyboardMonitorStartTimer)
+        keyboardMonitorStartTimer = null
+      }
+      stopContinuousDelete()
+      stopKeyboardMonitor()
+      currentFeedbackSettings = null
+      disposeCaisFeedback()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!didHandleInitialTabEffect.current) {
+      didHandleInitialTabEffect.current = true
+      return
+    }
+    const lifecycle = keyboardLifecycleGeneration
+    const scope = keyboardScopeForTab(activeTab)
+    activeKeyboardScope = scope
+    const cached = cachedKeyboardItems(scope)
+    hasMoreRef.current = cached.length > 0 && lastKeyboardHasMoreByScope[scope]
+    nextOffsetRef.current = cached.length
+    loadingMoreRef.current = null
+    loadMorePendingRef.current = false
+    if (cached.length) {
+      items.setValue(cached)
+      setLoading(false)
+    } else {
+      items.setValue([])
+      setLoading(true)
+    }
+    void refresh(true, lifecycle, scope).finally(() => {
+      if (lifecycle === keyboardLifecycleGeneration && scope === activeKeyboardScope) setLoading(false)
+    })
+  }, [activeTab])
+
+  function ensureKeyboardMonitor() {
+    if (keyboardMonitorStopper) return
+    keyboardMonitorStopper = startClipboardMonitor(settings, (next) => {
+      if (next.lastCapturedAt) void refresh()
+    })
+  }
+
+  function stopKeyboardMonitor() {
+    keyboardMonitorStopper?.()
+    keyboardMonitorStopper = null
+  }
+
+  function scheduleKeyboardMonitor(lifecycle: number) {
+    if (keyboardMonitorStartTimer) {
+      ;(globalThis as any).clearTimeout?.(keyboardMonitorStartTimer)
+    }
+    keyboardMonitorStartTimer = (globalThis as any).setTimeout?.(() => {
+      keyboardMonitorStartTimer = null
+      if (lifecycle !== keyboardLifecycleGeneration) return
+      ensureKeyboardMonitor()
+    }, 250)
+  }
+
+  async function boot(lifecycle: number) {
+    if (!initialLoaded) setLoading(true)
+    try {
+      if (!initialLoaded) await refresh(true, lifecycle)
+      if (lifecycle === keyboardLifecycleGeneration) scheduleKeyboardMonitor(lifecycle)
+    } catch {
+    } finally {
+      if (lifecycle === keyboardLifecycleGeneration) setLoading(false)
+    }
+  }
+
+  async function refresh(force = false, lifecycle = keyboardLifecycleGeneration, scope = activeKeyboardScope) {
+    const generation = ++keyboardRefreshGeneration
+    refreshingRef.current += 1
+    try {
+      const count = scope === activeKeyboardScope ? items.value.length : lastKeyboardItemsByScope[scope].length
+      const next = await keyboardPrefix(settings, scope, count)
+      if (lifecycle !== keyboardLifecycleGeneration || generation !== keyboardRefreshGeneration) return
+      if (scope === activeKeyboardScope && items.value.length > count) {
+        await refresh(force, lifecycle, scope)
+        return
+      }
+      const key = clipListKey(next.items)
+      if (!force && key === lastKeyboardItemsKeyByScope[scope] && next.hasMore === lastKeyboardLoadedHasMoreByScope[scope]) return
+      rememberKeyboardItems(scope, next.items, next.hasMore, queryLimitForKeyboard(settings))
+      if (scope !== activeKeyboardScope) return
+      nextOffsetRef.current = next.items.length
+      hasMoreRef.current = next.hasMore
+      items.setValue(next.items)
+    } finally {
+      refreshingRef.current -= 1
+      if (refreshingRef.current === 0 && loadMorePendingRef.current) {
+        loadMorePendingRef.current = false
+        void loadMore()
+      }
+    }
+  }
+
+  async function loadMore() {
+    if (!mountedRef.current) {
+      loadMorePendingRef.current = true
+      return
+    }
+    if (!hasMoreRef.current || loadingMoreRef.current) return
+    if (refreshingRef.current) {
+      loadMorePendingRef.current = true
+      return
+    }
+    const request = {}
+    loadingMoreRef.current = request
+    const lifecycle = keyboardLifecycleGeneration
+    const generation = keyboardRefreshGeneration
+    const scope = activeKeyboardScope
+    const offset = nextOffsetRef.current
+    try {
+      const page = await keyboardPage(settings, scope, offset)
+      if (lifecycle !== keyboardLifecycleGeneration || scope !== activeKeyboardScope) return
+      if (generation !== keyboardRefreshGeneration) {
+        loadMorePendingRef.current = true
+        return
+      }
+      nextOffsetRef.current = offset + page.items.length
+      hasMoreRef.current = page.hasMore
+      const current = items.value
+      const existingIds = new Set(current.map((item) => item.id))
+      const added = page.items.filter((item) => !existingIds.has(item.id))
+      const next = added.length ? [...current, ...added] : current
+      rememberKeyboardItems(scope, next, page.hasMore, queryLimitForKeyboard(settings))
+      if (added.length) items.setValue(next)
+    } catch {
+    } finally {
+      if (loadingMoreRef.current === request) {
+        loadingMoreRef.current = null
+        if (loadMorePendingRef.current && refreshingRef.current === 0) {
+          loadMorePendingRef.current = false
+          void loadMore()
+        }
+      }
+    }
+  }
+
+  function pasteLastContent() {
+    const fallback = items.value.find((item) => item.kind !== "image")?.content ?? ""
+    const text = lastPastedText || fallback
+    if (!text) {
+      return
+    }
+    insertKeyboardText(text)
+  }
+
+  function clearInput() {
+    const kb = keyboard()
+    const before = String(kb?.textBeforeCursor ?? "")
+    const after = String(kb?.textAfterCursor ?? "")
+    const total = characterCount(before) + characterCount(after)
+    if (!total) {
+      return
+    }
+    if (after) kb?.moveCursor?.(characterCount(after))
+    for (let index = 0; index < total; index += 1) {
+      deleteBackward()
+    }
+  }
+
+  async function captureNow() {
+    setLoading(true)
+    try {
+      await captureCurrentClipboard(settings)
+      await refresh()
+    } catch {
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function insertClip(item: ClipItem) {
+    if (isFieldFavorite(item)) {
+      await openFavoriteFieldsPage(item)
+      return
+    }
+    if (item.kind === "image") {
+      try {
+        await writeClipToPasteboard(item)
+      } catch {
+      }
+      return
+    }
+    const fullContent = renderClipOutput(item, await getFullClipContent(item.id))
+    insertKeyboardText(fullContent)
+  }
+
+  async function openFavoriteFieldsPage(item: ClipItem) {
+    const content = await getFullClipContent(item.id)
+    const parsed = parseFavoriteFields(content, favoriteDelimiterForItem(item, settings.favoriteFieldDelimiter))
+    if (!parsed.fields.length || parsed.errors.length) return
+    setTokenPage(null)
+    setFavoriteFieldsPage({
+      title: displayFavoriteItemTitle(item, favoriteDelimiterForItem(item, settings.favoriteFieldDelimiter), privateRulesForItem(item, privateKeywords)),
+      fields: parsed.fields,
+      privateRules: privateRulesForItem(item, privateKeywords),
+    })
+  }
+
+  function insertFavoriteField(field: FavoriteField) {
+    const text = favoriteFieldSource(field)
+    if (!text) return
+    playClick()
+    insertKeyboardText(text)
+    lastPastedText = text
+  }
+
+  function favoriteFieldSource(field: FavoriteField): string {
+    return renderRuntimeTemplate(field.value, selectedKeyboardText())
+  }
+
+  async function copyFavoriteFieldValue(field: FavoriteField) {
+    const source = favoriteFieldSource(field)
+    if (!source) return
+    playClick()
+    await Pasteboard.setString(source)
+    lastPastedText = source
+  }
+
+  function openTokenPageForText(title: string, source: string) {
+    const tokens = tokenizeWords(source)
+    if (!tokens.length) return
+    setFavoriteFieldsPage(null)
+    setTokenPage({ title, tokens, selectedIds: [] })
+  }
+
+  async function saveFavoriteFieldMenuResult(result: MenuActionResult, source: string) {
+    const saveSettings = { ...settings, captureText: true, captureImages: true }
+    if (result.kind === "text") {
+      if (!result.text.trim() || result.text === source) return
+      await addClipFromPayload({ kind: "text", text: result.text }, saveSettings)
+      await refresh()
+      return
+    }
+    if (result.kind === "texts") {
+      for (const text of result.texts) {
+        if (!text.trim() || text === source) continue
+        await addClipFromPayload({ kind: "text", text }, saveSettings)
+      }
+      await refresh()
+      return
+    }
+    if (result.kind === "image") {
+      await addClipFromPayload({
+        kind: "image",
+        image: result.image,
+        imageContentHash: result.imageContentHash,
+      }, saveSettings)
+      await refresh()
+    }
+  }
+
+  async function handleFavoriteFieldMenuResult(result: MenuActionResult | null, source: string) {
+    if (!result || result.kind === "none") return
+    if (result.kind === "openUrl") {
+      if (result.inApp) await presentInAppBrowser(result.url)
+      else await Safari.openURL(result.url)
+      return
+    }
+    if (result.kind === "text") {
+      if (result.writeToClipboard === true) await Pasteboard.setString(result.text)
+      insertKeyboardText(result.text)
+      lastPastedText = result.text
+    } else if (result.kind === "image") {
+      await writeImageToPasteboard(result.image)
+    }
+    await saveFavoriteFieldMenuResult(result, source)
+  }
+
+  async function runFavoriteFieldBuiltin(field: FavoriteField, action: KeyboardMenuBuiltinAction) {
+    const source = favoriteFieldSource(field)
+    if (!source) return
+    if (action === "tokenize") {
+      openTokenPageForText(field.name, source)
+      return
+    }
+    try {
+      await handleFavoriteFieldMenuResult(applyBuiltinMenuAction({ action, source, isImage: false }), source)
+    } catch {
+    }
+  }
+
+  async function runFavoriteFieldCustom(field: FavoriteField, action: KeyboardCustomAction) {
+    const source = favoriteFieldSource(field)
+    if (!source) return
+    try {
+      await handleFavoriteFieldMenuResult(await applyCustomMenuAction(action, source), source)
+    } catch {
+    }
+  }
+
+  async function openTokenPage(item: ClipItem) {
+    if (item.kind === "image") return
+    const fullContent = renderClipOutput(item, await getFullClipContent(item.id))
+    openTokenPageForText(item.title, fullContent)
+  }
+
+  function toggleToken(token: CaisToken) {
+    setTokenPage((page) => {
+      if (!page) return page
+      return {
+        ...page,
+        selectedIds: page.selectedIds.includes(token.id)
+          ? page.selectedIds.filter((id) => id !== token.id)
+          : [...page.selectedIds, token.id],
+      }
+    })
+  }
+
+  function clearSelectedTokens() {
+    setTokenPage((page) => page ? { ...page, selectedIds: [] } : page)
+  }
+
+  function insertSelectedTokens() {
+    if (!tokenPage) return
+    const text = selectedTokenText(tokenPage.tokens, tokenPage.selectedIds)
+    if (!text) return
+    insertKeyboardText(text)
+    lastPastedText = text
+  }
+
+  function deleteBackward() {
+    keyboard()?.deleteBackward?.()
+  }
+
+  function moveCursorHorizontal(offset: number) {
+    keyboard()?.moveCursor?.(offset)
+  }
+
+  function startContinuousDelete() {
+    stopContinuousDelete()
+    deleteBackward()
+    deleteRepeatTimer = (globalThis as any).setInterval?.(deleteBackward, 75)
+  }
+
+  function stopContinuousDelete() {
+    if (!deleteRepeatTimer) return
+    ;(globalThis as any).clearInterval?.(deleteRepeatTimer)
+    deleteRepeatTimer = null
+  }
+
+  function startPipMonitor() {
+    const status = { active: true, lastMessage: "监听运行中", lastCheckedAt: Date.now() }
+    setMonitorStatus(status)
+    ensureKeyboardMonitor()
+  }
+
+  function stopPipMonitor() {
+    stopKeyboardMonitor()
+    const status = { active: false, lastMessage: "监听已停止", lastCheckedAt: Date.now() }
+    setMonitorStatus(status)
+  }
+
+  function toggleClipLayout() {
+    setLayoutRevision((value) => value + 1)
+    setKeyboardLayout((value) => {
+      const next = nextKeyboardLayout(value)
+      writeKeyboardLayout(next)
+      return next
+    })
+  }
+
+  async function openPipInApp() {
+    if (appPipActive) {
+      requestPipStop()
+      setAppPipActive(false)
+      pipPresented.setValue(false)
+      try {
+        await Safari.openURL(Script.createRunURLScheme("CAIS", { pip: "0" }))
+      } catch {
+      }
+      return
+    }
+    const url = Script.createRunURLScheme("CAIS", { pip: "1" })
+    requestPipStart()
+    setAppPipActive(true)
+    pipPresented.setValue(true)
+    const status = { active: true, lastMessage: "正在打开 CAIS 主应用", lastCheckedAt: Date.now() }
+    setMonitorStatus(status)
+    try {
+      const ok = await Safari.openURL(url)
+      if (!ok) {
+        startPipMonitor()
+      }
+    } catch {
+      startPipMonitor()
+    }
+  }
+
+  async function openCaisApp() {
+    try {
+      await Safari.openURL(Script.createRunURLScheme("CAIS"))
+    } catch (error: any) {
+      setMonitorStatus({
+        active: Boolean(appPipActive),
+        lastMessage: String(error?.message ?? error ?? "打开 CAIS 失败"),
+        lastCheckedAt: Date.now(),
+      })
+    }
+  }
+
+  function sendReturn() {
+    const kb = keyboard()
+    if (typeof kb?.send === "function") {
+      kb.send()
+      return
+    }
+    kb?.insertText?.("\n")
+  }
+
+  async function dismissToKeyboardHome() {
+    await delay(KEYBOARD_EXIT_FEEDBACK_DELAY_MS)
+    keyboard()?.dismissToHome?.()
+  }
+
+  async function switchToRimeKeyboard() {
+    await delay(KEYBOARD_EXIT_FEEDBACK_DELAY_MS)
+    const kb = keyboard()
+    const target = rimeKeyboardScript()
+    await kb?.switchToScript?.(target?.name ?? RIME_KEYBOARD_SCRIPT_NAME)
+  }
+
+  function spaceOrCursorKeys() {
+    if (!cursorMode) {
+      return <BottomKey systemImage="space" onPress={() => keyboard()?.insertText?.(" ")} />
+    }
+    return (
+      <HStack spacing={4} frame={{ maxWidth: "infinity", height: 42 }}>
+        <BottomKey systemImage="arrow.left" onPress={() => moveCursorHorizontal(-1)} />
+        <BottomKey systemImage="arrow.right" onPress={() => moveCursorHorizontal(1)} />
+      </HStack>
+    )
+  }
+
+  const tokenSelectedText = tokenPage ? selectedTokenText(tokenPage.tokens, tokenPage.selectedIds) : ""
+  const detailPageVisible = Boolean(tokenPage || favoriteFieldsPage)
+  const useNativeGlassEffect = settings.keyboardNativeGlassEffect !== false
+  const showRimeKeyboardSwitch = Boolean(settings.showRimeKeyboardSwitch)
+  const rimeScript = showRimeKeyboardSwitch ? rimeKeyboardScript() : null
+
+  return (
+    <VStack
+      spacing={7}
+      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+      padding={{ top: 6, bottom: 6, leading: KEYBOARD_ROOT_SIDE_PADDING, trailing: KEYBOARD_ROOT_SIDE_PADDING }}
+      pip={{
+        isPresented: pipPresented,
+        maximumUpdatesPerSecond: 2,
+        content: (
+          <PipStatusView
+            status={monitorStatus}
+            onStart={startPipMonitor}
+            onStop={stopPipMonitor}
+          />
+        ),
+      }}
+    >
+      <HStack spacing={4} frame={{ maxWidth: "infinity", height: 36, alignment: "center" as any }}>
+        <IconButton
+          systemImage="house.fill"
+          frame={{ width: 32, height: 36 }}
+          onPress={dismissToKeyboardHome}
+          onLongPress={openCaisApp}
+        />
+        {tokenPage ? (
+          <ZStack
+            frame={{ minWidth: 112, maxWidth: "infinity", height: 36 }}
+            background={"rgba(0,0,0,0.001)" as any}
+            contentShape="rect"
+          >
+            <HStack spacing={6} frame={{ maxWidth: "infinity", maxHeight: "infinity", alignment: "trailing" as any }}>
+              <IconButton
+                systemImage="chevron.left"
+                onPress={() => setTokenPage(null)}
+              />
+              <IconButton
+                systemImage="arrow.counterclockwise.circle"
+                tint={tokenSelectedText ? "label" : "secondaryLabel"}
+                disabled={!tokenSelectedText}
+                onPress={clearSelectedTokens}
+              />
+              <IconButton
+                systemImage="text.cursor"
+                tint={tokenSelectedText ? "label" : "secondaryLabel"}
+                disabled={!tokenSelectedText}
+                onPress={insertSelectedTokens}
+              />
+            </HStack>
+          </ZStack>
+        ) : favoriteFieldsPage ? (
+          <ZStack
+            frame={{ minWidth: 112, maxWidth: "infinity", height: 36 }}
+            background={"rgba(0,0,0,0.001)" as any}
+            contentShape="rect"
+          >
+            <HStack spacing={6} frame={{ maxWidth: "infinity", maxHeight: "infinity", alignment: "leading" as any }}>
+              <IconButton
+                systemImage="chevron.left"
+                onPress={() => setFavoriteFieldsPage(null)}
+              />
+              <Text font="subheadline" lineLimit={1} frame={{ maxWidth: "infinity", alignment: "leading" as any }}>
+                {favoriteFieldsPage.title}
+              </Text>
+            </HStack>
+          </ZStack>
+        ) : (
+          useNativeGlassEffect ? (
+            <ZStack
+              frame={{ minWidth: showRimeKeyboardSwitch ? 96 : 112, maxWidth: "infinity", height: 36 }}
+              glassEffect="capsule"
+              clipShape="capsule"
+            >
+              <Picker
+                title=""
+                pickerStyle="segmented"
+                value={activeTab}
+                onChanged={selectKeyboardTab}
+                frame={{ maxWidth: "infinity", height: 36 }}
+              >
+                <Text tag={TAB_FAVORITE}>Favorite</Text>
+                <Text tag={TAB_CLIPS}>Clips</Text>
+              </Picker>
+            </ZStack>
+          ) : (
+            <Picker
+              title=""
+              pickerStyle="segmented"
+              value={activeTab}
+              onChanged={selectKeyboardTab}
+              frame={{ minWidth: showRimeKeyboardSwitch ? 96 : 112, maxWidth: "infinity", height: 36 }}
+            >
+              <Text tag={TAB_FAVORITE}>Favorite</Text>
+              <Text tag={TAB_CLIPS}>Clips</Text>
+            </Picker>
+          )
+        )}
+        {!detailPageVisible && showRimeKeyboardSwitch ? (
+          <IconButton
+            systemImage={rimeScript?.icon ?? "keyboard.fill"}
+            frame={{ width: 34, height: 36 }}
+            onPress={switchToRimeKeyboard}
+          />
+        ) : null}
+        <ScrollView
+          axes="horizontal"
+          scrollIndicator="hidden"
+          scrollContentBackground={hideKeyboardScrollEffects ? "hidden" : undefined}
+          scrollEdgeEffectHidden={hideKeyboardScrollEffects ? true : undefined}
+          scrollTargetBehavior="viewAlignedLimitAlwaysByOne"
+          frame={{ width: 154, height: 36 }}
+        >
+          <LazyHStack spacing={6} frame={{ height: 36 }} scrollTargetLayout>
+            <IconButton systemImage="doc.on.clipboard" onPress={pasteLastContent} />
+            <IconButton systemImage="xmark.circle" onPress={clearInput} />
+            <IconButton systemImage="square.and.arrow.down.on.square" disabled={loading} onPress={captureNow} />
+            <IconButton systemImage="keyboard.chevron.compact.down" onPress={() => keyboard()?.dismiss?.()} />
+            <IconButton
+              systemImage={keyboardLayoutIcon(keyboardLayout)}
+              onPress={toggleClipLayout}
+            />
+            <IconButton
+              systemImage={appPipActive ? "pip.exit" : "pip.enter"}
+              tint={appPipActive ? "systemBlue" : "label"}
+              onPress={openPipInApp}
+            />
+          </LazyHStack>
+        </ScrollView>
+      </HStack>
+
+      {tokenPage ? (
+        <VStack
+          frame={{ maxWidth: "infinity", maxHeight: "infinity", alignment: "topLeading" as any }}
+          padding={{ leading: CLIP_SCROLL_SIDE_PADDING, trailing: CLIP_SCROLL_SIDE_PADDING }}
+        >
+          <TokenSelectionPanel
+            tokens={tokenPage.tokens}
+            selectedIds={tokenPage.selectedIds}
+            selectedText={tokenSelectedText}
+            compact
+            hideScrollEffects={hideKeyboardScrollEffects}
+            nativeGlassEffect={useNativeGlassEffect}
+            onToggle={toggleToken}
+          />
+        </VStack>
+      ) : favoriteFieldsPage ? (
+        <VStack
+          frame={{ maxWidth: "infinity", maxHeight: "infinity", alignment: "topLeading" as any }}
+          padding={{ leading: CLIP_SCROLL_SIDE_PADDING, trailing: CLIP_SCROLL_SIDE_PADDING }}
+        >
+          <FavoriteFieldsPanel
+            fields={favoriteFieldsPage.fields}
+            privateKeywords={favoriteFieldsPage.privateRules}
+            hideScrollEffects={hideKeyboardScrollEffects}
+            nativeGlassEffect={useNativeGlassEffect}
+            onSelect={insertFavoriteField}
+            renderContextMenu={(field) => (
+              <FavoriteFieldActionMenu
+                settings={settings}
+                supportsOpenUrl={isLikelyURL(favoriteFieldSource(field))}
+                onCopy={() => copyFavoriteFieldValue(field)}
+                onBuiltin={(action) => runFavoriteFieldBuiltin(field, action)}
+                onCustom={(action) => runFavoriteFieldCustom(field, action)}
+              />
+            )}
+          />
+        </VStack>
+      ) : (
+        <GeometryReader>
+          {(proxy) => {
+            const rowCount = keyboardLayoutRows(keyboardLayout)
+            const columnCount = keyboardLayoutColumns(keyboardLayout)
+            const gridHeight = Math.max(1, proxy.size.height)
+            const tileHeight = clipTileHeight(gridHeight, rowCount)
+            const tileWidth = clipTileWidth(columnCount)
+            const clipRows = Array.from({ length: rowCount }, () => ({ size: tileHeight, spacing: CLIP_GRID_SPACING }))
+            const hideTitle = keyboardLayout === "twoByThree"
+            return (
+              <ScrollView
+                key={`clip-scroll-${keyboardLayout}-${layoutRevision}-${activeTab}`}
+                axes="horizontal"
+                scrollIndicator="hidden"
+                scrollContentBackground={hideKeyboardScrollEffects ? "hidden" : undefined}
+                scrollEdgeEffectHidden={hideKeyboardScrollEffects ? true : undefined}
+                frame={{ width: proxy.size.width, height: gridHeight }}
+                padding={{ leading: CLIP_SCROLL_SIDE_PADDING, trailing: CLIP_SCROLL_SIDE_PADDING }}
+              >
+                {items.value.length ? (
+                  <LazyHGrid
+                    rows={clipRows}
+                    spacing={CLIP_GRID_SPACING}
+                    frame={{ height: gridHeight }}
+                  >
+                    <ForEach
+                      data={items}
+                      builder={(item, index) => (
+                        <ClipTile
+                          key={item.id}
+                          item={item}
+                          scope={activeTab === TAB_FAVORITE ? "favorites" : "clipboard"}
+                          settings={settings}
+                          privateKeywords={privateKeywords}
+                          tileWidth={tileWidth}
+                          tileHeight={tileHeight}
+                          hideTitle={hideTitle}
+                          onInsert={insertClip}
+                          onTokenize={openTokenPage}
+                          onRefresh={refresh}
+                          onStatus={() => {}}
+                          onNearEnd={items.value.length - index <= Math.max(rowCount * columnCount, 6)
+                            ? () => {
+                              const tail = items.value.slice(-Math.max(rowCount * columnCount, 6))
+                              if (tail.some((candidate) => candidate.id === item.id)) void loadMore()
+                            }
+                            : undefined}
+                        />
+                      )}
+                    />
+                  </LazyHGrid>
+                ) : loading ? (
+                  <VStack
+                    frame={{ width: Math.max(300, Device.screen.width - 28), height: gridHeight, alignment: "center" as any }}
+                    spacing={8}
+                  >
+                    <ProgressView />
+                  </VStack>
+                ) : (
+                  <VStack
+                    frame={{ width: Math.max(300, Device.screen.width - 28), height: gridHeight, alignment: "center" as any }}
+                    spacing={8}
+                  >
+                    <Image systemName={activeTab === TAB_FAVORITE ? "star" : "doc.on.clipboard"} font="largeTitle" foregroundStyle="secondaryLabel" />
+                    <Text foregroundStyle="secondaryLabel">
+                      {activeTab === TAB_FAVORITE ? "暂无收藏" : "暂无剪贴板记录"}
+                    </Text>
+                  </VStack>
+                )}
+              </ScrollView>
+            )
+          }}
+        </GeometryReader>
+      )}
+
+      <HStack spacing={6} frame={{ maxWidth: "infinity", height: 42 }}>
+        <BottomKey systemImage="globe" width={46} onPress={() => keyboard()?.nextKeyboard?.()} />
+        <BottomKey
+          systemImage="arrow.left.and.right"
+          tint={cursorMode ? "systemBlue" : undefined}
+          width={46}
+          onPress={() => setCursorMode((value) => !value)}
+        />
+        {spaceOrCursorKeys()}
+        <BottomKey
+          systemImage="delete.left"
+          width={46}
+          onPress={deleteBackward}
+          onLongPress={startContinuousDelete}
+          onLongPressEnd={stopContinuousDelete}
+        />
+        <BottomKey
+          title={undefined}
+          systemImage={returnKeySymbol(traits?.returnKeyType)}
+          width={68}
+          onPress={sendReturn}
+        />
+      </HStack>
+    </VStack>
+  )
+}

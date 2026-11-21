@@ -1,0 +1,728 @@
+// 通用搜索面板组件 - 深度搜索功能
+
+import { Section, HStack, VStack, Spacer, Text, Image, Button, useState, useEffect, useRef, useMemo, Group, Menu, Path, StyledText, EmptyView } from "scripting";
+import { buildIndex, searchFromIndex, DeepSearchResult, getIndexStats, IndexStats, isIndexValid, cancelBuildIndex } from "../manager/DeepSearch";
+import { setDeepSearchPref, getDeepSearchPref } from "../manager/SearchState";
+import { writeClipboardPath, shareFilePath, ensureLocalFile } from "../manager/utils";
+import { ContextMenuItem } from "./FileListItem";
+import { resolveOpenerForFile } from "./DefaultOpenerPicker";
+import { setDefaultOpener, OPENER_OPTIONS } from "../manager/DefaultOpener";
+import { showToast } from "../manager/ToastManager";
+
+interface SearchPanelProps {
+  searchQuery: string;
+  dirPath: string;
+  enableDeepSearch?: boolean;
+  onResultTap?: (result: DeepSearchResult) => void;
+  onResultsChange?: (results: DeepSearchResult[]) => void;
+  navPath?: any;
+  onNavigateToParentDirectory?: (result: DeepSearchResult) => void;
+  resultLeadingActions?: (result: DeepSearchResult) => ContextMenuItem[];
+  resultTrailingActions?: (result: DeepSearchResult) => ContextMenuItem[];
+}
+
+function HighlightedText({ text, query }: { text: string; query: string }) {
+  // 截断超长字符串，防止没有空格的长代码或单行大文本在 HStack 中计算宽度时撑爆容器引起左右横滑
+  const rawText = text.trim();
+  const truncatedText = rawText.length > 150 ? rawText.slice(0, 150) + "…" : rawText;
+
+  if (!query.trim()) {
+    return (
+      <Text
+        font={12}
+        foregroundStyle="secondaryLabel"
+        multilineTextAlignment="leading"
+        lineLimit={1}
+        truncationMode="tail"
+      >
+        {truncatedText}
+      </Text>
+    );
+  }
+
+  const lowerText = truncatedText.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  const segments: (string | StyledText)[] = [];
+
+  let pos = 0;
+  while (pos < truncatedText.length) {
+    const idx = lowerText.indexOf(lowerQuery, pos);
+    if (idx === -1) {
+      segments.push({ content: truncatedText.slice(pos), foregroundColor: "secondaryLabel", font: 12 });
+      break;
+    }
+    if (idx > pos) {
+      segments.push({ content: truncatedText.slice(pos, idx), foregroundColor: "secondaryLabel", font: 12 });
+    }
+    segments.push({
+      content: truncatedText.slice(idx, idx + query.length),
+      foregroundColor: "systemPink",
+      fontWeight: "bold",
+      font: 12,
+    });
+    pos = idx + query.length;
+  }
+
+  if (segments.length === 0) {
+    return (
+      <Text
+        font={12}
+        foregroundStyle="secondaryLabel"
+        multilineTextAlignment="leading"
+        lineLimit={1}
+        truncationMode="tail"
+      >
+        {truncatedText}
+      </Text>
+    );
+  }
+
+  return (
+    <Text
+      font={12}
+      multilineTextAlignment="leading"
+      lineLimit={1}
+      truncationMode="tail"
+      styledText={{
+        content: segments,
+      }}
+    />
+  );
+}
+
+export function SearchPanel({
+  searchQuery,
+  dirPath,
+  enableDeepSearch = true,
+  onResultTap,
+  onResultsChange,
+  navPath,
+  onNavigateToParentDirectory,
+  resultLeadingActions,
+  resultTrailingActions,
+}: SearchPanelProps) {
+  const [deepSearchResults, setDeepSearchResults] = useState<DeepSearchResult[]>([]);
+  const deepSearchResultsRef = useRef<DeepSearchResult[]>(deepSearchResults);
+  deepSearchResultsRef.current = deepSearchResults;
+  
+  const [deepSearchEnabled, setDeepSearchEnabled] = useState(false);
+  const [isBuildingIndex, setIsBuildingIndex] = useState(false);
+  const [indexStats, setIndexStats] = useState<IndexStats | null>(null);
+  const [indexingCount, setIndexingCount] = useState(0);
+  const indexingCountRef = useRef(0);
+
+  const [searchOffset, setSearchOffset] = useState(0);
+  const [hasMoreResults, setHasMoreResults] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  // 当前搜索页中已不在磁盘上的结果数；索引不会自动感知外部删除。
+  const [missingResultCount, setMissingResultCount] = useState(0);
+  const pageSize = 200;
+
+  const deletedPathsRef = useRef(new Set<string>());
+  const searchSeqRef = useRef(0);
+
+  const lastIndexingRenderRef = useRef(0);
+  const lastIndexingTimeRef = useRef(0);
+
+  const flushIndexingProgress = () => {
+    setIndexingCount(indexingCountRef.current);
+    lastIndexingRenderRef.current = indexingCountRef.current;
+    lastIndexingTimeRef.current = Date.now();
+  };
+
+  const maybeReportIndexingProgress = () => {
+    const count = indexingCountRef.current;
+    const now = Date.now();
+    if (count - lastIndexingRenderRef.current >= 50 || now - lastIndexingTimeRef.current >= 100) {
+      flushIndexingProgress();
+    }
+  };
+
+  const deepSearchInitedRef = useRef(false);
+  const mountedRef = useRef(true);
+  const dirPathRef = useRef(dirPath);
+  dirPathRef.current = dirPath;
+
+  // SearchPanel 会随目录导航复用；切换目录时必须清除旧结果和初始化标记，
+  // 否则会继续使用上一个目录的索引与结果。
+  useEffect(() => {
+    // 构建任务全局唯一；切换目录后停止旧目录构建，避免其继续占用 I/O 或覆写状态。
+    cancelBuildIndex();
+    searchSeqRef.current++;
+    deepSearchInitedRef.current = false;
+    deletedPathsRef.current.clear();
+    setDeepSearchResults([]);
+    deepSearchResultsRef.current = [];
+    setIndexStats(null);
+    setIsBuildingIndex(false);
+    setIndexingCount(0);
+    setSearchOffset(0);
+    setHasMoreResults(false);
+    setMissingResultCount(0);
+  }, [dirPath]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      cancelBuildIndex();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!deepSearchEnabled || deepSearchInitedRef.current || !dirPath) return;
+    deepSearchInitedRef.current = true;
+    const targetDirPath = dirPath;
+    (async () => {
+      try {
+        const stats = await getIndexStats(targetDirPath);
+        if (!mountedRef.current || dirPathRef.current !== targetDirPath) return;
+        setIndexStats(stats);
+        if (stats.total === 0 || !(await isIndexValid(targetDirPath))) {
+          if (!mountedRef.current || dirPathRef.current !== targetDirPath) return;
+          setIsBuildingIndex(true);
+          try {
+            await buildIndex(targetDirPath, (count) => {
+              if (dirPathRef.current !== targetDirPath) return;
+              indexingCountRef.current = count;
+              maybeReportIndexingProgress();
+            });
+            if (!mountedRef.current || dirPathRef.current !== targetDirPath) return;
+            const freshStats = await getIndexStats(targetDirPath);
+            if (!mountedRef.current || dirPathRef.current !== targetDirPath) return;
+            setIsBuildingIndex(false);
+            setIndexStats(freshStats);
+          } catch (buildErr) {
+            console.log("自动构建索引失败:", buildErr);
+            if (!mountedRef.current || dirPathRef.current !== targetDirPath) return;
+            setIsBuildingIndex(false);
+          }
+        }
+      } catch {}
+    })();
+  }, [deepSearchEnabled, dirPath]);
+
+  const buildDeepSearchIndex = async (forceRebuild: boolean = false) => {
+    setIsBuildingIndex(true);
+    setIndexingCount(0);
+    indexingCountRef.current = 0;
+    lastIndexingRenderRef.current = 0;
+    lastIndexingTimeRef.current = 0;
+    try {
+      await buildIndex(
+        dirPath,
+        (count) => {
+          indexingCountRef.current = count;
+          maybeReportIndexingProgress();
+        },
+        forceRebuild,
+      );
+      if (!mountedRef.current) return;
+      flushIndexingProgress();
+      const stats = await getIndexStats(dirPath);
+      setIndexStats(stats);
+      if (searchQuery.trim()) {
+        await performDeepSearch(searchQuery);
+      }
+    } catch (e) {
+      console.log("构建索引失败:", e);
+    } finally {
+      if (mountedRef.current) setIsBuildingIndex(false);
+    }
+  };
+
+  /**
+   * 搜索索引可能落后于文件系统。以有限并发校验当前结果，避免 200 条结果同时触发 I/O。
+   * 对 iCloud 云端但尚未下载的文件，isFileStoredIniCloud 仍会返回 true，不应误报为删除。
+   */
+  const findMissingSearchResultPaths = async (results: DeepSearchResult[]): Promise<Set<string>> => {
+    const missing = new Set<string>();
+    let nextIndex = 0;
+    const workerCount = Math.min(8, results.length);
+    await Promise.all(Array.from({ length: workerCount }, async () => {
+      while (nextIndex < results.length) {
+        const result = results[nextIndex++];
+        try {
+          if (await FileManager.exists(result.path)) continue;
+          const isInICloud = typeof FileManager.isFileStoredIniCloud === "function" && FileManager.isFileStoredIniCloud(result.path);
+          if (!isInICloud) missing.add(result.path);
+        } catch {
+          // 无法确认时不当作已删除，避免权限或临时 I/O 故障产生误报。
+        }
+      }
+    }));
+    return missing;
+  };
+
+  const isSearchResultAvailable = async (path: string): Promise<boolean> => {
+    try {
+      if (await FileManager.exists(path)) return true;
+      return typeof FileManager.isFileStoredIniCloud === "function" && FileManager.isFileStoredIniCloud(path);
+    } catch {
+      return true;
+    }
+  };
+
+  const performDeepSearch = async (query: string, append: boolean = false) => {
+    const currentDirPath = dirPath;
+    if (!query.trim()) {
+      setSearchOffset(0);
+      setHasMoreResults(false);
+      setMissingResultCount(0);
+      notifyResults([]);
+      return;
+    }
+    const seq = ++searchSeqRef.current;
+    try {
+      const offset = append ? searchOffset : 0;
+      const results = await searchFromIndex(currentDirPath, query, pageSize, offset);
+      const missingPaths = await findMissingSearchResultPaths(results);
+      if (seq !== searchSeqRef.current) return;
+      setMissingResultCount((previous) => append ? previous + missingPaths.size : missingPaths.size);
+      if (append) {
+        const updated = [...deepSearchResultsRef.current, ...results];
+        setDeepSearchResults(updated);
+        deepSearchResultsRef.current = updated;
+        onResultsChange?.(updated);
+      } else {
+        notifyResults(results);
+      }
+      setSearchOffset(offset + results.length);
+      setHasMoreResults(results.length >= pageSize);
+    } catch (e) {
+      console.log("深度搜索失败:", e);
+    }
+  };
+
+  const loadMoreResults = async () => {
+    if (isLoadingMore || !hasMoreResults) return;
+    setIsLoadingMore(true);
+    await performDeepSearch(searchQuery, true);
+    setIsLoadingMore(false);
+  };
+
+  const notifyResults = (results: DeepSearchResult[]) => {
+    const filtered = results.filter((r) => !deletedPathsRef.current.has(r.path));
+    setDeepSearchResults(filtered);
+    deepSearchResultsRef.current = filtered;
+    onResultsChange?.(filtered);
+  };
+
+  const toggleDeepSearch = async (enabled: boolean) => {
+    setDeepSearchEnabled(enabled);
+    if (enabled) deepSearchInitedRef.current = true;
+    if (dirPath) {
+      setDeepSearchPref(dirPath, enabled);
+    }
+    if (enabled) {
+      if (!indexStats || indexStats.total === 0 || !(await isIndexValid(dirPath))) {
+        const stats = await getIndexStats(dirPath);
+        setIndexStats(stats);
+        // 已有条目但完成标记缺失/过期时也必须重建，不能拿半截索引继续搜索。
+        if (stats.total === 0 || !(await isIndexValid(dirPath))) {
+          await buildDeepSearchIndex();
+        }
+      }
+      if (searchQuery.trim()) {
+        await performDeepSearch(searchQuery);
+      }
+    } else {
+      notifyResults([]);
+    }
+  };
+
+  useEffect(() => {
+    if (searchQuery.trim() && !deepSearchEnabled && dirPath && getDeepSearchPref(dirPath)) {
+      setDeepSearchEnabled(true);
+    }
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (deepSearchEnabled && searchQuery.trim()) {
+      const timer = setTimeout(() => {
+        performDeepSearch(searchQuery);
+      }, 300);
+      return () => {
+        searchSeqRef.current++;
+        clearTimeout(timer);
+      };
+    } else if (deepSearchEnabled && !searchQuery.trim()) {
+      searchSeqRef.current++;
+      notifyResults([]);
+    }
+  }, [searchQuery, deepSearchEnabled]);
+
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      searchSeqRef.current++;
+      setDeepSearchResults([]);
+      deepSearchResultsRef.current = [];
+      setSearchOffset(0);
+      setHasMoreResults(false);
+      setMissingResultCount(0);
+    }
+  }, [searchQuery]);
+
+  const handleCancelIndexing = () => {
+    cancelBuildIndex();
+    setIsBuildingIndex(false);
+    setIndexingCount(0);
+  };
+
+  const navPathRef = useRef(navPath);
+  const onResultTapRef = useRef(onResultTap);
+  navPathRef.current = navPath;
+  onResultTapRef.current = onResultTap;
+  const navigatingRef = useRef<string | null>(null);
+
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+  const toggleExpanded = (path: string) => {
+    setExpandedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
+
+  const resultsSection = useMemo(() => {
+    if (!enableDeepSearch || deepSearchResults.length === 0) return <EmptyView />;
+
+    const navigateToFile = async (result: DeepSearchResult, specificLine?: number) => {
+      const path_ = result.path;
+      if (navigatingRef.current === path_) return;
+      navigatingRef.current = path_;
+      setTimeout(() => {
+        navigatingRef.current = null;
+      }, 1000);
+
+      const _onResultTap = onResultTapRef.current;
+      const _navPath = navPathRef.current;
+
+      if (!(await isSearchResultAvailable(result.path))) {
+        showToast("文件已删除，索引可能已过期，请重建索引");
+        return;
+      }
+
+      if (result.isDirectory) {
+        if (_onResultTap) {
+          _onResultTap(result);
+        } else if (_navPath) {
+          _navPath.setValue([..._navPath.value, "browser:" + result.path]);
+        }
+        return;
+      }
+
+      showToast("正在准备文件...");
+      const downloaded = await ensureLocalFile(result.path, 12000);
+      if (!downloaded) {
+        showToast("iCloud 文件下载超时或失败，请稍后重试");
+        return;
+      }
+
+      if (_onResultTap) {
+        _onResultTap(specificLine ? { ...result, matchedLine: specificLine } : result);
+      } else if (_navPath) {
+        const prefix = await resolveOpenerForFile(result.path, result.category);
+        if (prefix) {
+          if (prefix === "share:") {
+            await shareFilePath(result.path, result.name);
+          } else if (prefix === "editor:" && specificLine) {
+            _navPath.setValue([..._navPath.value, prefix + result.path + "::L" + specificLine]);
+          } else {
+            _navPath.setValue([..._navPath.value, prefix + result.path]);
+          }
+        }
+      }
+    };
+
+    const copyToStorage = async (result: DeepSearchResult) => {
+      try {
+        await writeClipboardPath(result.path);
+        showToast("已复制路径");
+      } catch (e) {
+        console.log("拷贝失败:", e);
+      }
+    };
+
+    const copyFilePath = (result: DeepSearchResult) => {
+      Clipboard.copyText(result.path);
+      showToast("已复制路径");
+    };
+
+    const wrapTrailingAction = (origAction: () => void | Promise<void>, path: string) => {
+      return async () => {
+        await origAction();
+        let stillExists = true;
+        try {
+          stillExists = await FileManager.exists(path);
+        } catch {
+          stillExists = false;
+        }
+        if (stillExists) return;
+        deletedPathsRef.current.add(path);
+        const updated = deepSearchResultsRef.current.filter((r) => r.path !== path);
+        deepSearchResultsRef.current = updated;
+        setDeepSearchResults(updated);
+        onResultsChange?.(updated);
+      };
+    };
+
+    const gotoParentDir = (result: DeepSearchResult) => {
+      if (onNavigateToParentDirectory) {
+        onNavigateToParentDirectory(result);
+        return;
+      }
+      const _navPath = navPathRef.current;
+      if (!_navPath) return;
+      const parent = result.path.substring(0, result.path.lastIndexOf("/"));
+      const fileName = Path.basename(result.path);
+      const navTarget = "browser:" + parent + "::" + encodeURIComponent(fileName);
+      _navPath.setValue([..._navPath.value, navTarget]);
+    };
+
+    const renderContextMenu = (result: DeepSearchResult) => {
+      return (
+        <Group>
+          <Button title="跳转到目录" action={() => gotoParentDir(result)} />
+          <Button title="拷贝" action={() => copyToStorage(result)} />
+          <Button title="复制文件路径" action={() => copyFilePath(result)} />
+          {!result.isDirectory ? (
+            <Menu title="默认打开方式" systemImage="gear">
+              {OPENER_OPTIONS.map((opt) => (
+                <Button
+                  key={opt.prefix}
+                  title={opt.label}
+                  action={async () => {
+                    setDefaultOpener(Path.extname(result.path), opt.prefix);
+                  }}
+                />
+              ))}
+            </Menu>
+          ) : (
+            <EmptyView />
+          )}
+        </Group>
+      );
+    };
+
+    return (
+      <Section monospaced title={`深度搜索找到 ${deepSearchResults.reduce((s, r) => s + (r.allMatches?.length || 0 || (r.matchedLine ? 1 : 0)), 0)} 个匹配`}>
+        {deepSearchResults.map((result) => {
+          const matches =
+            result.allMatches && result.allMatches.length > 0 ? result.allMatches : result.matchedLine != null ? [{ line: result.matchedLine, content: result.matchedContent || "" }] : [];
+          const isExpanded = expandedPaths.has(result.path);
+          const hasMatches = matches.length > 0;
+
+          return (
+            <Group key={result.path}>
+              {hasMatches ? (
+                <HStack
+                  onTapGesture={() => toggleExpanded(result.path)}
+                  accessibilityAddTraits="isButton"
+                  frame={{ maxWidth: "infinity", alignment: "leading" }}
+                  contentShape="rect"
+                  contextMenu={{ menuItems: renderContextMenu(result) }}
+                  trailingSwipeActions={(() => {
+                    const actions = resultTrailingActions?.(result);
+                    if (!actions || actions.length === 0) return undefined;
+                    return { actions: actions.map((a) => <Button title={a.title} role={a.role} action={wrapTrailingAction(a.action, result.path)} />) };
+                  })()}
+                  leadingSwipeActions={(() => {
+                    const actions = resultLeadingActions?.(result);
+                    if (actions && actions.length > 0) {
+                      return { actions: actions.map((a) => <Button title={a.title} role={a.role} action={a.action} />) };
+                    }
+                    return {
+                      actions: [<Button title="跳转到目录" action={() => gotoParentDir(result)} />]
+                    };
+                  })()}
+                >
+                  <HStack spacing={0} alignment="center" frame={{ maxWidth: "infinity", alignment: "leading" }} contentShape="rect">
+                    <HStack frame={{ width: 28, height: 32 }} alignment="center">
+                      <Image
+                        systemName="chevron.right"
+                        frame={{ width: 12, height: 12 }}
+                        foregroundStyle="tertiaryLabel"
+                        rotationEffect={{ degrees: isExpanded ? 90 : 0, anchor: "center" }}
+                        animation={{ animation: Animation.default(), value: isExpanded }}
+                      />
+                    </HStack>
+                    <HStack spacing={12} alignment="center" padding={{ vertical: 6, leading: 0, trailing: 12 }}>
+                      <Image systemName={result.icon} frame={{ width: 20, height: 20 }} foregroundStyle={result.iconColor as any} />
+                      <VStack alignment="leading" spacing={0}>
+                        <Text font="body" lineLimit={1}>
+                          {result.name}
+                        </Text>
+                        <Text font="caption2" monospaced foregroundStyle="quaternaryLabel" lineLimit={1}>
+                          {result.relativePath}
+                        </Text>
+                      </VStack>
+                      <Spacer />
+                      <Text font="caption" foregroundStyle="tertiaryLabel">
+                        {matches.length}行
+                      </Text>
+                    </HStack>
+                  </HStack>
+                </HStack>
+              ) : (
+                <HStack
+                  onTapGesture={() => navigateToFile(result)}
+                  accessibilityAddTraits="isButton"
+                  frame={{ maxWidth: "infinity", alignment: "leading" }}
+                  contentShape="rect"
+                  contextMenu={{ menuItems: renderContextMenu(result) }}
+                  trailingSwipeActions={(() => {
+                    const actions = resultTrailingActions?.(result);
+                    if (!actions || actions.length === 0) return undefined;
+                    return { actions: actions.map((a) => <Button title={a.title} role={a.role} action={wrapTrailingAction(a.action, result.path)} />) };
+                  })()}
+                  leadingSwipeActions={(() => {
+                    const actions = resultLeadingActions?.(result);
+                    if (actions && actions.length > 0) {
+                      return { actions: actions.map((a) => <Button title={a.title} role={a.role} action={a.action} />) };
+                    }
+                    return {
+                      actions: [<Button title="跳转到目录" action={() => gotoParentDir(result)} />]
+                    };
+                  })()}
+                >
+                  <HStack spacing={0} alignment="center" frame={{ maxWidth: "infinity", alignment: "leading" }} contentShape="rect">
+                    <HStack frame={{ width: 28, height: 32 }} alignment="center" />
+                    <HStack spacing={12} alignment="center" padding={{ vertical: 6, leading: 0, trailing: 12 }}>
+                      <Image systemName={result.icon} frame={{ width: 20, height: 20 }} foregroundStyle={result.iconColor as any} />
+                      <VStack alignment="leading" spacing={0}>
+                        <Text font="body" lineLimit={1}>
+                          {result.name}
+                        </Text>
+                        <Text font="caption2" monospaced foregroundStyle="quaternaryLabel" lineLimit={1}>
+                          {result.relativePath}
+                        </Text>
+                      </VStack>
+                      <Spacer />
+                    </HStack>
+                  </HStack>
+                </HStack>
+              )}
+
+              {isExpanded && hasMatches ? (
+                matches.map((m, i) => (
+                  <Button
+                    key={i}
+                    action={() => navigateToFile(result, m.line)}
+                    buttonStyle="plain"
+                    listRowInsets={0}
+                    contentShape="rect"
+                    contextMenu={{ menuItems: renderContextMenu(result) }}
+                  >
+                    <HStack
+                      spacing={8}
+                      alignment="firstTextBaseline"
+                      padding={{ vertical: 6, leading: 36, trailing: 16 }}
+                      frame={{ maxWidth: "infinity", alignment: "leading" }}
+                      contentShape="rect"
+                      clipped
+                    >
+                      <Text font={12} monospaced foregroundStyle="tertiaryLabel" frame={{ width: 44, alignment: "trailing" }}>
+                        {m.line}
+                      </Text>
+                      <HighlightedText text={m.content} query={searchQuery} />
+                    </HStack>
+                  </Button>
+                ))
+              ) : (
+                <EmptyView />
+              )}
+            </Group>
+          );
+        })}
+      </Section>
+    );
+  }, [enableDeepSearch, deepSearchResults, expandedPaths, onResultTapRef, navPathRef, searchQuery]);
+
+  return (
+    <>
+      {enableDeepSearch && searchQuery.trim() ? (
+        <Section listRowSeparator="hidden" padding={{ vertical: 0, horizontal: 0 }}>
+          <Button
+            action={() => {
+              if (deepSearchEnabled) {
+                toggleDeepSearch(false);
+              } else {
+                toggleDeepSearch(true);
+              }
+            }}
+          >
+            <HStack spacing={6} alignment="center" padding={{ vertical: 8, horizontal: 16 }}>
+              <Image systemName="magnifyingglass.circle" frame={{ width: 16, height: 16 }} foregroundStyle={deepSearchEnabled ? "systemBlue" : "tertiaryLabel"} />
+              <Text font="body">深度搜索</Text>
+              <Text font="body" foregroundStyle={deepSearchEnabled ? "systemGreen" : "secondaryLabel"}>
+                {deepSearchEnabled ? "ON" : "OFF"}
+              </Text>
+
+              {deepSearchEnabled && !isBuildingIndex && indexStats ? (
+                <Text font="caption" monospaced foregroundStyle="tertiaryLabel">
+                  文件数 {indexStats.total}
+                </Text>
+              ) : (
+                <EmptyView />
+              )}
+
+              {deepSearchEnabled && missingResultCount > 0 ? (
+                <Text font="caption" foregroundStyle="systemOrange">
+                  索引过期 {missingResultCount} 项
+                </Text>
+              ) : (
+                <EmptyView />
+              )}
+
+              {deepSearchEnabled && isBuildingIndex ? (
+                <Text font="caption" foregroundStyle="tertiaryLabel">
+                  文件 {indexingCount}
+                </Text>
+              ) : (
+                <EmptyView />
+              )}
+
+              <Spacer />
+
+              {deepSearchEnabled && !isBuildingIndex ? <Button title="重建索引" action={() => buildDeepSearchIndex(true)} /> : <EmptyView />}
+
+              {deepSearchEnabled && isBuildingIndex ? <Button title="取消索引" action={handleCancelIndexing} /> : <EmptyView />}
+            </HStack>
+          </Button>
+        </Section>
+      ) : (
+        <EmptyView />
+      )}
+
+      {resultsSection}
+
+      {hasMoreResults ? (
+        <Group key="load-more">
+          <Button
+            action={() => {
+              if (!isLoadingMore) loadMoreResults();
+            }}
+          >
+            <HStack padding={{ vertical: 12, horizontal: 16 }} alignment="center">
+              {isLoadingMore ? (
+                <Text font="caption" foregroundStyle="tertiaryLabel">
+                  加载中…
+                </Text>
+              ) : (
+                <Text font="caption" foregroundStyle="secondaryLabel">
+                  加载更多
+                </Text>
+              )}
+            </HStack>
+          </Button>
+        </Group>
+      ) : (
+        <EmptyView />
+      )}
+    </>
+  );
+}
+
+export type { DeepSearchResult };
