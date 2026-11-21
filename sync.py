@@ -100,6 +100,10 @@ SECRET_PATTERNS = [re.compile(p) for p in (
     "xox[baprs]-[A-Za-z0-9-]{10,}",
     # Google API Key
     "AIza[0-9A-Za-z_-]{35}",
+    # Google OAuth 客户端 ID（数字-哈希.apps.googleusercontent.com）
+    "[0-9]{6,12}-[A-Za-z0-9_-]{10,}\\.apps\\.googleusercontent\\.com",
+    # Google OAuth 客户端密钥（GOCSPX- 开头）
+    "GOCSPX-[A-Za-z0-9_-]{10,}",
 )]
 REDACTED = "[REDACTED_SECRET]"
 
