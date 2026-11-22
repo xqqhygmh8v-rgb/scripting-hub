@@ -1,0 +1,11 @@
+{
+  "name": "Toki",
+  "icon": "key.fill",
+  "color": "#0A84FF",
+  "version": "1.0.0",
+  "runInApp": true,
+  "author": { "name": "SylvanRoe", "homepage": "https://github.com/SylvanRoe/Toki" },
+  "description": "账号与 Token 管理 · 卡包 / 网站 / Tokens / 关系图 + 桌面小组件",
+  "localizedNames": { "zh": "Toki" },
+  "localizedDescriptions": { "zh": "账号与 Token 管理，配套桌面小组件" }
+}

@@ -7,9 +7,8 @@ const STATE_DIR = 'CourseSync/CourseSync-v2';
 const LEGACY_STATE_DIR = 'NUFE-Local-Scripting/NUFE-Local-Scripting-v2';
 const NAMES = ['一','二','三','四','五','六','日'];
 
-// Read the shared snapshots exactly as the sync engine does. Avoid a hard
-// dependency on statSync: file metadata isn't necessary to parse our own JSON,
-// and unsupported/failed metadata calls used to mask readable caches.
+// Read the shared snapshots exactly as the sync engine does without requiring
+// statSync file metadata calls.
 const MIRROR_KEY='CourseSync.Widget.Courses.v1';
 const LEGACY_MIRROR_KEY='NUFE.Schedule.Widget.Courses.v1';
 // Storage is private to the CourseSync project (no shared:true). The
@@ -26,17 +25,14 @@ export function readWidgetMirror(storage){
   if(!obj||obj.version!==1||!Array.isArray(obj.events)||
      obj.events.length>400||typeof obj.lastCheck!=='string')
     return {kind:'invalid',code:'STORAGE_SCHEMA'};
-  const events=[];
   for(const e of obj.events){
     if(!e||typeof e.title!=='string'||typeof e.start!=='string'||
        typeof e.end!=='string'||typeof e.location!=='string'||
        (e.teacher!==undefined&&typeof e.teacher!=='string'))
       return {kind:'invalid',code:'STORAGE_SCHEMA'};
-    events.push(e);
   }
-  // Legacy preview fields in older cached payloads are intentionally ignored.
   return {kind:'ready',state:{lastCheck:obj.lastCheck,
-    semesters:{widget:{events}}}};
+    semesters:{widget:{events:obj.events}}}};
 }
 
 export function loadBestWidgetState(files,storage){
@@ -90,15 +86,6 @@ export function loadWidgetState(files) {
   return {kind:'ready',state};
 }
 
-export function weekStartBeijing(now){
-  const ms = now instanceof Date ? now.getTime() : Number(now);
-  if(!Number.isFinite(ms)) throw Error('WIDGET_TIME');
-  const local = new Date(ms+BEIJING);
-  const daysSinceMonday = (local.getUTCDay()+6)%7;
-  return Date.UTC(local.getUTCFullYear(),local.getUTCMonth(),local.getUTCDate())-
-    daysSinceMonday*DAY-BEIJING;
-}
-
 function plainText(value,limit){
   return String(value||'').trim().slice(0,limit);
 }
@@ -120,74 +107,34 @@ function safeCourse(event,weekStart,weekEnd){
     startLabel:timeString(start),endLabel:timeString(end)};
 }
 
-export function buildWeek(state,now=Date.now()){
+// Use the school calendar week, including Saturday and Sunday.
+export function buildWidgetModel(state,now=Date.now()){
   const at=now instanceof Date?now.getTime():Number(now);
-  const start=weekStartBeijing(at),end=start+7*DAY;
+  if(!Number.isFinite(at))throw Error('WIDGET_TIME');
+  const local=new Date(at+BEIJING);
+  const todayStart=Date.UTC(local.getUTCFullYear(),local.getUTCMonth(),local.getUTCDate())-BEIJING;
+  const today=(local.getUTCDay()+6)%7;
+  const start=todayStart-today*DAY,end=start+7*DAY;
   const courses=[];
   const semesters=state&&state.semesters&&typeof state.semesters==='object'
     ?Object.values(state.semesters):[];
-  for(const semester of semesters){
-    if(!semester||!Array.isArray(semester.events))continue;
-    for(const ev of semester.events){
+  const groups=[...semesters.map(semester=>semester?.events),state?.exams];
+  for(const events of groups){
+    if(!Array.isArray(events))continue;
+    for(const ev of events){
       const course=safeCourse(ev,start,end);
       if(course)courses.push(course);
     }
   }
   courses.sort((a,b)=>a.start-b.start||a.title.localeCompare(b.title));
-  const weekend=courses.some(e=>e.day>=5);
-  const count=weekend?7:5;
-  const today=Math.floor((at-start)/DAY);
-  const days=Array.from({length:count},(_,idx)=>({
-    index:idx,label:'周'+NAMES[idx],number:new Date(start+idx*DAY+BEIJING).getUTCDate(),
-    today:idx===today,
-    courses:courses.filter(c=>c.day===idx).map(c=>({
-      ...c,status:c.end<=at?'done':c.start<=at?'current':'upcoming'
-    }))
-  }));
-  const boundaries=[start+7*DAY];
-  for(const c of courses){
-    if(c.start>at)boundaries.push(c.start);
-    if(c.end>at)boundaries.push(c.end);
-  }
-  const nextMidnight=start+(today+1)*DAY;
-  if(nextMidnight>at)boundaries.push(nextMidnight);
-  const nextAt=Math.min(...boundaries.filter(t=>t>at));
-  const update=state&&typeof state.lastCheck==='string'?Date.parse(state.lastCheck):NaN;
-  const outdated=Number.isFinite(update)&&at-update>7*DAY;
-  return {start,at,days,courses,weekend,today,nextAt,
-    updated:Number.isFinite(update)?update:null,outdated,empty:courses.length===0};
-}
-
-// A rolling three-day view: yesterday, today, tomorrow.
-// It deliberately crosses semester week/month/year boundaries without using
-// the calendar week's Monday as a fixed display window.
-export function buildRollingDays(state,now=Date.now()){
-  const at=now instanceof Date?now.getTime():Number(now);
-  if(!Number.isFinite(at))throw Error('WIDGET_TIME');
-  const local=new Date(at+BEIJING);
-  const todayStart=Date.UTC(local.getUTCFullYear(),local.getUTCMonth(),local.getUTCDate())-BEIJING;
-  const start=todayStart-DAY,end=start+3*DAY;
-  const courses=[];
-  const semesters=state&&state.semesters&&typeof state.semesters==='object'
-    ?Object.values(state.semesters):[];
-  for(const semester of semesters){
-    if(!semester||!Array.isArray(semester.events))continue;
-    for(const ev of semester.events){
-      const course=safeCourse(ev,start,end);
-      if(course&&course.day<3)courses.push(course);
-    }
-  }
-  courses.sort((a,b)=>a.start-b.start||a.title.localeCompare(b.title));
-  const names=['昨天','今天','明天'];
-  const days=Array.from({length:3},(_,index)=>{
+  const days=Array.from({length:7},(_,index)=>{
     const dayStart=start+index*DAY;
     const date=new Date(dayStart+BEIJING);
-    const weekday='周'+NAMES[(date.getUTCDay()+6)%7];
     return {
-      index,label:names[index],weekday,
+      index,label:'周'+NAMES[index],
       number:date.getUTCDate(),month:date.getUTCMonth()+1,
       dateLabel:(date.getUTCMonth()+1)+'/'+date.getUTCDate(),
-      today:index===1,
+      today:index===today,
       courses:courses.filter(c=>c.day===index).map(c=>({
         ...c,status:c.end<=at?'done':c.start<=at?'current':'upcoming'
       }))
@@ -200,51 +147,27 @@ export function buildRollingDays(state,now=Date.now()){
   }
   const nextAt=Math.min(...boundaries.filter(t=>t>at));
   const updated=state&&typeof state.lastCheck==='string'?Date.parse(state.lastCheck):NaN;
-  return {start,at,days,courses,today:1,nextAt,
+  return {start,at,days,courses,today,nextAt,
     updated:Number.isFinite(updated)?updated:null,
     outdated:Number.isFinite(updated)&&at-updated>7*DAY,
     empty:courses.length===0};
 }
 
-// Fixed chronological order: never jump or auto-focus a different class.
-// When layout capacity is reached, the UI prints "+N节课" for the remainder.
+// Keep entries in time order and make room for today's active class if needed.
 export function selectVisibleCourses(day,limit=1){
   const all=Array.isArray(day?.courses)?day.courses:[];
-  const n=Math.max(1,Math.min(5,Math.trunc(Number(limit)||1)));
-  return {courses:all.slice(0,n),hiddenAfter:Math.max(0,all.length-n),total:all.length};
+  const n=Math.max(1,Math.trunc(Number(limit)||1));
+  const active=day?.today?all.findIndex(course=>course.status==='current'):-1;
+  const offset=Math.max(0,active-n+1);
+  return {courses:all.slice(offset,offset+n),hidden:Math.max(0,all.length-n)};
 }
 
-// Show the current/next class together when today contains several classes.
-// Earlier completed classes remain in cache, but are not counted in "+N节课".
-export function selectTodayPair(day){
-  const courses=Array.isArray(day?.courses)?day.courses:[];
-  if(courses.length<=1)return {courses,hiddenAfter:0};
-  let at=courses.findIndex(e=>e.status==='current');
-  if(at<0)at=courses.findIndex(e=>e.status==='upcoming');
-  // Finished classes never displace the current or next class.
-  // Once all lessons have ended, retain only the last lesson as completed.
-  if(at<0)at=courses.length-1;
-  const shown=courses.slice(at,at+2);
-  return {courses:shown,hiddenAfter:Math.max(0,courses.length-at-shown.length)};
-}
-
-// Today: exactly one focused lesson on the left, followed by not-yet-started
-// lessons on the right. Never bring completed lessons back into the display.
-export function selectTodayColumns(day,maxFuture=1){
-  const courses=Array.isArray(day?.courses)?day.courses:[];
-  if(!courses.length)return {focus:null,future:[],hiddenAfter:0};
-  let at=courses.findIndex(c=>c.status==='current');
-  if(at<0)at=courses.findIndex(c=>c.status==='upcoming');
-  // After all lessons end, show only the last completed lesson.
-  if(at<0)return {focus:courses[courses.length-1],future:[],hiddenAfter:0};
-  const future=courses.slice(at+1).filter(c=>c.status==='upcoming');
-  const count=Math.max(0,Math.min(5,Math.trunc(Number(maxFuture)||0)));
-  return {focus:courses[at],future:future.slice(0,count),
-    hiddenAfter:Math.max(0,future.length-count)};
-}
-
-export function buildWidgetModel(state,now=Date.now()){
-  return buildRollingDays(state,now);
+// The small widget gives today's current or next appointment room for details.
+export function selectTodayCourse(day){
+  const courses=day.courses;
+  const at=courses.findIndex(c=>c.status!=='done');
+  const index=at<0?courses.length-1:at;
+  return {course:courses[index],remaining:courses.length-index-1};
 }
 
 export function widgetReloadDate(model){
@@ -252,10 +175,4 @@ export function widgetReloadDate(model){
   // updates; only request an update at the next class boundary or day rollover.
   const at=model.at,delta=Math.max(60000,model.nextAt-at+1000);
   return new Date(at+Math.min(delta,DAY));
-}
-
-export function formatWeekLabel(start){
-  const d=new Date(start+BEIJING);
-  const y=d.getUTCFullYear(),m=d.getUTCMonth()+1,date=d.getUTCDate();
-  return y+' / '+String(m).padStart(2,'0')+' / '+String(date).padStart(2,'0');
 }

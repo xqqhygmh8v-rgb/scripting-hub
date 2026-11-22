@@ -2,12 +2,13 @@
 // No HTML, embedded URLs, requests, clipboard reads, telemetry or password persistence.
 // Passwords remain in memory only until caller authenticates or discards them.
 import {
-  Navigation, NavigationStack, List, Section, Text,
-  TextField, SecureField, Button, Image, Picker, useState,
-  VStack, HStack, Spacer, modifiers,
+  GeometryReader, Navigation, NavigationStack, List, ScrollView, Section, Text,
+  TextField, SecureField, Button, Image, useState,
+  VStack, HStack, Spacer, modifiers, useRef,
 } from 'scripting';
+import { NativeProgressContent } from './progress-native';
 
-function LoginView({ title }: { title: string }) {
+function LoginView({title, confirmTitle, allowReuse}: {title:string;confirmTitle:string;allowReuse:boolean}) {
   const dismiss = Navigation.useDismiss();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -25,22 +26,6 @@ function LoginView({ title }: { title: string }) {
       }}
     >
       <Section>
-        <VStack alignment="center" spacing={8} frame={{maxWidth:'infinity'}} padding={{top:12,bottom:12}}>
-          <VStack
-            alignment="center"
-            frame={{width:52,height:52}}
-            modifiers={modifiers().background({
-              style:{light:'#2563EB',dark:'#1D4ED8'},
-              shape:{type:'rect',cornerRadius:12}
-            })}
-          >
-            <Text font={28}>🎓</Text>
-          </VStack>
-          <Text font="headline" fontWeight="bold">CourseSync 账号认证</Text>
-          <Text font="caption1" foregroundStyle="secondaryLabel">安全凭据直连学校系统 · 仅保存在本地钥匙串</Text>
-        </VStack>
-      </Section>
-      <Section header={<Text>账号登录</Text>}>
         <TextField
           title="学号"
           prompt="请输入学号"
@@ -57,48 +42,38 @@ function LoginView({ title }: { title: string }) {
           textContentType="password"
         />
       </Section>
-      <Section footer={<Text>支持 iOS「密码」自动填充，凭据仅保存在本地钥匙串。</Text>}>
+      <Section>
         <Button
-          title="确认"
+          title={confirmTitle}
           disabled={!valid}
           action={() => {
             if (!valid) return;
             dismiss({ username: account, password });
           }}
         />
-        <Button
-          title="选择其他学校"
-          action={() => {
-            dismiss({ changeSchool: true });
-          }}
-        />
-        {title.includes('南京财经大学') ? (
-          <Button
-            title="查询空闲教室"
-            action={() => {
-              dismiss({ kind: 'freeRooms', username: account, password });
-            }}
-          />
-        ) : null}
+        {allowReuse ? <Button title="使用现有登录信息继续" action={() => dismiss({reuse:true})} /> : null}
       </Section>
     </List>
   </NavigationStack>;
 }
 
-export async function presentNativeCredentialForm(title = 'CourseSync 登录') {
-  const result = await Navigation.present({
-    element: <LoginView title={title} />,
-    modalPresentationStyle: 'pageSheet',
+function presentLoginView(title:string,confirmTitle:string,allowReuse=false){
+  return Navigation.present({
+    element:<LoginView title={title} confirmTitle={confirmTitle} allowReuse={allowReuse}/>,
+    modalPresentationStyle:'pageSheet',
   });
-  if (!result || typeof result !== 'object') return null;
-  if (result.changeSchool === true) return { changeSchool: true };
-  if (result.kind === 'freeRooms') return { kind: 'freeRooms', username: result.username || '', password: result.password || '' };
-  const username = typeof result.username === 'string' ? result.username.trim() : '';
-  const password = typeof result.password === 'string' ? result.password : '';
-  if (!username || username.length > 100 || !password || password.length > 512) return null;
-  return { username, password };
 }
 
+function readNativeCredentials(result: any){
+  const username=typeof result?.username==='string'?result.username.trim():'';
+  const password=typeof result?.password==='string'?result.password:'';
+  if(!username||username.length>100||!password||password.length>512)return null;
+  return {username,password};
+}
+
+export async function presentNativeCredentialForm(title='CourseSync 登录'){
+  return readNativeCredentials(await presentLoginView(title,'确认'));
+}
 
 // All short interactive challenges use an iOS-native text entry sheet.
 // OTPs use oneTimeCode so iOS can offer the system SMS/Password code suggestion.
@@ -161,216 +136,211 @@ export async function presentNativeTextForm(options:NativeInputOptions) {
 }
 
 
-// Native two-step flow. School selection is a whitelist, not a URL editor.
-export type NativeSchoolChoice = {id:string;name:string};
 type RefreshFormOutcome=
   | {kind:'credentials';schoolId:string;username:string;password:string}
-  | {kind:'reuse';schoolId:string}
-  | {kind:'freeRooms';schoolId:string;username?:string;password?:string};
+  | {kind:'reuse';schoolId:string};
 
-function RefreshSetupView({schools,initialSchoolId,allowReuse}:{
-  schools:NativeSchoolChoice[];initialSchoolId:string;allowReuse:boolean;
-}){
-  const dismiss=Navigation.useDismiss();
-  const [step,setStep]=useState<'school'|'account'>('school');
-  const [schoolId,setSchoolId]=useState('unselected');
-  const [username,setUsername]=useState('');
-  const [password,setPassword]=useState('');
-  const validSchool=schools.some(s=>s.id===schoolId);
-  const account=username.trim();
-  const validAccount=account.length>0&&account.length<=100&&
-    password.length>0&&password.length<=512;
-  const back=()=>step==='school'?dismiss(null):setStep('school');
-  return <NavigationStack>
-    {step==='school'?
-      <List navigationTitle="选择学校" navigationBarTitleDisplayMode="inline"
-        toolbar={{cancellationAction:<Button title="取消" action={back}/>}}>
-        <Section>
-          <VStack alignment="center" spacing={8} frame={{maxWidth:'infinity'}} padding={{top:12,bottom:12}}>
-            <VStack
-              alignment="center"
-              frame={{width:52,height:52}}
-              modifiers={modifiers().background({
-                style:{light:'#2563EB',dark:'#1D4ED8'},
-                shape:{type:'rect',cornerRadius:12}
-              })}
-            >
-              <Text font={28}>🏫</Text>
-            </VStack>
-            <Text font="headline" fontWeight="bold">选择就读高校</Text>
-            <Text font="caption1" foregroundStyle="secondaryLabel">CourseSync 将针对学校教务系统定制同步管道</Text>
-          </VStack>
-        </Section>
-        <Section header={<Text>请选择你的学校</Text>}>
-          <Picker title="学校" pickerStyle="menu"
-            value={schoolId} onChanged={setSchoolId}>
-            <Text key="unselected" tag="unselected">请选择</Text>
-            {schools.map(s=><Text key={s.id} tag={s.id}>{s.name}</Text>)}
-          </Picker>
-        </Section>
-        <Section>
-          <Button title="下一步：账号密码" disabled={!validSchool}
-            action={()=>{if(validSchool)setStep('account');}}/>
-          {validSchool&&schoolId==='nufe'?<Button title="查询空闲教室"
-            action={()=>{dismiss({kind:'freeRooms',schoolId});}}/>:null}
-        </Section>
-      </List>:
-      <List navigationTitle="账号密码" navigationBarTitleDisplayMode="inline"
-        toolbar={{cancellationAction:<Button title="上一步" action={back}/>}}>
-        <Section>
-          <VStack alignment="center" spacing={8} frame={{maxWidth:'infinity'}} padding={{top:12,bottom:12}}>
-            <VStack
-              alignment="center"
-              frame={{width:52,height:52}}
-              modifiers={modifiers().background({
-                style:{light:'#2563EB',dark:'#1D4ED8'},
-                shape:{type:'rect',cornerRadius:12}
-              })}
-            >
-              <Text font={28}>🔐</Text>
-            </VStack>
-            <Text font="headline" fontWeight="bold">教务系统认证</Text>
-            <Text font="caption1" foregroundStyle="secondaryLabel">支持系统钥匙串与自动填充 · 密码不离机</Text>
-          </VStack>
-        </Section>
-        <Section header={<Text>账号登录</Text>}>
-          <TextField title="学号" prompt="请输入学号" value={username}
-            onChanged={setUsername} textContentType="username"
-            textInputAutocapitalization="never"/>
-          <SecureField title="密码" prompt="请输入密码" value={password}
-            onChanged={setPassword} textContentType="password"/>
-        </Section>
-        <Section footer={<Text>支持 iOS「密码」自动填充，验证通过后安全保存。</Text>}>
-          <Button title="开始刷新" disabled={!validAccount}
-            action={()=>{if(validAccount&&validSchool)dismiss({
-              kind:'credentials',schoolId,username:account,password
-            });}}/>
-          {allowReuse&&schoolId===initialSchoolId?<Button title="使用现有登录信息继续"
-            disabled={!validSchool}
-            action={()=>{if(validSchool)dismiss({kind:'reuse',schoolId});}}/>:null}
-          {validSchool&&schoolId==='nufe'?<Button title="查询空闲教室"
-            action={()=>{dismiss({kind:'freeRooms',schoolId,username:account,password});}}/>:null}
-        </Section>
-      </List>}
-  </NavigationStack>;
+export async function presentNativeRefreshForm(schoolId:string,allowReuse=false):Promise<RefreshFormOutcome|null>{
+  const result=await presentLoginView('登录账号','开始刷新',allowReuse);
+  if(result?.reuse===true)return allowReuse?{kind:'reuse',schoolId}:null;
+  const credentials=readNativeCredentials(result);
+  return credentials?{kind:'credentials',schoolId,...credentials}:null;
 }
 
-export async function presentNativeRefreshForm(schools:NativeSchoolChoice[],
-  initialSchoolId:string,allowReuse=false):Promise<RefreshFormOutcome|null>{
-  const result=await Navigation.present({
-    element:<RefreshSetupView schools={schools} initialSchoolId={initialSchoolId}
-      allowReuse={allowReuse}/>,
-    modalPresentationStyle:'pageSheet'
-  });
-  if(!result||!['credentials','reuse','freeRooms'].includes(result.kind))return null;
-  if(!schools.some(s=>s.id===result.schoolId))return null;
-  if(result.kind==='freeRooms')return {kind:'freeRooms',schoolId:result.schoolId,username:result.username||'',password:result.password||''};
-  if(result.kind==='reuse')return allowReuse&&result.schoolId===initialSchoolId?{kind:'reuse',schoolId:result.schoolId}:null;
-  const username=typeof result.username==='string'?result.username.trim():'';
-  const password=typeof result.password==='string'?result.password:'';
-  if(!username||username.length>100||!password||password.length>512)return null;
-  return {kind:'credentials',schoolId:result.schoolId,username,password};
+type FreeRoomResult =
+  | {kind: 'ready'; date: string; rooms: {period: string; room: string}[]}
+  | {kind: 'error'; message: string};
+type FreeRoomPage = FreeRoomResult | {kind: 'loading'};
+
+function FreeRoomView({page, retry}: {page: FreeRoomPage; retry: () => void}) {
+  if (page.kind === 'loading') {
+    return <NativeProgressContent title="正在查询空闲教室" />;
+  }
+  return <GeometryReader navigationTitle="空闲教室" navigationBarTitleDisplayMode="inline">
+    {proxy=>(
+      <ScrollView>
+        <VStack
+          modifiers={modifiers().padding(24).frame({
+            maxWidth:'infinity',minHeight:proxy.size.height,alignment:'center',
+          })}
+        >
+          {page.kind === 'error' ? (
+            <VStack alignment="center" spacing={14}>
+              <Text font="body" foregroundStyle="secondaryLabel" multilineTextAlignment="center">{page.message}</Text>
+              <Button title="重试" systemImage="arrow.clockwise" action={retry} />
+            </VStack>
+          ) : (
+            <VStack alignment="center" spacing={20}>
+              <Text font="headline">今天 · {page.date}</Text>
+              {page.rooms.map(({period, room}) => (
+                <VStack key={period} alignment="center" spacing={4}>
+                  <Text font="subheadline" foregroundStyle="secondaryLabel">{period}</Text>
+                  <Text font="title2" fontWeight="semibold" multilineTextAlignment="center">{room}</Text>
+                </VStack>
+              ))}
+            </VStack>
+          )}
+        </VStack>
+      </ScrollView>
+    )}
+  </GeometryReader>;
 }
 
-// Native App Dashboard presenting a modern, styled iOS app interface for CourseSync.
 export type DashboardOptions = {
   state: any;
   schoolName: string;
-  canFreeRooms: boolean;
   canSignOut: boolean;
   statusMessage: string;
-  hasCalendar?: boolean;
+  loadFreeRooms?: (isActive: () => boolean, updateProgress: (value: number) => void) => Promise<FreeRoomResult>;
 };
 
-function DashboardView({ state, schoolName, canFreeRooms, canSignOut, statusMessage, hasCalendar = true }: DashboardOptions) {
+function DashboardAction({title, systemImage, action, role}: {
+  title: string;
+  systemImage: string;
+  action: () => void;
+  role?: 'destructive';
+}) {
+  return <Button
+    action={action}
+    role={role}
+    listRowInsets={{top:14,bottom:14,leading:16,trailing:16}}
+  >
+    <HStack alignment="center" spacing={10}>
+      <Image
+        systemName={systemImage}
+        font="body"
+        frame={{width:24,alignment:'center'}}
+      />
+      <Text>{title}</Text>
+      <Spacer />
+    </HStack>
+  </Button>;
+}
+
+function DashboardView({ state, schoolName, canSignOut, statusMessage, loadFreeRooms }: DashboardOptions) {
   const dismiss = Navigation.useDismiss();
+  const [freeRoomPage, setFreeRoomPage] = useState<FreeRoomPage | null>(null);
+  const roomQuery = useRef({visible: false, pending: false, revision: 0});
+  const openFreeRooms = async () => {
+    if (!loadFreeRooms) return;
+    const query = roomQuery.current;
+    query.visible = true;
+    setFreeRoomPage({kind: 'loading'});
+    if (query.pending) return;
+    query.pending = true;
+    const revision=query.revision;
+    const isActive=()=>query.visible&&query.revision===revision;
+    try {
+      const result = await loadFreeRooms(isActive, () => {});
+      if (isActive()) setFreeRoomPage(result);
+    } catch (_) {
+      if (isActive()) setFreeRoomPage({kind: 'error', message: '查询失败，请稍后重试。'});
+    } finally {
+      query.pending = false;
+      if (query.visible && query.revision !== revision) void openFreeRooms();
+    }
+  };
   const isSignedOut = !!state?.signedOut;
   const isFailed = state?.runStatus === 'failed';
   const isSuccess = state?.runStatus === 'success';
-  const statusColor = isSignedOut ? '#F59E0B' : isFailed ? '#EF4444' : isSuccess ? '#10B981' : '#3B82F6';
-  const statusBadge = isSignedOut ? '未登录' : isFailed ? '异常' : isSuccess ? '已同步' : '就绪';
-  const calTitle = state?.calendarTitle || (state?.calendarId ? '专用课表日历' : '未绑定');
-  const lastTime = state?.lastCheck ? String(state.lastCheck).replace('T', ' ').slice(0, 16) : '暂无同步记录';
+  const isPartial = state?.runStatus === 'partial';
+  const statusColor = isSignedOut || isPartial ? 'systemOrange' : isFailed ? 'systemRed' : 'systemGreen';
+  const statusBadge = isSignedOut ? '未登录' : isFailed ? '刷新失败' : isPartial ? '部分完成' : isSuccess ? '已同步' : state?.calendarBindingPending && canSignOut ? '已登录' : '';
+  const calTitle = state?.calendarBindingPending || !state?.calendarId
+    ? '未绑定日历' : (state.calendarTitle || '专用课程和考试日历');
+  const formatLastCheck = (iso?: string) => {
+    if (!iso) return '暂无同步记录';
+    const ms = Date.parse(iso);
+    if (!Number.isFinite(ms)) return String(iso).replace('T', ' ').slice(0, 16);
+    return new Date(ms + 8 * 3600000).toISOString().slice(0, 16).replace('T', ' ');
+  };
+  const lastTime = formatLastCheck(state?.lastCheck);
+
+  const statusDetail = statusMessage && !String(statusMessage).startsWith('上次刷新：') ? statusMessage : '';
 
   return (
-    <NavigationStack>
+    <NavigationStack presentationDetents={['medium', 'large']} presentationDragIndicator="visible">
       <List
         navigationTitle="CourseSync"
-        navigationBarTitleDisplayMode="large"
+        navigationBarTitleDisplayMode="inline"
+        listStyle="insetGroup"
+        navigationDestination={{
+          isPresented: freeRoomPage !== null,
+          onChanged: visible => {
+            if (!visible) {
+              roomQuery.current.visible = false;
+              roomQuery.current.revision++;
+              setFreeRoomPage(null);
+            }
+          },
+          content: freeRoomPage ? <FreeRoomView page={freeRoomPage} retry={openFreeRooms} /> : <Text />,
+        }}
         toolbar={{
           cancellationAction: <Button title="完成" action={() => dismiss(-1)} />
         }}
       >
         <Section>
-          <VStack alignment="leading" spacing={12} padding={{ top: 8, bottom: 8 }}>
-            <HStack alignment="center" spacing={12}>
+          <VStack alignment="leading" spacing={10} padding={{ top: 6, bottom: 6 }}>
+            <HStack alignment="center" spacing={10}>
               <VStack
                 alignment="center"
-                frame={{ width: 48, height: 48 }}
+                frame={{ width: 38, height: 38 }}
                 modifiers={modifiers().background({
                   style: { light: '#2563EB', dark: '#1D4ED8' },
-                  shape: { type: 'rect', cornerRadius: 12 }
+                  shape: { type: 'rect', cornerRadius: 10 }
                 })}
               >
-                <Text font={26}>📅</Text>
+                <Image systemName="calendar" font={18} foregroundStyle="#FFFFFF" />
               </VStack>
-              <VStack alignment="leading" spacing={3}>
-                <HStack spacing={6} alignment="center">
-                  <Text font="headline" fontWeight="bold">CourseSync</Text>
-                  <Text font="caption2" fontWeight="semibold" foregroundStyle={statusColor}>
-                    ● {statusBadge}
-                  </Text>
-                </HStack>
-                <Text font="caption1" foregroundStyle="secondaryLabel">高校课表本地同步引擎</Text>
-              </VStack>
+              <Text font="title2" fontWeight="bold">{schoolName}</Text>
+              <Spacer />
+              {statusBadge ? (
+                <Text font="footnote" fontWeight="semibold" foregroundStyle={statusColor}>
+                  {statusBadge}
+                </Text>
+              ) : null}
             </HStack>
 
-            <VStack
-              alignment="leading"
-              spacing={8}
-              padding={12}
-              modifiers={modifiers().background({
-                style: { light: '#F1F5F9', dark: '#1E293B' },
-                shape: { type: 'rect', cornerRadius: 12 }
-              })}
-            >
-              <HStack alignment="center">
-                <Text font="subheadline" fontWeight="semibold">🏛 {schoolName}</Text>
+            <VStack alignment="leading" spacing={6}>
+              <HStack alignment="center" spacing={10}>
+                <Text font="subheadline" foregroundStyle="secondaryLabel">日历</Text>
                 <Spacer />
-                <Text font="caption1" foregroundStyle="secondaryLabel">🗓 {calTitle}</Text>
+                <Text font="subheadline" fontWeight="medium" multilineTextAlignment="trailing">{calTitle}</Text>
               </HStack>
-              <Text font="caption1" foregroundStyle="secondaryLabel">
-                {statusMessage}
-              </Text>
-              <Text font="caption2" foregroundStyle="tertiaryLabel">
-                上次刷新：{lastTime}
-              </Text>
+              <HStack alignment="center" spacing={10}>
+                <Text font="subheadline" foregroundStyle="secondaryLabel">上次刷新</Text>
+                <Spacer />
+                <Text font="subheadline" fontWeight="medium">{lastTime}</Text>
+              </HStack>
+              {statusDetail ? (
+                <Text font="subheadline" foregroundStyle="secondaryLabel">
+                  {statusDetail}
+                </Text>
+              ) : null}
             </VStack>
           </VStack>
         </Section>
 
-        <Section header={<Text>功能菜单</Text>}>
-          <Button
-            title="🔄 立即刷新"
+        <Section>
+          {/* The native circle variants give all three symbols the same visible outline. */}
+          <DashboardAction
+            title="立即刷新"
+            systemImage="arrow.clockwise.circle"
             action={() => dismiss(0)}
           />
-          {hasCalendar ? (
-            <Button
-              title="📅 管理日程"
-              action={() => dismiss({ schedule: true })}
-            />
-          ) : null}
-          {canFreeRooms ? (
-            <Button
-              title="🏫 查询空闲教室"
-              action={() => dismiss(1)}
+          {loadFreeRooms ? (
+            <DashboardAction
+              title="查询空闲教室"
+              systemImage="magnifyingglass.circle"
+              action={openFreeRooms}
             />
           ) : null}
           {canSignOut ? (
-            <Button
-              title="🚪 退出当前登录"
+            <DashboardAction
+              title="退出当前登录"
+              systemImage="arrow.right.circle"
               role="destructive"
-              action={() => dismiss(canFreeRooms ? 2 : 1)}
+              action={() => dismiss(1)}
             />
           ) : null}
         </Section>
@@ -380,140 +350,57 @@ function DashboardView({ state, schoolName, canFreeRooms, canSignOut, statusMess
 }
 
 export async function presentNativeDashboard(options: DashboardOptions): Promise<any> {
-  const result = await Navigation.present({
-    element: <DashboardView {...options} />,
-    modalPresentationStyle: 'pageSheet'
-  });
-  if (result === null || result === undefined || result === -1) return 'dismiss';
-  return result;
+  let presented = true;
+  const loadFreeRooms = options.loadFreeRooms;
+  try {
+    const result = await Navigation.present({
+      element: <DashboardView {...options} loadFreeRooms={loadFreeRooms
+        ? (isActive, updateProgress) => loadFreeRooms(() => presented && isActive(), progress => {
+          if (presented) updateProgress(progress);
+        })
+        : undefined} />,
+      modalPresentationStyle: 'pageSheet'
+    });
+    if (result === null || result === undefined || result === -1) return 'dismiss';
+    return result;
+  } finally {
+    presented = false;
+  }
 }
 
-// Native Calendar Manager: displays existing calendars with colors, source, and allows adding new calendars.
-export type ManagedCalendarItem = {
-  identifier: string;
-  title: string;
-  color?: string;
-  sourceTitle?: string;
-  allowsContentModifications?: boolean;
-};
+type CalendarManageOptions = Record<string, never>;
+type CalendarManageResult = { action: 'create'; title: string } | null;
 
-export type CalendarManageOptions = {
-  calendars: ManagedCalendarItem[];
-  currentCalendarId: string | null;
-};
-
-export type CalendarManageResult =
-  | { action: 'select'; calendarId: string; calendarTitle: string }
-  | { action: 'create'; title: string }
-  | null;
-
-const CALENDAR_PALETTE = [
-  '#007AFF', // Blue
-  '#34C759', // Green
-  '#FF9500', // Orange
-  '#FF3B30', // Red
-  '#AF52DE', // Purple
-  '#5856D6', // Indigo
-  '#FF2D55', // Pink
-  '#5AC8FA', // Teal
-  '#A2845E', // Brown
-];
-
-function CalendarManageView({ calendars, currentCalendarId }: CalendarManageOptions) {
+function CalendarManageView(_options: CalendarManageOptions) {
   const dismiss = Navigation.useDismiss();
-  const [newTitle, setNewTitle] = useState('');
-  const trimmed = newTitle.trim();
-  const validTitle = trimmed.length >= 1 && trimmed.length <= 60 && !/[\\/\r\n\x00-\x1f]/.test(trimmed);
-
-  const icloudCalendars = calendars.filter(c => (c.sourceTitle || '').toLowerCase().includes('icloud'));
-  const otherCalendars = calendars.filter(c => !(c.sourceTitle || '').toLowerCase().includes('icloud'));
-
-  const renderCalendarRow = (cal: ManagedCalendarItem, index: number) => {
-    const isSelected = cal.identifier === currentCalendarId;
-    const isReadOnly = cal.allowsContentModifications === false;
-    const color = cal.color || CALENDAR_PALETTE[index % CALENDAR_PALETTE.length];
-    return (
-      <HStack key={cal.identifier} alignment="center" spacing={12} padding={{ top: 4, bottom: 4 }}>
-        <VStack
-          frame={{ width: 14, height: 14 }}
-          modifiers={modifiers().background({
-            style: color,
-            shape: { type: 'circle' }
-          })}
-        />
-        <VStack alignment="leading" spacing={2}>
-          <Text font="body" fontWeight={isSelected ? 'bold' : 'regular'}>
-            {cal.title}
-          </Text>
-          <Text font="caption2" foregroundStyle="secondaryLabel">
-            {cal.sourceTitle || '日历'} {isReadOnly ? '· 只读' : ''}
-          </Text>
-        </VStack>
-        <Spacer />
-        {isSelected ? (
-          <HStack spacing={4} alignment="center">
-            <Text font="caption1" fontWeight="semibold" foregroundStyle="#007AFF">当前课表</Text>
-            <Text font="body" fontWeight="bold" foregroundStyle="#007AFF">✓</Text>
-          </HStack>
-        ) : (
-          <Button
-            title="设为课表"
-            disabled={isReadOnly}
-            action={() => {
-              if (isReadOnly) return;
-              dismiss({ action: 'select', calendarId: cal.identifier, calendarTitle: cal.title });
-            }}
-          />
-        )}
-      </HStack>
-    );
-  };
+  const [newTitle, setNewTitle] = useState('CourseSync');
+  const title = newTitle.trim();
+  const validTitle = title.length >= 1 && title.length <= 60 && !/[\\/\r\n\x00-\x1f]/.test(title);
 
   return (
     <NavigationStack>
       <List
-        navigationTitle="管理日历"
+        navigationTitle="新建 iCloud 日历"
         navigationBarTitleDisplayMode="inline"
         toolbar={{
-          cancellationAction: <Button title="完成" action={() => dismiss(null)} />
+          cancellationAction: <Button title="取消" action={() => dismiss(null)} />
         }}
       >
-        <Section header={<Text>添加新日历</Text>} footer={<Text>在 iCloud 创建独立课表日历，与私人日程隔离。</Text>}>
+        <Section>
           <TextField
             title="日历名称"
-            prompt="例如：南财课表、大学课表"
+            prompt="日历名称"
             value={newTitle}
             onChanged={setNewTitle}
           />
           <Button
-            title="＋ 创建并绑定新 iCloud 日历"
+            title="创建并绑定"
             disabled={!validTitle}
             action={() => {
-              if (!validTitle) return;
-              dismiss({ action: 'create', title: trimmed });
+              if (validTitle) dismiss({ action: 'create', title });
             }}
           />
         </Section>
-
-        {icloudCalendars.length > 0 ? (
-          <Section header={<Text>iCloud 日历</Text>} footer={<Text>点击「设为课表」切换同步目标。</Text>}>
-            {icloudCalendars.map((c, idx) => renderCalendarRow(c, idx))}
-          </Section>
-        ) : null}
-
-        {otherCalendars.length > 0 ? (
-          <Section header={<Text>其他日历账户</Text>}>
-            {otherCalendars.map((c, idx) => renderCalendarRow(c, idx + icloudCalendars.length))}
-          </Section>
-        ) : null}
-
-        {calendars.length === 0 ? (
-          <Section>
-            <Text font="subheadline" foregroundStyle="secondaryLabel">
-              未检测到可用日历，请在上方创建新日历或在 iOS 设置中允许 Scripting 访问系统日历。
-            </Text>
-          </Section>
-        ) : null}
       </List>
     </NavigationStack>
   );
@@ -527,22 +414,3 @@ export async function presentNativeCalendarManager(options: CalendarManageOption
   if (!result || typeof result !== 'object') return null;
   return result as CalendarManageResult;
 }
-
-export async function presentNativeConfirmation(options: {title: string; message?: string; cancelLabel?: string; confirmLabel?: string}) {
-  const result = await Navigation.present({
-    element: (
-      <NavigationStack>
-        <List navigationTitle={options.title} navigationBarTitleDisplayMode="inline">
-          {options.message ? <Section><Text>{options.message}</Text></Section> : null}
-          <Section>
-            <Button title={options.confirmLabel || '确定'} action={() => Navigation.dismiss(true)} />
-            <Button title={options.cancelLabel || '取消'} role="cancel" action={() => Navigation.dismiss(false)} />
-          </Section>
-        </List>
-      </NavigationStack>
-    ),
-    modalPresentationStyle: 'pageSheet'
-  });
-  return !!result;
-}
-

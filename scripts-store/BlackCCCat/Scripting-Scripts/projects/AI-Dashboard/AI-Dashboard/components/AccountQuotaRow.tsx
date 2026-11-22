@@ -2,6 +2,7 @@ import { getDashboardLanguage, localize } from "../utils/localization"
 import {
   Button,
   Capsule,
+  Circle,
   DisclosureGroup,
   FlowLayout,
   HStack,
@@ -45,6 +46,8 @@ import {
   remainingQuotaColor,
 } from "../utils/theme"
 import { ProviderIconView } from "./ProviderIconView"
+import { CodexResetCardsBadge } from "./CodexResetCardsBadge"
+import type { RedeemCodexResetCard } from "./CodexResetCardsBadge"
 
 export function AccountQuotaRow(props: {
   account: SubscriptionAccount
@@ -54,6 +57,7 @@ export function AccountQuotaRow(props: {
   zoomSource?: { id: string | number; namespace: any }
   onRefresh: () => void
   onOpenDetail: () => void
+  onRedeemCodexResetCard?: RedeemCodexResetCard
 }) {
   const {
     account,
@@ -125,8 +129,8 @@ export function AccountQuotaRow(props: {
   return (
     <VStack
       alignment="leading"
-      spacing={12}
-      padding={{ vertical: 6 }}
+      spacing={10}
+      padding={{ vertical: 4 }}
       frame={{ maxWidth: "infinity", alignment: "leading" }}
       matchedTransitionSource={props.zoomSource}
     >
@@ -184,28 +188,24 @@ export function AccountQuotaRow(props: {
           </HeaderLayout>
 
           <HeaderLayout spacing={6}>
-            <Text
-              font={isEnglish ? "caption2" : "caption"}
-              fontWeight="medium"
-              foregroundStyle={health.color}
-              fixedSize={wrapText}
-              lineLimit={isEnglish ? undefined : 1}
-            >
-              {localize(`● ${health.label}`)}
-            </Text>
-
-            {snapshot?.codexResetCards?.availableCount !== undefined ? (
+            <HStack alignment="center" spacing={4}>
+              <Circle fill={health.color} frame={{ width: 6, height: 6 }} accessibilityHidden={true} />
               <Text
-                font="caption2"
-                fontWeight="bold"
-                foregroundStyle="systemIndigo"
-                padding={{ horizontal: 6, vertical: 1 }}
-                background={<Capsule fill="quaternarySystemFill" />}
-                fixedSize={wrapText}
-                lineLimit={isEnglish ? undefined : 1}
+                font={isEnglish ? "caption2" : "caption"}
+                fontWeight="semibold"
+                foregroundStyle="label"
+                fixedSize={{ horizontal: false, vertical: true }}
               >
-                {localize(`🎟️ 重置卡 ${snapshot.codexResetCards.availableCount} 次`)}
+                {localize(health.label)}
               </Text>
+            </HStack>
+
+            {account.provider === "codex" && snapshot?.codexResetCards ? (
+              <CodexResetCardsBadge
+                cards={snapshot.codexResetCards}
+                isEnglish={isEnglish}
+                onRedeem={props.onRedeemCodexResetCard}
+              />
             ) : null}
           </HeaderLayout>
         </VStack>
@@ -643,7 +643,7 @@ function QuotaProgressCard(props: { window: QuotaWindow }) {
           fixedSize={wrapText}
           fontWeight="semibold"
           monospacedDigit={true}
-          foregroundStyle={window.spentAmount !== undefined ? "systemBlue" : window.isUnlimited ? "systemGreen" : statusColor}
+          foregroundStyle="label"
         >
           {localize(breakdown.primaryRemainingText)}
         </Text>

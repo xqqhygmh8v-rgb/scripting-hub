@@ -1,8 +1,8 @@
 # 脚本中心目录
 
-最近同步时间：2026-11-21T10:16:13+00:00
+最近同步时间：2026-11-22T19:25:26+00:00
 
-收录 26 个仓库 / 96 个可导入的 Scripting 项目。
+收录 26 个仓库 / 90 个可导入的 Scripting 项目。
 
 > 只收录包含合法 `script.json` 的 Scripting App 项目；说明文字优先取自脚本自带的 description。
 
@@ -12,15 +12,16 @@
 |---|---|---|---|---|---|
 | 活动转日历 | 0.1.6 | 粘贴活动通知，直接识别并添加到 iPhone 日历。缺少开始时间时记为全天。 | [Xykf-ya/activity-to-calendar](https://github.com/Xykf-ya/activity-to-calendar) | 0 | tree |
 
-### 小组件（95）
+### 小组件（89）
 
 | 脚本 | 版本 | 说明 | 仓库 | Star | 来源 |
 |---|---|---|---|---|---|
 | AI Usage | 1.9.0 | 整合 Codex、Grok、Claude、Antigravity、Cursor、Kimi Code、GitHub Copilot、Z.ai、MiniMax、WorkBuddy 与 DeepSeek 多账号用量。支持可配置的普通和多账号主屏幕小组件，以及需要 Scripting Pro 的可选主页常驻入口。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 91 | tree |
 | GitHub Stars | 1.1.1 | 浏览与管理 GitHub Stars、自定义列表和本人仓库，支持仓库资料维护、多年度贡献热力图与常用语言分析。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 91 | tree |
 | Icon Library | 1.1.2 | 管理多个 GitHub 公开图标库，按仓库独立授权、浏览和上传图标。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 91 | tree |
+| Itemory | 1.0.0 | 为每件物品记录购入价格、维修支出和转手收入，查看持有天数与日均成本，在时间线和置物架上回顾自己的物品。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 91 | tree |
 | Surge 监控 | 1.1.1 | Surge iOS Prometheus 指标小组件：Medium 聚焦累计流量与核心状态，Large 展开网络接口流量。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 91 | tree |
-| AI 额度看板 | 2.2.7 | 纯客户端直连查询 79 家 AI 供应商的订阅配额与 API 钱包余额 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
+| AI 额度看板 | 2.3.0 | 纯客户端直连查询 78 家 AI 供应商的订阅配额与 API 钱包余额 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | API Manager | — | 管理New API相关的 API 地址与 Key，并检测地址状态和可用模型 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | BiliFavor | 3.0.0 | 登录哔哩哔哩并查看关注 UP 主的视频动态 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | CAIS | 3.2.9 | Clipboard all in Scripting | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
@@ -35,7 +36,7 @@
 | TG 贴纸键盘 | 3.0.3 | 导入 Telegram 贴纸包，在自定义键盘中按分组使用。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | Vision OCR | — | 图像文本识别 配合快捷指令使用：https://www.icloud.com/shortcuts/1c7e7ed35e9f42eebb70ea4c0a9d2417 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | WLOC 虚拟定位 | 3.0.0 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| WorkBuddy2API | 1.1.2 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
+| WorkBuddy2API | 2.0.1 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | 万象方案助手 | 3.0.4 | 万象方案下载更新 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | 今日油价 | 3.0.3 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | 媒体下载 | 3.0.2 | 从分享菜单接收抖音、YouTube 或 m3u8 链接，自动选择对应下载器下载媒体，可保存到相册或导出到文件。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
@@ -74,19 +75,19 @@
 | 联通 | 1.0.7 | — | [Nanako718/Scripting](https://github.com/Nanako718/Scripting) | 13 | tree |
 | 选择选项 | 1.0.0 | 用于在 Assistant 工具里让用户进行单选或多选确认。 | [Nanako718/Scripting](https://github.com/Nanako718/Scripting) | 13 | tree |
 | 金价收益 | 1.0.0 | — | [Nanako718/Scripting](https://github.com/Nanako718/Scripting) | 13 | tree |
-| CourseSync | — | CourseSync：本地同步课程至 Apple 日历，支持快捷指令自动更新。 | [b7f2d/CourseSync](https://github.com/b7f2d/CourseSync) | 1 | tree |
+| CourseSync | — | CourseSync：本地同步课程和考试至 Apple 日历，支持快捷指令自动更新。 | [b7f2d/CourseSync](https://github.com/b7f2d/CourseSync) | 1 | tree |
 | RSS 阅读 | 1.1.0 | 显示 Google Reader 兼容 RSS 平台的未读数与最新文章，支持 FreshRSS；也可从本地或线上 OPML 读取订阅源，并可在 App、主屏组件与 Scripting 主页默认 UI 中阅读文章。 | [bmqy/Scripting-Scripts](https://github.com/bmqy/Scripting-Scripts) | 1 | tree |
 | 限号 | 1.0.0 | 根据当前位置自动查询所在城市机动车尾号限行信息 | [bmqy/Scripting-Scripts](https://github.com/bmqy/Scripting-Scripts) | 1 | tree |
 | LocalDNS | 1.15.17 | 本地 DNS 与安全服务系统，v1.15.17 修 Surge 联动状态条被一次瞬时探测失败焊死成「未连接」：工作台改为三态（检测中/已连通/未连接并就地显示原因），探测失败自动重试一次，停在配置页每 30s 重探且只重绘状态条不丢当前 tab；后端零改动。v1.15.16 已精确同步上游 UI 2026.11.08.4（发行线 fjn01 → fjn8c，内核仍为零改动的 FJMOS），安装包经 SHA256SUMS 校验（b8c50e03…），7 处 Surge 补丁锚点… | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | ZakoProxy（AI 代理中转） | 1.4.3 | 基于 ckldy/ZakoProxyCLI 深度移植的自托管 AI API 中转代理。原生运行于 Scripting，具备 LocalDNS 风格的流光毛玻璃 Web 控制台（支持全屏 WebViewController/Safari/局域网）、OpenAI / Claude / Responses 多协议、36 款针对性提示词预设与 Astra 通用执行策略、多账号优先级故障转移与熔断、AES-256 本地加密存储及原生 iOS 控制台。 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | 台风路径 | 2.3.1 | 实时台风路径与多机构预报路径地图（数据源: 四创科技）；大号小组件地图需高德 Web服务 Key，可在小组件参数或主程序「更多」中填写 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
-| 寒霜注入工具 | 1.2.1 | 本地提示词注入与网关代理工具（Scripting 版）：内置完整 WebUI、人物卡管理、提示词库与寒霜预设模板。 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
+| 寒霜注入工具 | 1.2.4 | 本地提示词注入与网关代理工具（Scripting 版）：内置完整 WebUI、人物卡管理、提示词库与寒霜预设模板。 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | 网络收音机 | 1.0.1 | 基于 net-redio 的网络收音机：收录全球上千家公开流媒体电台，支持黑胶唱片旋转、电平示波器、主题调色板与后台锁屏播控。 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | 音乐大合集 | 1.2.0 | 多源聚合音乐播放器，支持在线/离线播放与下载管理 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | 黃豆短劇 | 1.2.0 | 浏览、搜索与收藏黃豆短劇内容，支持播放历史和剧集播放。 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | RefreshSideStore | 1.0.4 | SideStore 签名倒计时 · 马蹄圈 · RefreshSideStore | [dompling/Scripting](https://github.com/dompling/Scripting) | 1 | tree |
 | 中国联通 | 1.1.0 | 通过代理客户端抓取联通凭据，读取 Zayia BoxJS 变量并查询联通余量。 | [Timkeltis/ChinaUnicom-Scripting](https://github.com/Timkeltis/ChinaUnicom-Scripting) | 1 | tree |
-| 日历 | 1.8.21 | 农历与倒班日历：首页及日、周、月小组件，支持节气、休班、班次排序循环、假日自动刷新与日夜外观 | [Wangsc1/calendar](https://github.com/Wangsc1/calendar) | 1 | tree |
+| 日历 | 1.8.22 | 农历与倒班日历：首页及日、周、月小组件，支持节气、休班、班次排序循环、假日自动刷新与日夜外观 | [Wangsc1/calendar](https://github.com/Wangsc1/calendar) | 1 | tree |
 | WLinker | 0.1.0 | Wuling vehicle status widget built on the official SGMW open API. | [zy5120/WLinker](https://github.com/zy5120/WLinker) | 1 | tree |
 | 华农表 | 1.6.4 | 华南农业大学课表：登录教务看每周课表；校历放假/调休自动同步（放假不上课、调休按次周上课）；空白课表加课（选周次→点格子→填名字）。支持深色模式、月历校历、学期进度条与主屏小组件 | [condedby/scripting](https://github.com/condedby/scripting) | 0 | tree |
 | 小组件奥捷智行 | 3.0.2 | 小组件奥捷智行 · 每个按钮独立二次确认、按钮图标与文字独立配色 | [emilylakewa/scripting-car-widgets](https://github.com/emilylakewa/scripting-car-widgets) | 0 | tree |
@@ -95,16 +96,9 @@
 | AI 额度面板 | 0.8.0 | 桌面与锁屏小组件，汇总各家 AI 服务的剩余额度：Claude 订阅用量窗口、OpenRouter、DeepSeek、硅基流动、Moonshot、OpenAI 兼容中转站，或任意 JSON 接口。可扩展：一个文件一个服务商。 | [H4S2O8/ai-quota-widget](https://github.com/H4S2O8/ai-quota-widget) | 0 | tree |
 | 住宅代理控制 | 0.1.0 | 测试版。选择地区并更换住宅代理出口 IP。 | [H4S2O8/ai-quota-widget](https://github.com/H4S2O8/ai-quota-widget) | 0 | tree |
 | 南方电网 | 1.2.2 | 查看南方电网余额、欠费、当月用电与最新日用电信息。 | [liugaoxiao/scripting-csg](https://github.com/liugaoxiao/scripting-csg) | 0 | tree |
-| Codex Panel | — | — | [psikent/Scripting](https://github.com/psikent/Scripting) | 0 | tree |
-| DeepSeek Panel | — | DeepSeek 余额与今日开销小组件 | [psikent/Scripting](https://github.com/psikent/Scripting) | 0 | tree |
-| OpenCode Panel | — | OpenCode Go 订阅限额面板：应用内列表 + 桌面小组件 + 手表圆形小组件，实时监控 Rolling（5 小时）、Weekly（1 周）、Monthly（1 月）三个限额窗口的剩余百分比、状态与重置时间，超出限额红色高亮；配合刷新动作，深色/浅色界面均适配官方图标。首次使用在设置页填入从 OpenCode API 管理页（opencode.ai/auth）获取的 API Key（sk- 开头）。 | [psikent/Scripting](https://github.com/psikent/Scripting) | 0 | tree |
-| Surge 日志分析器 | 1.0.0 | 分析 Surge 日志，查看内存曲线图和日志详情 | [psikent/Scripting](https://github.com/psikent/Scripting) | 0 | tree |
-| Surge规则Github托管 | 1.0.0 | 直接在已有规则文件基础上，添加新规则 | [psikent/Scripting](https://github.com/psikent/Scripting) | 0 | tree |
-| ZCode Panel | — | 智谱 ZCode 账户余额与今日开销小组件 | [psikent/Scripting](https://github.com/psikent/Scripting) | 0 | tree |
-| 图标搜索 | 1.0.0 | 搜索并预览图标，支持复制图标链接 | [psikent/Scripting](https://github.com/psikent/Scripting) | 0 | tree |
-| 规则搜索 | 1.0.0 | 搜索 blackmatrix7/ios_rule_script 仓库中的代理规则 | [psikent/Scripting](https://github.com/psikent/Scripting) | 0 | tree |
 | 网上国网用电 | 1.5.9 | 网上国网小组件：浮岛 / 格栅主题、用电日历、月度汇总与阶梯。 | [SmallMr/Scripting-SGCC](https://github.com/SmallMr/Scripting-SGCC) | 0 | tree |
 | 天气日历 | 1.5.5 | — | [SmallMr/Scripting-WeatherWidget](https://github.com/SmallMr/Scripting-WeatherWidget) | 0 | tree |
+| Toki | 1.0.0 | 账号与 Token 管理，配套桌面小组件 | [SylvanRoe/Toki](https://github.com/SylvanRoe/Toki) | 0 | tree |
 | 启动台 | 1.7.4 | 启动台：把常用 App、链接和自定义脚本放到桌面小组件上，一点直达（汉化版）。 | [vaeann/scripting-widgets](https://github.com/vaeann/scripting-widgets) | 0 | tree |
 | AI 用量 | 1.64 | 基于 Scripting 的 iPhone AI 用量小组件：查看 Codex／Claude／Antigravity 额度、DeepSeek 余额与 WorkBuddy 国内个人积分及只读签到状态。支持官方直连、Parrot、Sub2API、独立用量统计、Antigravity 分组切换、账号详情单独刷新、拖动排序及自定义名称，适用于主屏和锁屏。 | [Wangsc1/ai-usage](https://github.com/Wangsc1/ai-usage) | 0 | tree |
 | 国网电费 | 1.0.7 | 网上国网余额、用电和阶梯小组件。只在本机直连国网接口，不经过任何第三方服务器。 | [YePiXpert/scripting-scripts](https://github.com/YePiXpert/scripting-scripts) | 0 | tree |
@@ -116,109 +110,8 @@
 
 | 时间 | 类型 | 对象 | 原因 |
 |---|---|---|---|
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.10/Password-Generator.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.10/Memory-Days.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.10/Package-Helper.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.10/Fonts-Installer.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.10/Regex-Tester.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.10/PhotoSlide.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.10/Rime-Wanxiang-Updater.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.10/Gas-Info.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.10/Calendar-Pomodoro.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.10/BiliFavor.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.10/ZDict.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.10/WLOC-Helper.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.10/FileStore.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.10/Translator.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.10/Sleep-Tracker.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.10/CAIS.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.10/TG-Stickers-Keyboard.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.10/PDFHelper.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.10/Custom-Alarm.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.10/Media-Downloader.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.10/Surge-Module-Manager.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.10/Scripting-Rime-Keyboard.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v3.0.0/Password-Generator.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v3.0.0/PhotoSlide.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v3.0.0/BiliFavor.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v3.0.0/FileStore.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v3.0.0/CAIS.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v3.0.0/PDFHelper.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.9/Password-Generator.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.9/Memory-Days.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.9/Package-Helper.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.9/Fonts-Installer.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.9/Regex-Tester.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.9/PhotoSlide.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.9/Rime-Wanxiang-Updater.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.9/Gas-Info.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.9/Calendar-Pomodoro.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.9/BiliFavor.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.9/ZDict.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.9/WLOC-Helper.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.9/FileStore.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.9/Translator.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.9/Sleep-Tracker.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.9/CAIS.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.9/TG-Stickers-Keyboard.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.9/PDFHelper.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.9/Custom-Alarm.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.9/Media-Downloader.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.9/Surge-Module-Manager.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.9/Scripting-Rime-Keyboard.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.11/Password-Generator.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.11/Memory-Days.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.11/Package-Helper.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.11/Fonts-Installer.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.11/Regex-Tester.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.11/PhotoSlide.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.11/Rime-Wanxiang-Updater.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.11/Gas-Info.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.11/Calendar-Pomodoro.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.11/BiliFavor.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.11/ZDict.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.11/WLOC-Helper.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.11/FileStore.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.11/Translator.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.11/Sleep-Tracker.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.11/CAIS.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.11/TG-Stickers-Keyboard.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.11/PDFHelper.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.11/Custom-Alarm.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.11/Media-Downloader.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.11/Surge-Module-Manager.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.11/Scripting-Rime-Keyboard.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.12/Password-Generator.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.12/Memory-Days.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.12/Package-Helper.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.12/Fonts-Installer.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.12/Regex-Tester.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.12/PhotoSlide.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.12/Rime-Wanxiang-Updater.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.12/Gas-Info.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.12/Calendar-Pomodoro.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.12/BiliFavor.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.12/ZDict.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.12/WLOC-Helper.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.12/FileStore.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.12/Translator.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.12/Sleep-Tracker.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.12/CAIS.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.12/TG-Stickers-Keyboard.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.12/PDFHelper.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.12/Custom-Alarm.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.12/Media-Downloader.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.12/Surge-Module-Manager.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/releases/v2.14.12/Scripting-Rime-Keyboard.zip | 已不在任何有效项目中 |
-| 2026-11-21T10:16:13+00:00 | repo | DarthQuintus/ScriptSCAD-Suite | 未发现合法 script.json 项目 |
-| 2026-11-21T10:16:13+00:00 | repo | NotFaceGUI/yuris-kernel | 未发现合法 script.json 项目 |
-| 2026-11-21T10:16:13+00:00 | repo | Nuln-Studio/Nuitka_ | 未发现合法 script.json 项目 |
-| 2026-11-21T10:16:13+00:00 | repo | TriliumNext/Trilium | 未发现合法 script.json 项目 |
-| 2026-11-21T10:16:13+00:00 | repo | fishjar/kiss-translator | 未发现合法 script.json 项目 |
-| 2026-11-21T10:16:13+00:00 | repo | fleetdm/fleet | 未发现合法 script.json 项目 |
-| 2026-11-21T10:16:13+00:00 | repo | hello-yunshu/Xray_bash_onekey | 未发现合法 script.json 项目 |
-| 2026-11-21T10:16:13+00:00 | repo | megumiss/NIKKEAutoScript | 未发现合法 script.json 项目 |
-| 2026-11-21T10:16:13+00:00 | repo | minlearn/inst | 未发现合法 script.json 项目 |
-| 2026-11-21T10:16:13+00:00 | repo | tyouhyou/imprint | 未发现合法 script.json 项目 |
-| 2026-11-21T10:16:13+00:00 | repo | ucxn/Bro-Stat | 未发现合法 script.json 项目 |
-| 2026-11-21T10:16:13+00:00 | repo | veritatron/words2widget | 未发现合法 script.json 项目 |
+| 2026-11-22T19:25:26+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/projects/AI-Dashboard/AI-Dashboard/providers/gemini.ts | 已不在任何有效项目中 |
+| 2026-11-22T19:25:26+00:00 | file | scripts-store/b7f2d/CourseSync/projects/CourseSync/docs/audit-2026-11-02.md | 已不在任何有效项目中 |
+| 2026-11-22T19:25:26+00:00 | file | scripts-store/b7f2d/CourseSync/projects/CourseSync/docs/release-notes.md | 已不在任何有效项目中 |
+| 2026-11-22T19:25:26+00:00 | file | scripts-store/b7f2d/CourseSync/projects/CourseSync/docs/engineering.md | 已不在任何有效项目中 |
+| 2026-11-22T19:25:26+00:00 | file | scripts-store/b7f2d/CourseSync/projects/CourseSync/schedule-native.tsx | 已不在任何有效项目中 |

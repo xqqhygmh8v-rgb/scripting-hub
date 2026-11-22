@@ -668,10 +668,13 @@ export function stripToolMarkup(input: string): string {
   if (!input) return "";
   let s = input;
 
+  // 先做一次标记归一化，把各类带空格、DSML 的变体压平
+  s = normalizeToolMarkup(s);
+
   // 1. 块级清洗：DSML 全块 (支持 <｜｜DSML｜｜ ... </｜｜DSML｜｜ ...> 或 |DSML|...|DSML|call_end|)
   s = s.replace(/(?:<\s*\/?\s*)?[｜|]{1,2}\s*DSML\b[\s\S]*?(?:<\s*\/\s*[｜|]{1,2}\s*DSML\b[^>]*>|[｜|]{1,2}\s*(?:call_end|calls_end|invoke_end)\b[｜|]*(?:\s*>)?)/gi, "");
 
-  // 2. 块级清洗：标准 XML 与函数调用标签
+  // 2. 块级清洗：标准 XML 与函数调用标签（全量覆盖 tool_calls / tool_call / function_call 等单复数与空格）
   s = s.replace(/<tool_(?:tool_)?calls\b[\s\S]*?<\/\s*tool_(?:tool_)?calls\s*>/gi, "");
   s = s.replace(/<function_calls\b[\s\S]*?<\/\s*function_calls\s*>/gi, "");
   s = s.replace(/<tool_invoke\b[\s\S]*?<\/\s*tool_invoke\s*>/gi, "");
@@ -680,13 +683,17 @@ export function stripToolMarkup(input: string): string {
   s = s.replace(/<invoke\b[\s\S]*?<\/\s*invoke\s*>/gi, "");
   s = s.replace(/<antml:invoke\b[\s\S]*?<\/\s*antml:invoke\s*>/gi, "");
 
-  // 3. 块级清洗：中文降级标记
-  s = s.replace(/\[调用工具\s+[A-Za-z_][\w.:-]*\s+参数\s*\{[\s\S]*?\}\]/g, "");
+  // 3. 块级清洗：中文降级标记 ([调用工具 / <调用工具)
+  s = s.replace(
+    /[<\[【＜]\s*调用工具\s+[A-Za-z_][\w.:-]*\s+(?:参数|arguments|args)\s*=?\s*\{[\s\S]*?\}(?:\s*[\/>\]】＞]|\s*<\/\s*调用工具\s*>)?/gi,
+    ""
+  );
+  s = s.replace(/<\/\s*调用工具\s*>/gi, "");
 
   // 4. 残留孤立标签清洗
   s = s.replace(/<\s*\/?\s*[｜|]{1,2}[^>]*>/gi, "");
   s = s.replace(/[｜|]{1,2}\s*(?:DSML|calls|invoke|parameter|call_end|invoke_end)[｜|]*/gi, "");
-  s = s.replace(/<\s*\/?\s*(?:tool_calls|function_calls|tool_call|function_call|tool_invoke|invoke|parameter|antml:\w+)\b[^>]*>/gi, "");
+  s = s.replace(/<\s*\/?\s*(?:tool_?(?:tool_)?\s?calls?|function_?\s?calls?|tool_?\s?call|function_?\s?call|tool_invoke|invoke|parameter|antml:\w+)\b[^>]*>/gi, "");
   s = s.replace(/<\s*call:[A-Za-z0-9_:-]+\b[^>]*\/?>/gi, "");
   s = s.replace(/<\s*\/\s*>/g, "");
 
@@ -897,10 +904,12 @@ export function withReasoningDiscipline(systemPrompt: string): string {
 
 /** 任何可能开启工具调用块的标记（大小写不敏感，允许 < 与标签名之间存在空白） */
 const TOOL_MARKUP_START_RE =
-  /<\s*\/?\s*(?:tool_?\s?calls?|function_?\s?calls?|tool_invoke|invoke|tool_use|tool_result|tool_response|parameters?|antml:)|[｜|]{1,2}\s*(?:DSML|calls|call_end|invoke|invoke_end|parameter)|\[\s*调用工具|<\s*[｜|]|\{\s*"(?:tool_calls|tool_call|function_call)"\s*:|to=functions\./i;
+  /<\s*\/?\s*(?:tool_?(?:tool_)?\s?calls?|function_?\s?calls?|tool_invoke|invoke|tool_use|tool_result|tool_response|parameters?|antml:)|[｜|]{1,2}\s*(?:DSML|calls|call_end|invoke|invoke_end|parameter)|[<\[【＜]\s*\/?\s*调用工具|<\s*[｜|]|\{\s*"(?:tool_calls|tool_call|function_call)"\s*:|to=functions\./i;
 
 /** 工具标签名：只扣住仍在成形的标签名，不误伤正常正文里的 < / [ / { */
 const TOOL_TAG_NAMES = [
+  "tool_tool_calls",
+  "tool_tool_call",
   "tool_calls",
   "tool_call",
   "function_calls",
@@ -934,6 +943,9 @@ const TOOL_MARKUP_PREFIXES = [
   "｜invoke_end",
   "｜parameter",
   "[调用工具",
+  "<调用工具",
+  "【调用工具",
+  "＜调用工具",
 ];
 
 /**
@@ -1022,6 +1034,9 @@ export class StreamToolFilter {
     const maxLen = Math.min(n - this.pushedLength, 32);
     for (let len = maxLen; len >= 1; len--) {
       const suffix = text.slice(n - len);
+      // 0) 只有 < 或 </ 或 <+空白：标签名还没成形，先扣住等下一块
+      //    （不加这条：逐字符推送时 n-pushedLength 只有 1，裸 < 会被当场推出）
+      if (/^<\s*\/?\s*$/.test(suffix)) return len;
       // 1) <tag / </tag 的标签名仍在成形（含仅有 < 或 </）
       const tag = /^<\s*\/?\s*([a-z_:][a-z_: ]*)$/i.exec(suffix);
       if (tag) {
@@ -1122,7 +1137,7 @@ export class StreamToolFilter {
 
 /** 文本里是否包含工具调用痕迹（用于区分“空回复”和“工具通道不支持”） */
 export function looksLikeToolCall(input: string): boolean {
-  return /[｜|]{2}\s*DSML|antml:invoke|<\s*function_call\b|<\s*tool_invoke\b|\[调用工具\s+[A-Za-z_]|"name"\s*:\s*"[A-Za-z_][\w.:-]*"[^}]*"arguments"/i.test(
+  return /[｜|]{2}\s*DSML|antml:invoke|<\s*function_call\b|<\s*tool_invoke\b|<\s*tool_?(?:tool_)?\s?calls?\b|[<\[【＜]\s*\/?\s*调用工具|"name"\s*:\s*"[A-Za-z_][\w.:-]*"[^}]*"arguments"/i.test(
     input || ""
   );
 }
@@ -1183,13 +1198,15 @@ export function normalizeToolMarkup(text: string): string {
       /(?:<\s*)?[｜|]{1,2}\s*DSML\s*[｜|]{1,2}\s*parameter\s+name=["']?([^"'｜|>\s]+)["']?[^>\n]*>?/gi,
       '<parameter name="$1">'
     )
-    // function_call / function_calls 标签
-    .replace(/<\s*tool\s+calls\s*>/gi, "<tool_tool_calls>")
-    .replace(/<\s*\/\s*tool\s+calls\s*>/gi, "</tool_tool_calls>")
-    .replace(/<\s*function_calls\s*>/gi, "<tool_tool_calls>")
-    .replace(/<\s*\/\s*function_calls\s*>/gi, "</tool_tool_calls>")
-    .replace(/<\s*function_call\b/gi, "<tool_call")
-    .replace(/<\s*\/\s*function_call\s*>/gi, "</tool_call>")
+    // tool_calls / tool_call / function_call / function_calls 标签支持空格及单复数
+    .replace(/<\s*tool[_\s]+calls\s*>/gi, "<tool_tool_calls>")
+    .replace(/<\s*\/\s*tool[_\s]+calls\s*>/gi, "</tool_tool_calls>")
+    .replace(/<\s*function[_\s]+calls\s*>/gi, "<tool_tool_calls>")
+    .replace(/<\s*\/\s*function[_\s]+calls\s*>/gi, "</tool_tool_calls>")
+    .replace(/<\s*tool[_\s]+call\b/gi, "<tool_call")
+    .replace(/<\s*\/\s*tool[_\s]+call\s*>/gi, "</tool_call>")
+    .replace(/<\s*function[_\s]+call\b/gi, "<tool_call")
+    .replace(/<\s*\/\s*function[_\s]+call\s*>/gi, "</tool_call>")
     // antml: 标签（注意保留闭合斜杠）
     .replace(/<\s*(\/?)\s*antml:?/gi, "<$1")
     // call:tool_name{...} 语法 (Gemini / 特殊模型)
@@ -1429,7 +1446,7 @@ export function parseToolCalls(
       }));
   };
 
-  const wrap = /<\s*tool_calls\s*>([\s\S]*?)<\s*\/\s*tool_calls\s*>/i.exec(src);
+  const wrap = /<\s*tool_?(?:tool_)?\s?calls?\s*>([\s\S]*?)<\s*\/\s*tool_?(?:tool_)?\s?calls?\s*>/i.exec(src);
   const fence = wrap ? null : /```(?:json)?\s*([\s\S]*?)```/i.exec(src);
   const chunk = wrap ? wrap[1] : fence ? fence[1] : null;
   if (chunk) {
@@ -1445,8 +1462,8 @@ export function parseToolCalls(
     } catch {}
   }
 
-  // E) 降级格式：[调用工具 shell 参数 {...}]
-  const tagRe = /\[调用工具\s+([A-Za-z_][\w.:-]*)\s+参数\s*\{/g;
+  // E) 降级格式：[调用工具 / <调用工具 shell 参数={...}]
+  const tagRe = /[<\[【＜]\s*调用工具\s+([A-Za-z_][\w.:-]*)\s+(?:参数|arguments|args)\s*=?\s*\{/gi;
   let tm: RegExpExecArray | null;
   while ((tm = tagRe.exec(src)) !== null) {
     const startBrace = tm.index + tm[0].length - 1;
@@ -1484,7 +1501,9 @@ export function parseToolCalls(
     if (depth !== 0) break;
     calls.push({ name: tm[1], arguments: src.slice(startBrace, j) });
     let end = j;
-    if (src[end] === "]") end++;
+    while (end < src.length && /[\s>\]】＞\/]/.test(src[end])) end++;
+    const closeTag = /^<\/\s*调用工具\s*>/i.exec(src.slice(end));
+    if (closeTag) end += closeTag[0].length;
     spans.push([tm.index, end]);
     tagRe.lastIndex = end;
   }

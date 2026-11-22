@@ -1,179 +1,107 @@
 // @ts-nocheck
 // CourseSync Home Screen widget. This entry is independent of index.tsx:
 // renders only the already synchronized local timetable snapshot.
-import { FileManager, Widget, Text, VStack, HStack, Spacer, GeometryReader, Script, modifiers } from 'scripting';
-import { loadBestWidgetState, buildWidgetModel, selectVisibleCourses, selectTodayPair, selectTodayColumns, widgetReloadDate } from './widget-data';
+import { FileManager, Widget, Text, VStack, HStack, GeometryReader, Script, modifiers } from 'scripting';
+import { loadBestWidgetState, buildWidgetModel, selectTodayCourse, widgetReloadDate } from './widget-data';
 
 // Scripting resolves DynamicShapeStyle against the current system appearance.
 const COLORS={
   canvas:{light:'#FFFFFF',dark:'#000000'},
   dark:{light:'#203451',dark:'#F3F4F6'},
   blue:{light:'#2C69D1',dark:'#7DB4FF'},
-  muted:{light:'#9BA3AF',dark:'#AEB8C8'},
-  faint:{light:'#727E91',dark:'#BBC6D7'},
-  finished:{light:'#929AA7',dark:'#A7B2C3'},
+  muted:{light:'#59677A',dark:'#AEB8C8'},
+  faint:{light:'#536780',dark:'#BBC6D7'},
+  finished:{light:'#536175',dark:'#A7B2C3'},
   doneBg:{light:'#E5E7EB',dark:'#343D4C'},
   nextBg:{light:'#EBF4FF',dark:'#243449'},
-  activeBg:{light:'#238BFF',dark:'#2467C6'},
+  activeBg:{light:'#185FC2',dark:'#215DB5'},
   activeDetail:{light:'#F0F7FF',dark:'#E7F2FF'},
   white:'#FFFFFF'
 };
 
-// Narrow neighbor columns need explicit CJK line breaks. SwiftUI otherwise
-// gives the long detail stack priority and truncates the title to one line.
-function formatSideTitle(title){
-  const value=String(title||'');
-  const chars=Array.from(value);
-  if(chars.length<=4||!/[㐀-鿿]/.test(value))return value;
-  const lines=Math.ceil(chars.length/4);
-  const chunks=[];
-  for(let i=0;i<lines;i++){
-    const count=Math.ceil((chars.length)/ (lines-i));
-    chunks.push(chars.splice(0,count).join(''));
+// Explicit breaks allow narrow cards to wrap room numbers as well as Chinese text.
+function wrapLocation(value,width,fontSize=8){
+  const maxWidth=Math.max(fontSize,width);
+  let result='',lineWidth=0;
+  for(const character of String(value||'')){
+    if(character==='\n'){result+='\n';lineWidth=0;continue;}
+    const charWidth=/[\u0000-\u007f]/.test(character)?fontSize*0.65:fontSize;
+    if(lineWidth&&lineWidth+charWidth>maxWidth){result+='\n';lineWidth=0;}
+    result+=character;
+    lineWidth+=charWidth;
   }
-  return chunks.join('\n');
+  return result;
 }
 
-function CourseCard({course,compact=false,width,density='normal'}){
-  // Larger single today card; compact side-by-side today cards.
-  const smallText=density==='pair',largeText=density==='single';
-  const isSide=density==='side';
-  // Enlarge readable text without overflowing narrow two-card layouts.
-  const titleSize=smallText?(compact?10:11):largeText?(compact?15:17):(compact?13:15);
-  const detailSize=smallText?(compact?9:10):largeText?(compact?12:13):(compact?11:12);
-  const cardPadding=isSide?4:smallText?5:compact?7:8;
-  const sideFont=compact?12:13,sideDetailFont=compact?9:10;
-  const detailsColor=course.status==='current'?COLORS.activeDetail:
-    course.status==='done'?COLORS.muted:COLORS.faint;
+function CourseCard({course,width,height,compact,stackTimes}){
   const done=course.status==='done',current=course.status==='current';
   const fg=done?COLORS.finished:current?COLORS.white:COLORS.dark;
   const bg=done?COLORS.doneBg:current?COLORS.activeBg:COLORS.nextBg;
-  // Modifier order matters: paint the rounded background AFTER sizing the
-  // card. Previously the visible background used its intrinsic text width
-  // and sat to the left inside an otherwise centered, fixed-width frame.
-  const cardStyle=modifiers()
-    .padding(cardPadding)
-    .frame(width?{width,alignment:'topLeading'}:{maxWidth:'infinity',alignment:'topLeading'})
-    .background({style:bg,shape:{type:'rect',cornerRadius:9}});
-  return <VStack key={course.id} alignment="leading" spacing={smallText?2:3}
-      modifiers={cardStyle}>
-    <Text font={isSide?sideFont:titleSize} fontWeight={current?'bold':'semibold'}
-      lineLimit={smallText?4:5} minScaleFactor={isSide?0.85:1}
-      fixedSize={{horizontal:false,vertical:true}}
-      multilineTextAlignment="leading" foregroundStyle={fg}>
-      {isSide?formatSideTitle(course.title):course.title}
-    </Text>
-    <Text font={isSide?sideDetailFont:detailSize} foregroundStyle={detailsColor}
-      lineLimit={isSide?1:2} minScaleFactor={isSide?0.72:1}>
-      {course.startLabel+'–'+course.endLabel}
-    </Text>
-    {course.location?<Text font={isSide?sideDetailFont:detailSize}
-      foregroundStyle={detailsColor}
-      lineLimit={isSide?2:3} fixedSize={{horizontal:false,vertical:true}}
-      multilineTextAlignment="leading">{isSide?String(course.location).replace(/\s+/, '\n'):course.location}</Text>:null}
+  const detail=current?COLORS.activeDetail:done?COLORS.muted:COLORS.faint;
+  const examPrefix='（考试）';
+  const exam=course.title.startsWith(examPrefix);
+  const title=exam?course.title.slice(examPrefix.length):course.title;
+  const start=(exam?'考 ':'')+course.startLabel;
+  const time=start+((compact||stackTimes)?'\n':'–')+course.endLabel;
+  const chars=Array.from(title).length;
+  const availableWidth=Math.max(1,width-(compact?6:8));
+  const location=wrapLocation(course.location,availableWidth);
+  const locationLines=location?location.split('\n').length:0;
+  const availableHeight=Math.max(1,height-((compact||stackTimes)?30:20)-locationLines*10);
+  const titleFont=Math.max(5,Math.min(compact?10:11,
+    Math.floor(Math.sqrt(availableWidth*availableHeight/Math.max(1,chars)*0.8))));
+  const cardStyle=modifiers().padding(compact?3:4)
+    .frame({width,alignment:'topLeading'})
+    .background({style:bg,shape:{type:'rect',cornerRadius:6}});
+  return <VStack alignment="leading" spacing={2} modifiers={cardStyle}>
+    <Text font={titleFont} fontWeight="semibold" fixedSize={{horizontal:false,vertical:true}}
+      multilineTextAlignment="leading" foregroundStyle={fg}>{title}</Text>
+    <Text font={8} foregroundStyle={detail} fixedSize={{horizontal:false,vertical:true}}
+      multilineTextAlignment="leading" minScaleFactor={0.8}>{time}</Text>
+    {course.location?<Text font={8} fixedSize={{horizontal:false,vertical:true}}
+      multilineTextAlignment="leading" foregroundStyle={detail}>{location}</Text>:null}
   </VStack>;
 }
 
-function DayColumn({day,width,compact=false,maxRows=1,emphasize=false}){
-  const window=selectVisibleCourses(day,maxRows);
-  const dayColor=day.today?COLORS.blue:COLORS.dark;
-  return <VStack key={String(day.index)} alignment="center" spacing={compact?4:5}
-    frame={{width,alignment:'top'}}>
-    <VStack spacing={1} frame={{width}} padding={{top:1,bottom:2}}>
-      <Text font={compact?16:18} fontWeight="bold" foregroundStyle={dayColor}>
-        {day.label}
-      </Text>
-      <Text font={compact?10:11} foregroundStyle={day.today?COLORS.blue:COLORS.faint}
-        lineLimit={1}>{day.weekday} {day.dateLabel}</Text>
+function DayColumn({day,layout,compact}){
+  const {columnWidth,gap,contentHeight,stackTimes}=layout;
+  const courses=day.courses;
+  const cardHeight=courses.length?Math.max(1,Math.floor((contentHeight-gap*courses.length)/courses.length)):0;
+  const headingStyle=modifiers().frame({width:columnWidth,height:28})
+    .background({style:day.today?COLORS.nextBg:COLORS.canvas,shape:{type:'rect',cornerRadius:6}});
+  return <VStack alignment="center" spacing={gap} frame={{width:columnWidth,alignment:'top'}}>
+    <VStack spacing={1} modifiers={headingStyle}>
+      <Text font={11} fontWeight="bold" foregroundStyle={day.today?COLORS.blue:COLORS.dark}>{day.label}</Text>
+      <Text font={9} foregroundStyle={COLORS.faint}>{day.dateLabel}</Text>
     </VStack>
-    {window.courses.length?window.courses.map(c=>
-      <HStack key={c.id} alignment="top" spacing={0}
-        frame={{width,alignment:'center'}}>
-        <Spacer minLength={0}/>
-        <CourseCard course={c} compact={compact} width={width-8}
-          density={emphasize?'single':'side'}/>
-        <Spacer minLength={0}/>
-      </HStack>):
-      <Text font={12} foregroundStyle={COLORS.muted}>无课</Text>}
-    {window.hiddenAfter>0?
-      <Text font={compact?10:11} foregroundStyle={COLORS.faint}>
-        +{window.hiddenAfter}节课
-      </Text>:null}
+    {courses.length?courses.map(course=>
+      <CourseCard key={course.id} course={course} width={columnWidth} height={cardHeight}
+        compact={compact} stackTimes={stackTimes}/>)
+      :<Text font={10} foregroundStyle={COLORS.muted}>—</Text>}
   </VStack>;
 }
 
-// The left side holds exactly the current (or next) class. The right side
-// stacks later upcoming classes; completed lessons are intentionally omitted.
-function TodayPairColumn({day,width,compact=false,gap=5,showAll=false}){
-  const columns=selectTodayColumns(day,showAll?3:1);
-  const cardWidth=Math.max(25,Math.floor((width-gap)/2));
-  return <VStack alignment="center" spacing={compact?4:5}
-      frame={{width,alignment:'top'}}>
-    <VStack spacing={1} frame={{width}} padding={{top:1,bottom:2}}>
-      <Text font={compact?16:18} fontWeight="bold" foregroundStyle={COLORS.blue}>
-        {day.label}
-      </Text>
-      <Text font={compact?10:11} foregroundStyle={COLORS.blue}
-        lineLimit={1}>{day.weekday} {day.dateLabel}</Text>
-    </VStack>
-    <HStack alignment="top" spacing={gap} frame={{width,alignment:'topLeading'}}>
-      <VStack frame={{width:cardWidth,alignment:'topLeading'}}>
-        {columns.focus?<CourseCard course={columns.focus} compact={compact}
-          width={cardWidth} density="pair"/>:null}
-      </VStack>
-      <VStack alignment="center" spacing={compact?4:6}
-          frame={{width:cardWidth,alignment:'top'}}>
-        {columns.future.map(c=>
-          <CourseCard key={c.id} course={c} compact={compact}
-            width={cardWidth} density="pair"/>)}
-        {columns.hiddenAfter>0?<Text font={compact?10:11}
-          foregroundStyle={COLORS.faint}>+{columns.hiddenAfter}节课</Text>:null}
-      </VStack>
-    </HStack>
-  </VStack>;
+// Share the available height among each day's courses.
+function weeklyLayout(width,height,compact){
+  const inset=compact?9:12,gap=compact?3:4;
+  const columnWidth=Math.max(1,Math.floor((width-2*inset-6*gap)/7));
+  const stackTimes=!compact&&columnWidth<58;
+  const contentHeight=Math.max(0,height-2*inset-28-gap);
+  return {inset,gap,columnWidth,contentHeight,stackTimes};
 }
 
-// GeometryReader measures the actual widget CONTENT rect, rather than the
-// screen's width. A conservative inset prevents clipping at rounded corners.
-// No footer or stretchy Spacer can push the title outside the visible area.
-function RollingPanel({model,family}){
-  const medium=family==='systemMedium';
+function WeeklyPanel({model,family}){
+  const compact=family==='systemMedium';
   return <GeometryReader>
     {proxy=>{
-      const width=proxy.size.width,height=proxy.size.height;
-      // Exactly three day groups; headings and cards share the same center.
-      const safeInset=medium?9:12,gap=medium?4:6;
-      const days=model.days.slice(0,3);
-      const today=days.find(d=>d.today);
-      const todayFocus=selectTodayPair(today);
-      const expanded=todayFocus.courses.length>1;
-      const usableWidth=Math.max(96,width-2*safeInset-2*gap);
-      // Prefer today's full course name and room over unused vertical space.
-      // Keep enough width for neighboring day cards on medium and large.
-      const sideShare=expanded?0.24:medium?0.30:0.265;
-      const sideWidth=Math.floor(usableWidth*sideShare);
-      const todayWidth=usableWidth-sideWidth*2;
-      const maxRows=medium?1:height>=370?3:height>=290?2:1;
-      const showAllToday=!medium&&height>=290;
-      // Paint the full measured widget rectangle first; only the inner
-      // layout receives insets. This prevents an exposed host-color strip.
-      return <VStack spacing={0}
-        widgetBackground={COLORS.canvas}
+      const layout=weeklyLayout(proxy.size.width,proxy.size.height,compact);
+      return <VStack spacing={0} widgetBackground={COLORS.canvas}
         background={{style:COLORS.canvas}}
         frame={{maxWidth:'infinity',maxHeight:'infinity',alignment:'topLeading'}}>
-        <VStack alignment="leading" spacing={0} padding={safeInset}
-          frame={{maxWidth:'infinity',maxHeight:'infinity',alignment:'topLeading'}}>
-          <HStack alignment="top" spacing={gap}
-            frame={{maxWidth:'infinity',alignment:'leading'}}>
-          {days.map(day=>day.today&&expanded
-            ?<TodayPairColumn key="today-pair" day={day}
-              width={todayWidth} compact={medium} gap={gap}
-              showAll={showAllToday}/>
-            :<DayColumn key={String(day.index)}
-              day={day.today?{...day,courses:todayFocus.courses}:day}
-              width={day.today?todayWidth:sideWidth}
-              compact={medium} maxRows={maxRows}
-              emphasize={day.today&&!expanded}/> )}
+        <VStack padding={layout.inset}
+          frame={{maxWidth:'infinity',maxHeight:'infinity',alignment:'top'}}>
+          <HStack alignment="top" spacing={layout.gap}>
+            {model.days.map(day=><DayColumn key={day.label} day={day} layout={layout} compact={compact}/>)}
           </HStack>
         </VStack>
       </VStack>;
@@ -181,48 +109,45 @@ function RollingPanel({model,family}){
   </GeometryReader>;
 }
 
-// systemSmall has much less vertical space than medium widgets. Avoid a
-// centered intrinsic-width card or Spacer stacks that steal its available room.
-function SmallPanel({model}){
-  const today=model.days.find(d=>d.today);
-  const classes=today?.courses||[];
-  const current=classes.find(x=>x.status==='current');
-  const next=classes.find(x=>x.status==='upcoming');
-  const chosen=current||next||classes[classes.length-1];
-  const remaining=chosen?classes.filter(x=>x.status==='upcoming'&&x!==chosen).length:0;
-  const done=chosen?.status==='done',active=chosen?.status==='current';
-  const bg=done?COLORS.doneBg:active?COLORS.activeBg:COLORS.nextBg;
-  const fg=done?COLORS.finished:active?COLORS.white:COLORS.dark;
+function SmallPanel({model,accessory}){
+  const today=model.days[model.today];
+  const {course:chosen,remaining}=selectTodayCourse(today);
+  const active=chosen?.status==='current',done=chosen?.status==='done';
+  const bg=active?COLORS.activeBg:done?COLORS.doneBg:COLORS.nextBg;
+  const fg=active?COLORS.white:done?COLORS.finished:COLORS.dark;
   const detail=active?COLORS.activeDetail:done?COLORS.muted:COLORS.faint;
   return <GeometryReader>
     {proxy=>{
       const width=proxy.size.width,height=proxy.size.height;
-      const inset=12,cardWidth=Math.max(80,width-2*inset);
-      const tight=height<160;
-      // Card background is applied after its explicit frame, like medium cards.
-      const cardStyle=modifiers().padding(tight?7:9)
+      const inset=accessory?2:height<155?9:12,gap=2;
+      const cardWidth=Math.max(0,width-2*inset);
+      const dayWidth=Math.max(1,Math.floor((cardWidth-6*gap)/7));
+      const cardStyle=modifiers().padding(accessory?2:6)
         .frame({width:cardWidth,alignment:'topLeading'})
-        .background({style:bg,shape:{type:'rect',cornerRadius:10}});
-      return <VStack spacing={0}
-        widgetBackground={COLORS.canvas}
+        .background({style:bg,shape:{type:'rect',cornerRadius:8}});
+      return <VStack spacing={0} widgetBackground={COLORS.canvas}
         background={{style:COLORS.canvas}}
         frame={{maxWidth:'infinity',maxHeight:'infinity',alignment:'topLeading'}}>
-        <VStack alignment="leading" spacing={tight?5:7} padding={inset}
+        <VStack alignment="leading" spacing={4} padding={inset}
           frame={{maxWidth:'infinity',maxHeight:'infinity',alignment:'topLeading'}}>
-        <Text font={tight?17:19} fontWeight="bold" foregroundStyle={COLORS.dark}>今天</Text>
-        {chosen?<VStack alignment="leading" spacing={tight?3:4} modifiers={cardStyle}>
-          <Text font={tight?12:13} fontWeight="semibold" lineLimit={2}
-            minScaleFactor={0.85} multilineTextAlignment="leading"
-            foregroundStyle={fg}>{chosen.title}</Text>
-          <Text font={tight?10:11} lineLimit={1} minScaleFactor={0.85}
-            foregroundStyle={detail}>{chosen.startLabel}–{chosen.endLabel}</Text>
-          {chosen.location?<Text font={tight?10:11} lineLimit={1}
-            minScaleFactor={0.85} foregroundStyle={detail}>{chosen.location}</Text>:null}
-        </VStack>:
-        <Text font={14} foregroundStyle={COLORS.faint}>今天没有课程</Text>}
-        {remaining>0?<Text font={10} foregroundStyle={COLORS.faint}>
-          +{remaining}节课
-        </Text>:null}
+          <HStack spacing={gap}>
+            {model.days.map(day=><VStack key={day.label} spacing={1}
+              frame={{width:dayWidth}}
+              background={day.today?{style:COLORS.nextBg,shape:{type:'rect',cornerRadius:4}}:undefined}>
+              <Text font={10} fontWeight={day.today?'bold':'regular'}
+                foregroundStyle={day.today?COLORS.blue:COLORS.dark}>{day.label.slice(1)}</Text>
+              <Text font={9} foregroundStyle={COLORS.faint}>{day.courses.length||'–'}</Text>
+            </VStack>)}
+          </HStack>
+          {chosen?<VStack alignment="leading" spacing={2} modifiers={cardStyle}>
+            <Text font={accessory?10:13} fontWeight="semibold" lineLimit={accessory?1:2}
+              foregroundStyle={fg}>{chosen.title}</Text>
+            <Text font={10} lineLimit={1} minScaleFactor={0.85}
+              foregroundStyle={detail}>{chosen.startLabel}–{chosen.endLabel}</Text>
+            {!accessory&&chosen.location?<Text font={10} lineLimit={1}
+              foregroundStyle={detail}>{chosen.location}</Text>:null}
+          </VStack>:<Text font={11} foregroundStyle={COLORS.faint}>今天没有课程和考试</Text>}
+          {!accessory&&remaining>0?<Text font={9} foregroundStyle={COLORS.faint}>今天还有 {remaining} 项</Text>:null}
         </VStack>
       </VStack>;
     }}
@@ -231,19 +156,18 @@ function SmallPanel({model}){
 
 function EmptyPanel({kind='empty',code=''}) {
   const failure=kind==='invalid';
-  const label=failure?'缓存读取失败':'尚无课表缓存';
-  const guidance=code==='OPEN_MAIN_ONCE'?'请打开一次 CourseSync，自动建立组件缓存':
-    failure?'请反馈下方代码以便定位；课表和登录信息未被修改':
-    '打开 CourseSync 完成首次课表同步';
+  const label=failure?'暂时无法显示日程':'暂无同步记录';
+  const guidance=code==='OPEN_MAIN_ONCE'?'打开一次 CourseSync 即可显示日程。':
+    failure?'打开 CourseSync 刷新后再查看。':'打开 CourseSync 完成首次同步。';
   return <VStack spacing={0}
     widgetBackground={COLORS.canvas}
     background={{style:COLORS.canvas}}
     frame={{maxWidth:'infinity',maxHeight:'infinity',alignment:'center'}}>
-    <VStack alignment="leading" spacing={9} padding={22}
+    <VStack alignment="center" spacing={8} padding={16}
       frame={{maxWidth:'infinity',maxHeight:'infinity',alignment:'center'}}>
     <Text font={16} fontWeight="bold" foregroundStyle={COLORS.dark}>CourseSync</Text>
     <Text font={12} fontWeight="medium" foregroundStyle={COLORS.faint}>{label}</Text>
-    <Text font={11} foregroundStyle={COLORS.faint} lineLimit={3}>{guidance}</Text>
+    <Text font={11} foregroundStyle={COLORS.faint} lineLimit={3} multilineTextAlignment="center">{guidance}</Text>
     {failure?<Text font={10} foregroundStyle={COLORS.muted}>诊断：{code||'UNKNOWN'}</Text>:null}
     </VStack>
   </VStack>;
@@ -256,9 +180,10 @@ if(snapshot.kind!=='ready'){
 }else{
   const model=buildWidgetModel(snapshot.state,Date.now());
   const family=Widget.family;
-  Widget.present(family==='systemSmall'||String(family).startsWith('accessory')
-    ?<SmallPanel model={model}/>
-    :<RollingPanel model={model} family={family}/>,
+  const accessory=String(family).startsWith('accessory');
+  Widget.present(family==='systemSmall'||accessory
+    ?<SmallPanel model={model} accessory={accessory}/>
+    :<WeeklyPanel model={model} family={family}/>,
     {policy:'after',date:widgetReloadDate(model)});
 }
 

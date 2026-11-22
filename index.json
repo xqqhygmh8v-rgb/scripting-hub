@@ -1,7 +1,7 @@
 {
-  "updated_at": "2026-11-21T10:16:13+00:00",
+  "updated_at": "2026-11-22T19:25:26+00:00",
   "count": 26,
-  "project_count": 96,
+  "project_count": 90,
   "repos": [
     {
       "repo": "StarYunLee/Scripting",
@@ -42,6 +42,16 @@
           "source": "tree"
         },
         {
+          "name": "Itemory",
+          "version": "1.0.0",
+          "description": "为每件物品记录购入价格、维修支出和转手收入，查看持有天数与日均成本，在时间线和置物架上回顾自己的物品。",
+          "dir": "scripts-store/StarYunLee/Scripting/projects/Itemory",
+          "entry": "index.tsx",
+          "files": 110,
+          "icon": "shippingbox.fill",
+          "source": "tree"
+        },
+        {
           "name": "Surge 监控",
           "version": "1.1.1",
           "description": "Surge iOS Prometheus 指标小组件：Medium 聚焦累计流量与核心状态，Large 展开网络接口流量。",
@@ -63,11 +73,11 @@
       "projects": [
         {
           "name": "AI 额度看板",
-          "version": "2.2.7",
-          "description": "纯客户端直连查询 79 家 AI 供应商的订阅配额与 API 钱包余额",
+          "version": "2.3.0",
+          "description": "纯客户端直连查询 78 家 AI 供应商的订阅配额与 API 钱包余额",
           "dir": "scripts-store/BlackCCCat/Scripting-Scripts/projects/AI-Dashboard",
           "entry": "index.tsx",
-          "files": 221,
+          "files": 224,
           "icon": "chart.bar.doc.horizontal.fill",
           "source": "tree"
         },
@@ -213,11 +223,11 @@
         },
         {
           "name": "WorkBuddy2API",
-          "version": "1.1.2",
+          "version": "2.0.1",
           "description": "",
           "dir": "scripts-store/BlackCCCat/Scripting-Scripts/projects/Workbuddy2API",
           "entry": "index.tsx",
-          "files": 27,
+          "files": 29,
           "icon": "slider.horizontal.3",
           "source": "tree"
         },
@@ -644,10 +654,10 @@
         {
           "name": "CourseSync",
           "version": "",
-          "description": "CourseSync：本地同步课程至 Apple 日历，支持快捷指令自动更新。",
+          "description": "CourseSync：本地同步课程和考试至 Apple 日历，支持快捷指令自动更新。",
           "dir": "scripts-store/b7f2d/CourseSync/projects/CourseSync",
           "entry": "index.tsx",
-          "files": 14,
+          "files": 10,
           "icon": "calendar",
           "source": "tree"
         }
@@ -723,11 +733,11 @@
         },
         {
           "name": "寒霜注入工具",
-          "version": "1.2.1",
+          "version": "1.2.4",
           "description": "本地提示词注入与网关代理工具（Scripting 版）：内置完整 WebUI、人物卡管理、提示词库与寒霜预设模板。",
           "dir": "scripts-store/ckldy/scripting-scripts/projects/寒霜注入工具 2",
           "entry": "index.tsx",
-          "files": 21,
+          "files": 23,
           "icon": "wand.and.stars",
           "source": "tree"
         },
@@ -813,7 +823,7 @@
       "projects": [
         {
           "name": "日历",
-          "version": "1.8.21",
+          "version": "1.8.22",
           "description": "农历与倒班日历：首页及日、周、月小组件，支持节气、休班、班次排序循环、假日自动刷新与日夜外观",
           "dir": "scripts-store/Wangsc1/calendar/projects/calendar",
           "entry": "index.tsx",
@@ -954,96 +964,6 @@
       ]
     },
     {
-      "repo": "psikent/Scripting",
-      "url": "https://github.com/psikent/Scripting",
-      "stars": 0,
-      "language": "TypeScript",
-      "branch": "main",
-      "category": "小组件",
-      "projects": [
-        {
-          "name": "Codex Panel",
-          "version": "",
-          "description": "",
-          "dir": "scripts-store/psikent/Scripting/projects/Codex-Panel",
-          "entry": "index.tsx",
-          "files": 18,
-          "icon": "bolt.fill",
-          "source": "tree"
-        },
-        {
-          "name": "DeepSeek Panel",
-          "version": "",
-          "description": "DeepSeek 余额与今日开销小组件",
-          "dir": "scripts-store/psikent/Scripting/projects/DeepSeek-Panel",
-          "entry": "index.tsx",
-          "files": 15,
-          "icon": "wallet.pass.fill",
-          "source": "tree"
-        },
-        {
-          "name": "OpenCode Panel",
-          "version": "",
-          "description": "OpenCode Go 订阅限额面板：应用内列表 + 桌面小组件 + 手表圆形小组件，实时监控 Rolling（5 小时）、Weekly（1 周）、Monthly（1 月）三个限额窗口的剩余百分比、状态与重置时间，超出限额红色高亮；配合刷新动作，深色/浅色界面均适配官方图标。首次使用在设置页填入从 OpenCode API 管理页（opencode.ai/auth）获取的 API Key（sk- 开头）。",
-          "dir": "scripts-store/psikent/Scripting/projects/OpenCode-Panel",
-          "entry": "index.tsx",
-          "files": 14,
-          "icon": "terminal.fill",
-          "source": "tree"
-        },
-        {
-          "name": "Surge 日志分析器",
-          "version": "1.0.0",
-          "description": "分析 Surge 日志，查看内存曲线图和日志详情",
-          "dir": "scripts-store/psikent/Scripting/projects/Surge-log-analyzer",
-          "entry": "index.tsx",
-          "files": 7,
-          "icon": "chart.line.uptrend.xyaxis",
-          "source": "tree"
-        },
-        {
-          "name": "Surge规则Github托管",
-          "version": "1.0.0",
-          "description": "直接在已有规则文件基础上，添加新规则",
-          "dir": "scripts-store/psikent/Scripting/projects/Surge规则Github托管",
-          "entry": "index.tsx",
-          "files": 7,
-          "icon": "network",
-          "source": "tree"
-        },
-        {
-          "name": "ZCode Panel",
-          "version": "",
-          "description": "智谱 ZCode 账户余额与今日开销小组件",
-          "dir": "scripts-store/psikent/Scripting/projects/ZCode-Panel",
-          "entry": "index.tsx",
-          "files": 15,
-          "icon": "wallet.pass.fill",
-          "source": "tree"
-        },
-        {
-          "name": "图标搜索",
-          "version": "1.0.0",
-          "description": "搜索并预览图标，支持复制图标链接",
-          "dir": "scripts-store/psikent/Scripting/projects/Icon-Search",
-          "entry": "index.tsx",
-          "files": 3,
-          "icon": "magnifyingglass",
-          "source": "tree"
-        },
-        {
-          "name": "规则搜索",
-          "version": "1.0.0",
-          "description": "搜索 blackmatrix7/ios_rule_script 仓库中的代理规则",
-          "dir": "scripts-store/psikent/Scripting/projects/Rule-Search",
-          "entry": "index.tsx",
-          "files": 3,
-          "icon": "magnifyingglass",
-          "source": "tree"
-        }
-      ]
-    },
-    {
       "repo": "SmallMr/Scripting-SGCC",
       "url": "https://github.com/SmallMr/Scripting-SGCC",
       "stars": 0,
@@ -1079,6 +999,26 @@
           "entry": "index.tsx",
           "files": 15,
           "icon": "cloud.sun.fill",
+          "source": "tree"
+        }
+      ]
+    },
+    {
+      "repo": "SylvanRoe/Toki",
+      "url": "https://github.com/SylvanRoe/Toki",
+      "stars": 0,
+      "language": "JavaScript",
+      "branch": "main",
+      "category": "小组件",
+      "projects": [
+        {
+          "name": "Toki",
+          "version": "1.0.0",
+          "description": "账号与 Token 管理，配套桌面小组件",
+          "dir": "scripts-store/SylvanRoe/Toki/projects/scripting",
+          "entry": "index.tsx",
+          "files": 9,
+          "icon": "key.fill",
           "source": "tree"
         }
       ]
