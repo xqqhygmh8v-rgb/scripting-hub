@@ -193,7 +193,10 @@ try:
     new_ai = sum(1 for r in repos if S.categorize(
         "{} {}".format(r.get("repo", ""), r.get("description_en") or "")) == "AI 与翻译")
     print("     样本 %d 个仓库：旧规则 AI 分类 %d 个，新规则 %d 个" % (len(repos), old_ai, new_ai))
-    check(new_ai < old_ai, "AI 误分类减少（%d → %d）" % (old_ai, new_ai))
+    # 样本是线上真实数据，构成会随同步变化：旧子串规则的误报数并不保证大于 0
+    # （例如样本里只剩真 AI 仓库时两边相等）。本项守的是「新规则不得比旧规则
+    # 多报」这条底线，不断言严格减少——否则数据一变 CI 就会误红、堵住同步。
+    check(new_ai <= old_ai, "AI 分类数不高于旧子串规则（%d → %d）" % (old_ai, new_ai))
 except Exception as e:
     print("     跳过（网络不可用）：%r" % e)
 
