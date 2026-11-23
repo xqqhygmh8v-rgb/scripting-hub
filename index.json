@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-11-22T19:25:26+00:00",
-  "count": 26,
-  "project_count": 90,
+  "updated_at": "2026-11-23T07:14:27+00:00",
+  "count": 25,
+  "project_count": 89,
   "repos": [
     {
       "repo": "StarYunLee/Scripting",
       "url": "https://github.com/StarYunLee/Scripting",
-      "stars": 91,
+      "stars": 92,
       "language": "TypeScript",
       "branch": "main",
       "category": "小组件",
@@ -323,11 +323,11 @@
         },
         {
           "name": "自定义闹钟",
-          "version": "3.0.2",
+          "version": "3.1.0",
           "description": "创建和管理单次、每日、每周的自定义闹钟。",
           "dir": "scripts-store/BlackCCCat/Scripting-Scripts/projects/Custom-Alarm",
           "entry": "index.tsx",
-          "files": 21,
+          "files": 24,
           "icon": "clock",
           "source": "tree"
         }
@@ -657,7 +657,7 @@
           "description": "CourseSync：本地同步课程和考试至 Apple 日历，支持快捷指令自动更新。",
           "dir": "scripts-store/b7f2d/CourseSync/projects/CourseSync",
           "entry": "index.tsx",
-          "files": 10,
+          "files": 8,
           "icon": "calendar",
           "source": "tree"
         }
@@ -1004,26 +1004,6 @@
       ]
     },
     {
-      "repo": "SylvanRoe/Toki",
-      "url": "https://github.com/SylvanRoe/Toki",
-      "stars": 0,
-      "language": "JavaScript",
-      "branch": "main",
-      "category": "小组件",
-      "projects": [
-        {
-          "name": "Toki",
-          "version": "1.0.0",
-          "description": "账号与 Token 管理，配套桌面小组件",
-          "dir": "scripts-store/SylvanRoe/Toki/projects/scripting",
-          "entry": "index.tsx",
-          "files": 9,
-          "icon": "key.fill",
-          "source": "tree"
-        }
-      ]
-    },
-    {
       "repo": "vaeann/scripting-widgets",
       "url": "https://github.com/vaeann/scripting-widgets",
       "stars": 0,
@@ -1067,7 +1047,7 @@
       "repo": "Xykf-ya/activity-to-calendar",
       "url": "https://github.com/Xykf-ya/activity-to-calendar",
       "stars": 0,
-      "language": "TypeScript",
+      "language": "PowerShell",
       "branch": "main",
       "category": "其他",
       "projects": [

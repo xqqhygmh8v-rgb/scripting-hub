@@ -1,8 +1,8 @@
 # 脚本中心目录
 
-最近同步时间：2026-11-22T19:25:26+00:00
+最近同步时间：2026-11-23T07:14:27+00:00
 
-收录 26 个仓库 / 90 个可导入的 Scripting 项目。
+收录 25 个仓库 / 89 个可导入的 Scripting 项目。
 
 > 只收录包含合法 `script.json` 的 Scripting App 项目；说明文字优先取自脚本自带的 description。
 
@@ -12,15 +12,15 @@
 |---|---|---|---|---|---|
 | 活动转日历 | 0.1.6 | 粘贴活动通知，直接识别并添加到 iPhone 日历。缺少开始时间时记为全天。 | [Xykf-ya/activity-to-calendar](https://github.com/Xykf-ya/activity-to-calendar) | 0 | tree |
 
-### 小组件（89）
+### 小组件（88）
 
 | 脚本 | 版本 | 说明 | 仓库 | Star | 来源 |
 |---|---|---|---|---|---|
-| AI Usage | 1.9.0 | 整合 Codex、Grok、Claude、Antigravity、Cursor、Kimi Code、GitHub Copilot、Z.ai、MiniMax、WorkBuddy 与 DeepSeek 多账号用量。支持可配置的普通和多账号主屏幕小组件，以及需要 Scripting Pro 的可选主页常驻入口。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 91 | tree |
-| GitHub Stars | 1.1.1 | 浏览与管理 GitHub Stars、自定义列表和本人仓库，支持仓库资料维护、多年度贡献热力图与常用语言分析。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 91 | tree |
-| Icon Library | 1.1.2 | 管理多个 GitHub 公开图标库，按仓库独立授权、浏览和上传图标。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 91 | tree |
-| Itemory | 1.0.0 | 为每件物品记录购入价格、维修支出和转手收入，查看持有天数与日均成本，在时间线和置物架上回顾自己的物品。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 91 | tree |
-| Surge 监控 | 1.1.1 | Surge iOS Prometheus 指标小组件：Medium 聚焦累计流量与核心状态，Large 展开网络接口流量。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 91 | tree |
+| AI Usage | 1.9.0 | 整合 Codex、Grok、Claude、Antigravity、Cursor、Kimi Code、GitHub Copilot、Z.ai、MiniMax、WorkBuddy 与 DeepSeek 多账号用量。支持可配置的普通和多账号主屏幕小组件，以及需要 Scripting Pro 的可选主页常驻入口。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 92 | tree |
+| GitHub Stars | 1.1.1 | 浏览与管理 GitHub Stars、自定义列表和本人仓库，支持仓库资料维护、多年度贡献热力图与常用语言分析。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 92 | tree |
+| Icon Library | 1.1.2 | 管理多个 GitHub 公开图标库，按仓库独立授权、浏览和上传图标。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 92 | tree |
+| Itemory | 1.0.0 | 为每件物品记录购入价格、维修支出和转手收入，查看持有天数与日均成本，在时间线和置物架上回顾自己的物品。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 92 | tree |
+| Surge 监控 | 1.1.1 | Surge iOS Prometheus 指标小组件：Medium 聚焦累计流量与核心状态，Large 展开网络接口流量。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 92 | tree |
 | AI 额度看板 | 2.3.0 | 纯客户端直连查询 78 家 AI 供应商的订阅配额与 API 钱包余额 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | API Manager | — | 管理New API相关的 API 地址与 Key，并检测地址状态和可用模型 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | BiliFavor | 3.0.0 | 登录哔哩哔哩并查看关注 UP 主的视频动态 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
@@ -46,7 +46,7 @@
 | 汉典 | 3.0.1 | 汉典 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | 睡眠追踪 | 3.0.0 | 读取健康中的睡眠数据，展示趋势统计和小组件。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | 翻译器 | 3.1.6 | 一个支持系统翻译、Apple Intelligence、Google 网页翻译和可配置 AI 接口的翻译脚本。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| 自定义闹钟 | 3.0.2 | 创建和管理单次、每日、每周的自定义闹钟。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
+| 自定义闹钟 | 3.1.0 | 创建和管理单次、每日、每周的自定义闹钟。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | DashBoard-Kit | 1.5.0 | 多组件看板套件：同一后台配置管理，支持方案A桌面参数切换多种看板 | [SylvanRoe/Scripting](https://github.com/SylvanRoe/Scripting) | 36 | tree |
 | 今日油价 | 1.5.0 | 实时全国各省市汽柴油价格监控与调价预测桌面小组件，支持系统定位与自定义省份。 | [SylvanRoe/Scripting](https://github.com/SylvanRoe/Scripting) | 36 | tree |
 | 喝水记录 | 2.0.0 | 记录饮水和饮品摄入量，支持交互小组件与前台饮水健康同步 | [SylvanRoe/Scripting](https://github.com/SylvanRoe/Scripting) | 36 | tree |
@@ -98,7 +98,6 @@
 | 南方电网 | 1.2.2 | 查看南方电网余额、欠费、当月用电与最新日用电信息。 | [liugaoxiao/scripting-csg](https://github.com/liugaoxiao/scripting-csg) | 0 | tree |
 | 网上国网用电 | 1.5.9 | 网上国网小组件：浮岛 / 格栅主题、用电日历、月度汇总与阶梯。 | [SmallMr/Scripting-SGCC](https://github.com/SmallMr/Scripting-SGCC) | 0 | tree |
 | 天气日历 | 1.5.5 | — | [SmallMr/Scripting-WeatherWidget](https://github.com/SmallMr/Scripting-WeatherWidget) | 0 | tree |
-| Toki | 1.0.0 | 账号与 Token 管理，配套桌面小组件 | [SylvanRoe/Toki](https://github.com/SylvanRoe/Toki) | 0 | tree |
 | 启动台 | 1.7.4 | 启动台：把常用 App、链接和自定义脚本放到桌面小组件上，一点直达（汉化版）。 | [vaeann/scripting-widgets](https://github.com/vaeann/scripting-widgets) | 0 | tree |
 | AI 用量 | 1.64 | 基于 Scripting 的 iPhone AI 用量小组件：查看 Codex／Claude／Antigravity 额度、DeepSeek 余额与 WorkBuddy 国内个人积分及只读签到状态。支持官方直连、Parrot、Sub2API、独立用量统计、Antigravity 分组切换、账号详情单独刷新、拖动排序及自定义名称，适用于主屏和锁屏。 | [Wangsc1/ai-usage](https://github.com/Wangsc1/ai-usage) | 0 | tree |
 | 国网电费 | 1.0.7 | 网上国网余额、用电和阶梯小组件。只在本机直连国网接口，不经过任何第三方服务器。 | [YePiXpert/scripting-scripts](https://github.com/YePiXpert/scripting-scripts) | 0 | tree |
@@ -110,8 +109,6 @@
 
 | 时间 | 类型 | 对象 | 原因 |
 |---|---|---|---|
-| 2026-11-22T19:25:26+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/projects/AI-Dashboard/AI-Dashboard/providers/gemini.ts | 已不在任何有效项目中 |
-| 2026-11-22T19:25:26+00:00 | file | scripts-store/b7f2d/CourseSync/projects/CourseSync/docs/audit-2026-11-02.md | 已不在任何有效项目中 |
-| 2026-11-22T19:25:26+00:00 | file | scripts-store/b7f2d/CourseSync/projects/CourseSync/docs/release-notes.md | 已不在任何有效项目中 |
-| 2026-11-22T19:25:26+00:00 | file | scripts-store/b7f2d/CourseSync/projects/CourseSync/docs/engineering.md | 已不在任何有效项目中 |
-| 2026-11-22T19:25:26+00:00 | file | scripts-store/b7f2d/CourseSync/projects/CourseSync/schedule-native.tsx | 已不在任何有效项目中 |
+| 2026-11-23T07:14:27+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/projects/Custom-Alarm/Custom-Alarm/components/PageGradientBackground.tsx | 已不在任何有效项目中 |
+| 2026-11-23T07:14:27+00:00 | file | scripts-store/b7f2d/CourseSync/projects/CourseSync/live_activity.tsx | 已不在任何有效项目中 |
+| 2026-11-23T07:14:27+00:00 | file | scripts-store/b7f2d/CourseSync/projects/CourseSync/progress-native.tsx | 已不在任何有效项目中 |

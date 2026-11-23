@@ -2,11 +2,9 @@
 // No HTML, embedded URLs, requests, clipboard reads, telemetry or password persistence.
 // Passwords remain in memory only until caller authenticates or discards them.
 import {
-  GeometryReader, Navigation, NavigationStack, List, ScrollView, Section, Text,
+  Dialog, Navigation, NavigationStack, List, Section, Text,
   TextField, SecureField, Button, Image, useState,
-  VStack, HStack, Spacer, modifiers, useRef,
 } from 'scripting';
-import { NativeProgressContent } from './progress-native';
 
 function LoginView({title, confirmTitle, allowReuse}: {title:string;confirmTitle:string;allowReuse:boolean}) {
   const dismiss = Navigation.useDismiss();
@@ -17,42 +15,21 @@ function LoginView({title, confirmTitle, allowReuse}: {title:string;confirmTitle
   const valid = account.length > 0 && account.length <= 100 &&
     password.length > 0 && password.length <= 512;
 
-  return <NavigationStack>
-    <List
-      navigationTitle={title}
-      navigationBarTitleDisplayMode="inline"
-      toolbar={{
-        cancellationAction: <Button title="取消" action={() => dismiss(null)} />
-      }}
-    >
+  return <NavigationStack presentationDetents={['medium','large']} presentationDragIndicator="visible">
+    <List navigationTitle={title} navigationBarTitleDisplayMode="inline" listStyle="insetGroup">
       <Section>
-        <TextField
-          title="学号"
-          prompt="请输入学号"
-          value={username}
-          onChanged={setUsername}
-          textContentType="username"
-          textInputAutocapitalization="never"
-        />
-        <SecureField
-          title="密码"
-          prompt="请输入密码"
-          value={password}
-          onChanged={setPassword}
-          textContentType="password"
-        />
+        <TextField title="学号" prompt="请输入学号" value={username} onChanged={setUsername}
+          textContentType="username" textInputAutocapitalization="never" />
+        <SecureField title="密码" prompt="请输入密码" value={password} onChanged={setPassword}
+          textContentType="password" />
       </Section>
       <Section>
-        <Button
-          title={confirmTitle}
-          disabled={!valid}
-          action={() => {
-            if (!valid) return;
-            dismiss({ username: account, password });
-          }}
-        />
+        <Button title={confirmTitle} disabled={!valid} action={() => {
+          if (valid) dismiss({ username: account, password });
+        }} />
         {allowReuse ? <Button title="使用现有登录信息继续" action={() => dismiss({reuse:true})} /> : null}
       </Section>
+      <Section><Button title="取消" action={() => dismiss(null)} /></Section>
     </List>
   </NavigationStack>;
 }
@@ -94,30 +71,19 @@ function NativeInputView({title,label,kind='text',image}:NativeInputOptions) {
   const maxLength=kind==='captcha'?32:otp?48:secret?512:120;
   const valid=response.length>0&&response.length<=maxLength;
 
-  return <NavigationStack>
-    <List navigationTitle={title} navigationBarTitleDisplayMode="inline"
-      toolbar={{
-        cancellationAction:<Button title="取消" action={()=>dismiss(null)}/>
-      }}>
+  return <NavigationStack presentationDetents={['medium','large']} presentationDragIndicator="visible">
+    <List navigationTitle={title} navigationBarTitleDisplayMode="inline" listStyle="insetGroup">
       <Section header={<Text>{label}</Text>}>
-        {image?<Image image={image} resizable={true} scaleToFit={true}
-          frame={{width:280,height:155}} />:null}
+        {image?<Image image={image} resizable={true} scaleToFit={true} frame={{maxWidth:280,height:155}} />:null}
         {secret?
-          <SecureField title={label} prompt="请输入" value={value}
-            onChanged={setValue} />:
-          <TextField title={label}
-            prompt={otp?'请输入或填充验证码':'请输入'}
-            value={value} onChanged={setValue}
-            autofocus={!image}
-            textContentType={otp?'oneTimeCode':undefined}
-            keyboardType={otp?'numberPad':'default'}
-            textInputAutocapitalization="never"
+          <SecureField title={label} prompt="请输入" value={value} onChanged={setValue} />:
+          <TextField title={label} prompt={otp?'请输入或填充验证码':'请输入'} value={value}
+            onChanged={setValue} autofocus={!image} textContentType={otp?'oneTimeCode':undefined}
+            keyboardType={otp?'numberPad':'default'} textInputAutocapitalization="never"
             autocorrectionDisabled={true}/>}
       </Section>
-      <Section>
-        <Button title="确认" disabled={!valid}
-          action={()=>{if(valid)dismiss(response);}}/>
-      </Section>
+      <Section><Button title="确认" disabled={!valid} action={()=>{if(valid)dismiss(response);}}/></Section>
+      <Section><Button title="取消" action={()=>dismiss(null)}/></Section>
     </List>
   </NavigationStack>;
 }
@@ -150,42 +116,6 @@ export async function presentNativeRefreshForm(schoolId:string,allowReuse=false)
 type FreeRoomResult =
   | {kind: 'ready'; date: string; rooms: {period: string; room: string}[]}
   | {kind: 'error'; message: string};
-type FreeRoomPage = FreeRoomResult | {kind: 'loading'};
-
-function FreeRoomView({page, retry}: {page: FreeRoomPage; retry: () => void}) {
-  if (page.kind === 'loading') {
-    return <NativeProgressContent title="正在查询空闲教室" />;
-  }
-  return <GeometryReader navigationTitle="空闲教室" navigationBarTitleDisplayMode="inline">
-    {proxy=>(
-      <ScrollView>
-        <VStack
-          modifiers={modifiers().padding(24).frame({
-            maxWidth:'infinity',minHeight:proxy.size.height,alignment:'center',
-          })}
-        >
-          {page.kind === 'error' ? (
-            <VStack alignment="center" spacing={14}>
-              <Text font="body" foregroundStyle="secondaryLabel" multilineTextAlignment="center">{page.message}</Text>
-              <Button title="重试" systemImage="arrow.clockwise" action={retry} />
-            </VStack>
-          ) : (
-            <VStack alignment="center" spacing={20}>
-              <Text font="headline">今天 · {page.date}</Text>
-              {page.rooms.map(({period, room}) => (
-                <VStack key={period} alignment="center" spacing={4}>
-                  <Text font="subheadline" foregroundStyle="secondaryLabel">{period}</Text>
-                  <Text font="title2" fontWeight="semibold" multilineTextAlignment="center">{room}</Text>
-                </VStack>
-              ))}
-            </VStack>
-          )}
-        </VStack>
-      </ScrollView>
-    )}
-  </GeometryReader>;
-}
-
 export type DashboardOptions = {
   state: any;
   schoolName: string;
@@ -194,223 +124,147 @@ export type DashboardOptions = {
   loadFreeRooms?: (isActive: () => boolean, updateProgress: (value: number) => void) => Promise<FreeRoomResult>;
 };
 
-function DashboardAction({title, systemImage, action, role}: {
-  title: string;
-  systemImage: string;
-  action: () => void;
-  role?: 'destructive';
-}) {
-  return <Button
-    action={action}
-    role={role}
-    listRowInsets={{top:14,bottom:14,leading:16,trailing:16}}
-  >
-    <HStack alignment="center" spacing={10}>
-      <Image
-        systemName={systemImage}
-        font="body"
-        frame={{width:24,alignment:'center'}}
-      />
-      <Text>{title}</Text>
-      <Spacer />
-    </HStack>
-  </Button>;
+// Some Scripting releases do not expose Dialog.actionSheet. Use the native
+// confirm dialog in that case, keeping every option available without a page.
+function systemDialog() {
+  return (typeof Dialog !== 'undefined' && Dialog) || (globalThis as any).Dialog;
+}
+async function chooseNativeAction(options) {
+  const dialog = systemDialog();
+  if (typeof dialog?.actionSheet === 'function') {
+    try { return await dialog.actionSheet(options); } catch (_) { /* try native confirms */ }
+  }
+  const actions = options.actions || [];
+  if (!actions.length) return null;
+  // Older hosts have no action sheet. A single native prompt exposes all
+  // choices and a cancel button, without trapping users in sequential dialogs.
+  if (actions.length > 1 && typeof dialog?.prompt === 'function') {
+    const choices = actions.map((action,index)=>(index+1)+'．'+action.label).join('\n');
+    let warning = '';
+    while (true) {
+      const value=await dialog.prompt({title:options.title,
+        message:[options.message,choices,warning].filter(Boolean).join('\n\n'),
+        placeholder:'输入选项序号',keyboardType:'numberPad',
+        cancelLabel:options.cancelLabel || '取消',confirmLabel:'确定'});
+      if (value == null) return null;
+      const input=String(value).trim();
+      if (/^[1-9]\d*$/.test(input)) {
+        const index=Number(input)-1;
+        if (Number.isSafeInteger(index)&&index<actions.length) return index;
+      }
+      warning='请输入有效的选项序号。';
+    }
+  }
+  if (typeof dialog?.confirm !== 'function') throw new Error('NATIVE_DIALOG_UNAVAILABLE');
+  for (let index = 0; index < actions.length; index++) {
+    const selected = await dialog.confirm({title:options.title,message:options.message || '',
+      confirmLabel:actions[index].label,
+      cancelLabel:index === actions.length - 1 ? (options.cancelLabel || '取消') : '更多选项'});
+    if (selected) return index;
+  }
+  return null;
 }
 
-function DashboardView({ state, schoolName, canSignOut, statusMessage, loadFreeRooms }: DashboardOptions) {
-  const dismiss = Navigation.useDismiss();
-  const [freeRoomPage, setFreeRoomPage] = useState<FreeRoomPage | null>(null);
-  const roomQuery = useRef({visible: false, pending: false, revision: 0});
-  const openFreeRooms = async () => {
-    if (!loadFreeRooms) return;
-    const query = roomQuery.current;
-    query.visible = true;
-    setFreeRoomPage({kind: 'loading'});
-    if (query.pending) return;
-    query.pending = true;
-    const revision=query.revision;
-    const isActive=()=>query.visible&&query.revision===revision;
-    try {
-      const result = await loadFreeRooms(isActive, () => {});
-      if (isActive()) setFreeRoomPage(result);
-    } catch (_) {
-      if (isActive()) setFreeRoomPage({kind: 'error', message: '查询失败，请稍后重试。'});
-    } finally {
-      query.pending = false;
-      if (query.visible && query.revision !== revision) void openFreeRooms();
-    }
-  };
-  const isSignedOut = !!state?.signedOut;
-  const isFailed = state?.runStatus === 'failed';
-  const isSuccess = state?.runStatus === 'success';
-  const isPartial = state?.runStatus === 'partial';
-  const statusColor = isSignedOut || isPartial ? 'systemOrange' : isFailed ? 'systemRed' : 'systemGreen';
-  const statusBadge = isSignedOut ? '未登录' : isFailed ? '刷新失败' : isPartial ? '部分完成' : isSuccess ? '已同步' : state?.calendarBindingPending && canSignOut ? '已登录' : '';
-  const calTitle = state?.calendarBindingPending || !state?.calendarId
-    ? '未绑定日历' : (state.calendarTitle || '专用课程和考试日历');
-  const formatLastCheck = (iso?: string) => {
-    if (!iso) return '暂无同步记录';
-    const ms = Date.parse(iso);
-    if (!Number.isFinite(ms)) return String(iso).replace('T', ' ').slice(0, 16);
-    return new Date(ms + 8 * 3600000).toISOString().slice(0, 16).replace('T', ' ');
-  };
-  const lastTime = formatLastCheck(state?.lastCheck);
-
-  const statusDetail = statusMessage && !String(statusMessage).startsWith('上次刷新：') ? statusMessage : '';
-
-  return (
-    <NavigationStack presentationDetents={['medium', 'large']} presentationDragIndicator="visible">
-      <List
-        navigationTitle="CourseSync"
-        navigationBarTitleDisplayMode="inline"
-        listStyle="insetGroup"
-        navigationDestination={{
-          isPresented: freeRoomPage !== null,
-          onChanged: visible => {
-            if (!visible) {
-              roomQuery.current.visible = false;
-              roomQuery.current.revision++;
-              setFreeRoomPage(null);
-            }
-          },
-          content: freeRoomPage ? <FreeRoomView page={freeRoomPage} retry={openFreeRooms} /> : <Text />,
-        }}
-        toolbar={{
-          cancellationAction: <Button title="完成" action={() => dismiss(-1)} />
-        }}
-      >
-        <Section>
-          <VStack alignment="leading" spacing={10} padding={{ top: 6, bottom: 6 }}>
-            <HStack alignment="center" spacing={10}>
-              <VStack
-                alignment="center"
-                frame={{ width: 38, height: 38 }}
-                modifiers={modifiers().background({
-                  style: { light: '#2563EB', dark: '#1D4ED8' },
-                  shape: { type: 'rect', cornerRadius: 10 }
-                })}
-              >
-                <Image systemName="calendar" font={18} foregroundStyle="#FFFFFF" />
-              </VStack>
-              <Text font="title2" fontWeight="bold">{schoolName}</Text>
-              <Spacer />
-              {statusBadge ? (
-                <Text font="footnote" fontWeight="semibold" foregroundStyle={statusColor}>
-                  {statusBadge}
-                </Text>
-              ) : null}
-            </HStack>
-
-            <VStack alignment="leading" spacing={6}>
-              <HStack alignment="center" spacing={10}>
-                <Text font="subheadline" foregroundStyle="secondaryLabel">日历</Text>
-                <Spacer />
-                <Text font="subheadline" fontWeight="medium" multilineTextAlignment="trailing">{calTitle}</Text>
-              </HStack>
-              <HStack alignment="center" spacing={10}>
-                <Text font="subheadline" foregroundStyle="secondaryLabel">上次刷新</Text>
-                <Spacer />
-                <Text font="subheadline" fontWeight="medium">{lastTime}</Text>
-              </HStack>
-              {statusDetail ? (
-                <Text font="subheadline" foregroundStyle="secondaryLabel">
-                  {statusDetail}
-                </Text>
-              ) : null}
-            </VStack>
-          </VStack>
-        </Section>
-
-        <Section>
-          {/* The native circle variants give all three symbols the same visible outline. */}
-          <DashboardAction
-            title="立即刷新"
-            systemImage="arrow.clockwise.circle"
-            action={() => dismiss(0)}
-          />
-          {loadFreeRooms ? (
-            <DashboardAction
-              title="查询空闲教室"
-              systemImage="magnifyingglass.circle"
-              action={openFreeRooms}
-            />
-          ) : null}
-          {canSignOut ? (
-            <DashboardAction
-              title="退出当前登录"
-              systemImage="arrow.right.circle"
-              role="destructive"
-              action={() => dismiss(1)}
-            />
-          ) : null}
-        </Section>
-      </List>
-    </NavigationStack>
-  );
+// Native dialog messages have one font style. Separate sections and put each
+// classroom on its own line so the period and recommendations remain scannable.
+function formatRoomResults(date, rooms) {
+  const periods={'上午':'上午 · 第1—5节','下午':'下午 · 第6—10节','晚上':'晚上 · 第11—13节'};
+  const sections=rooms.map(({period,room})=>{
+    const heading=periods[period] || period;
+    const content=String(room || '').split('\n').map(line=>{
+      const match=line.match(/^(.*?：)(.+、.+?)(（第[^）]+节）)$/);
+      if(match)return match[1]+'\n'+match[2].split('、').map(value=>value+match[3]).join('\n');
+      if(period==='建议教室'&&line.includes('：'))return line.replace('：','：\n').replace(/、/g,'\n');
+      return line.replace(/、/g,'\n');
+    }).join('\n');
+    return (period==='上午'?'完整空闲教室列表\n':'')+heading+'\n'+content;
+  });
+  const firstPeriod=rooms.findIndex(({period})=>period==='上午');
+  const grouped=firstPeriod<0?sections:[...sections.slice(0,firstPeriod),sections.slice(firstPeriod).join('\n')];
+  return ['今天 · '+date,'仅包含博远楼、博观楼、博文楼',...grouped].join('\n\n');
 }
 
 export async function presentNativeDashboard(options: DashboardOptions): Promise<any> {
-  let presented = true;
-  const loadFreeRooms = options.loadFreeRooms;
-  try {
-    const result = await Navigation.present({
-      element: <DashboardView {...options} loadFreeRooms={loadFreeRooms
-        ? (isActive, updateProgress) => loadFreeRooms(() => presented && isActive(), progress => {
-          if (presented) updateProgress(progress);
-        })
-        : undefined} />,
-      modalPresentationStyle: 'pageSheet'
-    });
-    if (result === null || result === undefined || result === -1) return 'dismiss';
-    return result;
-  } finally {
-    presented = false;
+  const {state, schoolName, canSignOut, statusMessage, loadFreeRooms} = options;
+  const stateLabel = state?.signedOut ? '未登录' : state?.runStatus === 'failed' ? '刷新失败' :
+    state?.runStatus === 'partial' ? '部分完成' : state?.runStatus === 'success' ? '已同步' :
+    state?.calendarBindingPending && canSignOut ? '已登录' : '';
+  const calendar = state?.calendarBindingPending || !state?.calendarId ? '未绑定日历' :
+    (state.calendarTitle || '专用课程和考试日历');
+  const ms = Date.parse(state?.lastCheck || '');
+  const lastTime = !state?.lastCheck ? '暂无同步记录' : Number.isFinite(ms) ?
+    new Date(ms + 8 * 3600000).toISOString().slice(0,16).replace('T',' ') :
+    String(state.lastCheck).replace('T',' ').slice(0,16);
+  const detail = statusMessage && !String(statusMessage).startsWith('上次刷新：') ? statusMessage : '';
+  const message = [schoolName, stateLabel, '日历：'+calendar, '上次刷新：'+lastTime, detail].filter(Boolean).join('\n');
+  while (true) {
+    const actions = [{label:'立即刷新'}, ...(loadFreeRooms ? [{label:'查询空闲教室'}] : []),
+      ...(canSignOut ? [{label:'退出当前登录',destructive:true}] : [])];
+    const selection = await chooseNativeAction({title:'CourseSync',message,actions,cancelButton:true,cancelLabel:'取消'});
+    if (selection == null || selection < 0) return 'dismiss';
+    if (selection === 0) return 0;
+    if (loadFreeRooms && selection === 1) {
+      let retry = true;
+      while (retry) {
+        retry = false;
+        let result: FreeRoomResult;
+        try { result = await loadFreeRooms(() => true, () => {}); }
+        catch (_) { result = {kind:'error',message:'查询失败，请稍后重试。'}; }
+        const roomText = result.kind === 'error' ? result.message :
+          formatRoomResults(result.date,result.rooms);
+        const roomActions = result.kind === 'error' ? [{label:'重试'}] : [{label:'返回'}];
+        const selected = await chooseNativeAction({title:'空闲教室',message:roomText,actions:roomActions,cancelButton:result.kind === 'error',cancelLabel:'返回'});
+        if (result.kind === 'error' && selected === 0) retry = true;
+      }
+      continue;
+    }
+    if (canSignOut && selection === (loadFreeRooms ? 2 : 1)) return 1;
+    return 'dismiss';
   }
 }
 
 type CalendarManageOptions = Record<string, never>;
 type CalendarManageResult = { action: 'create'; title: string } | null;
 
-function CalendarManageView(_options: CalendarManageOptions) {
-  const dismiss = Navigation.useDismiss();
-  const [newTitle, setNewTitle] = useState('CourseSync');
-  const title = newTitle.trim();
-  const validTitle = title.length >= 1 && title.length <= 60 && !/[\\/\r\n\x00-\x1f]/.test(title);
-
-  return (
-    <NavigationStack>
-      <List
-        navigationTitle="新建 iCloud 日历"
-        navigationBarTitleDisplayMode="inline"
-        toolbar={{
-          cancellationAction: <Button title="取消" action={() => dismiss(null)} />
-        }}
-      >
-        <Section>
-          <TextField
-            title="日历名称"
-            prompt="日历名称"
-            value={newTitle}
-            onChanged={setNewTitle}
-          />
-          <Button
-            title="创建并绑定"
-            disabled={!validTitle}
-            action={() => {
-              if (validTitle) dismiss({ action: 'create', title });
-            }}
-          />
-        </Section>
-      </List>
-    </NavigationStack>
-  );
+export async function presentNativeCalendarManager(_options: CalendarManageOptions): Promise<CalendarManageResult> {
+  let initial = 'CourseSync';
+  while (true) {
+    const result = await systemDialog().prompt({title:'新建 iCloud 日历',placeholder:'日历名称',
+      defaultValue:initial,cancelLabel:'取消',confirmLabel:'创建并绑定'});
+    if (result == null) return null;
+    const title = result.trim();
+    if (title.length >= 1 && title.length <= 60 && !/[\\/\r\n\x00-\x1f]/.test(title))
+      return {action:'create',title};
+    initial = result;
+    await systemDialog().alert({title:'日历名称无效',message:'请输入 1 至 60 个字符，且不要包含斜杠或换行。',buttonLabel:'好'});
+  }
 }
 
-export async function presentNativeCalendarManager(options: CalendarManageOptions): Promise<CalendarManageResult> {
-  const result = await Navigation.present({
-    element: <CalendarManageView {...options} />,
-    modalPresentationStyle: 'pageSheet'
-  });
-  if (!result || typeof result !== 'object') return null;
-  return result as CalendarManageResult;
+// Common foreground prompts use the same native glass surface as the forms.
+type GlassDialogOptions = {
+  title: string; message?: string;
+  actions: {label: string; destructive?: boolean}[];
+  cancel?: boolean; cancelLabel?: string;
+  field?: {placeholder: string; value: string; secure: boolean};
+};
+export async function presentNativeDialog(options: GlassDialogOptions): Promise<{index:number;value:string}|null> {
+  if (options.field) {
+    const value = await systemDialog().prompt({title:options.title,message:options.message,
+      placeholder:options.field.placeholder,defaultValue:options.field.value,
+      obscureText:options.field.secure,cancelLabel:options.cancelLabel || '取消',
+      confirmLabel:options.actions[0]?.label || '确认'});
+    return value === null ? null : {index:0,value};
+  }
+  if (options.cancel && options.actions.length === 1) {
+    const ok = await systemDialog().confirm({title:options.title,message:options.message || '',
+      cancelLabel:options.cancelLabel || '取消',confirmLabel:options.actions[0].label});
+    return ok ? {index:0,value:''} : null;
+  }
+  if (options.actions.length === 1 && !options.cancel) {
+    await systemDialog().alert({title:options.title,message:options.message || '',buttonLabel:options.actions[0].label});
+    return {index:0,value:''};
+  }
+  const index = await chooseNativeAction({title:options.title,message:options.message,
+    actions:options.actions,cancelButton:options.cancel});
+  return index == null || index < 0 ? null : {index,value:''};
 }

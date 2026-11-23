@@ -68,8 +68,6 @@ function emptyState(): CustomAlarmState {
     alarms: [],
     holidaySources: [defaultHolidaySource()],
     availableSounds: [DEFAULT_SOUND_NAME],
-    alarmCardGradientEnabled: false,
-    pageGradientEnabled: false,
     managedSystemAlarmIds: [],
     cleanupCandidateAlarmIds: [],
     alarmConfigurationVersion: ALARM_CONFIGURATION_VERSION,
@@ -316,8 +314,6 @@ export function loadCustomAlarmState(): CustomAlarmState {
       alarms,
       holidaySources: [builtinHolidaySource(normalizedSources)],
       availableSounds: normalizeSoundNames(Array.isArray(data?.availableSounds) ? data.availableSounds : []),
-      alarmCardGradientEnabled: Boolean(data?.alarmCardGradientEnabled),
-      pageGradientEnabled: Boolean(data?.pageGradientEnabled),
       managedSystemAlarmIds: mergeManagedSystemAlarmIds(
         normalizeStringIdList(data?.managedSystemAlarmIds),
         collectRecordSystemAlarmIds(alarms)
@@ -331,6 +327,17 @@ export function loadCustomAlarmState(): CustomAlarmState {
 }
 
 export function saveCustomAlarmState(state: CustomAlarmState): void {
+  const source = builtinHolidaySource(state.holidaySources)
+  // 前台仍持有旧快照时，保留停止 Intent 刚同步的日历。
+  let holidaySource = source
+  try {
+    const raw = readStorage(STORAGE_KEY)
+    const storedSource = raw ? JSON.parse(raw).holidaySources?.[0] : null
+    if (Number(storedSource?.lastSyncedAt) > (source.lastSyncedAt ?? 0)) {
+      const normalized = normalizeHolidaySource(storedSource)
+      if (normalized?.id === DEFAULT_HOLIDAY_SOURCE_ID) holidaySource = normalized
+    }
+  } catch {}
   const managedSystemAlarmIds = mergeManagedSystemAlarmIds(
     normalizeStringIdList(state.managedSystemAlarmIds),
     collectRecordSystemAlarmIds(state.alarms)
@@ -339,10 +346,8 @@ export function saveCustomAlarmState(state: CustomAlarmState): void {
     STORAGE_KEY,
     JSON.stringify({
       alarms: state.alarms,
-      holidaySources: [builtinHolidaySource(state.holidaySources)],
+      holidaySources: [holidaySource],
       availableSounds: normalizeSoundNames(state.availableSounds),
-      alarmCardGradientEnabled: Boolean(state.alarmCardGradientEnabled),
-      pageGradientEnabled: Boolean(state.pageGradientEnabled),
       managedSystemAlarmIds,
       cleanupCandidateAlarmIds: normalizeStringIdList(state.cleanupCandidateAlarmIds),
       alarmConfigurationVersion: Math.max(0, Math.floor(Number(state.alarmConfigurationVersion) || 0)),

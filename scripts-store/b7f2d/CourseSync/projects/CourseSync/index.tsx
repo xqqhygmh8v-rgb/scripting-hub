@@ -29,7 +29,7 @@ async function __COURSESYNC_REPORT_STARTUP(error){
     throw exitError;
   }
 }
-async function __NUFE_START(loadActivity){
+async function __NUFE_START(){
   try{
     console.log('[CourseSync] 正在启动');
 const hostAPI=name=>Scripting[name]??globalThis[name];
@@ -48,20 +48,19 @@ const backgroundDeadline=HostScript.env==='intent'?Date.now()+26000:Infinity;
 const awaitNotification=work=>backgroundDeadline===Infinity?work:bounded(work,1000,'NOTIFICATION_FAILED');
 const config={runsInApp:HostScript.env==='index',runsWithSiri:true};
 let presentNativeCredentialForm,presentNativeTextForm,presentNativeRefreshForm;
-let presentNativeDashboard,presentNativeCalendarManager,createNativeProgressView;
+let presentNativeDashboard,presentNativeCalendarManager,presentNativeDialog;
 // Test-only injections simulate the index host without invoking native modules.
 if(globalThis.__COURSESYNC_TEST__){
   presentNativeCredentialForm=(...a)=>globalThis.__nativeCredentialMock(...a);
   presentNativeTextForm=(...a)=>globalThis.__nativeTextMock(...a);
   presentNativeRefreshForm=(...a)=>globalThis.__nativeRefreshMock(...a);
+  presentNativeDialog=(...a)=>globalThis.__nativeDialogMock?globalThis.__nativeDialogMock(...a):Promise.reject(new Error('No native dialog mock'));
   presentNativeDashboard=(...a)=>globalThis.__nativeDashboardMock?globalThis.__nativeDashboardMock(...a):-1;
   presentNativeCalendarManager=(...a)=>globalThis.__calendarManagerMock?globalThis.__calendarManagerMock(...a):null;
-  createNativeProgressView=(...a)=>globalThis.__progressUIFactory(...a);
 }else if(config.runsInApp){
   const native=await import('./login-native');
   ({presentNativeCredentialForm,presentNativeTextForm,presentNativeRefreshForm,
-    presentNativeDashboard,presentNativeCalendarManager}=native);
-  ({createNativeProgressView}=await import('./progress-native'));
+    presentNativeDashboard,presentNativeCalendarManager,presentNativeDialog}=native);
 }
 
 const args={shortcutParameter:__mode==='menu'?'':'sync'};
@@ -121,8 +120,14 @@ class Alert{
  addTextField(placeholder,value=''){this.fields.push({placeholder,value,secure:false});}
  addSecureTextField(placeholder,value=''){this.fields.push({placeholder,value,secure:true});}
  textFieldValue(i){return this.values[i]??'';}
- async presentSheet(){const n=await HostDialog.actionSheet({title:this.title,message:this.message,actions:this.actions,cancelButton:this.cancel});return n==null?-1:n;}
+ async presentGlass(){
+   if(!config.runsInApp||typeof presentNativeDialog!=='function')return undefined;
+   try{return await presentNativeDialog({title:this.title,message:this.message,actions:this.actions,cancel:this.cancel,cancelLabel:this.cancelLabel,field:this.fields[0]});}catch(_){return undefined;}
+ }
+ async presentSheet(){const result=await this.presentGlass();if(result!==undefined)return result===null?-1:result.index;const n=await HostDialog.actionSheet({title:this.title,message:this.message,actions:this.actions,cancelButton:this.cancel});return n==null?-1:n;}
  async presentAlert(){
+   const result=await this.presentGlass();
+   if(result!==undefined){if(result===null)return -1;if(this.fields.length)this.values=[result.value];return result.index;}
    if(this.fields.length){const f=this.fields[0];const value=await HostDialog.prompt({title:this.title,message:this.message,placeholder:f.placeholder,defaultValue:f.value,obscureText:f.secure,cancelLabel:this.cancelLabel,confirmLabel:this.actions[0]?.label||'继续'});if(value===null)return -1;this.values=[value];return 0;}
    if(this.cancel&&this.actions.length===1)return await HostDialog.confirm({title:this.title,message:this.message,cancelLabel:this.cancelLabel,confirmLabel:this.actions[0].label})?0:-1;
    if(this.actions.length>1)return this.presentSheet();
@@ -763,17 +768,13 @@ async function input(title,label,secure=false,options={}) {
       return code;
     }catch(e){
       if(e?.code==='CANCELLED')throw e;
-      const recover=await HostDialog.confirm({
-        title:'原生输入窗口不可用',
-        message:'无法打开原生输入窗口。是否改用系统输入框继续？',
-        cancelLabel:'取消',confirmLabel:'使用系统输入框'
-      });
+      const recover=await confirm('原生输入窗口不可用','无法打开原生输入窗口。是否改用系统输入框继续？','使用系统输入框','取消');
       if(!recover)fail('CANCELLED');
     }
   }
   return await legacyInput(title,label,secure);
 }
-async function confirm(title,message) {const a=new Alert();a.title=title;a.message=message;a.addAction('确认');a.addCancelAction('取消');return await a.presentAlert()===0;}
+async function confirm(title,message,confirmLabel='确认',cancelLabel='取消') {const a=new Alert();a.title=title;a.message=message;a.addAction(confirmLabel);a.addCancelAction(cancelLabel);return await a.presentAlert()===0;}
 async function notice(title,message) {const a=new Alert();a.title=title;a.message=message;a.addAction('好');await a.presentAlert();}
 // Read known login-form inputs as inert text; no WebView, no embedded page scripts.
 // Values are decoded only after selection. Never log or persist form fields.
@@ -1024,6 +1025,7 @@ async function syncExams(http,state,store,calendar,progress,now=Date.now(),check
   // Every successful school response is authoritative, including an empty list.
   // Scan historical managed exams as well so deletions are reflected in EventKit,
   // rather than merely dropping them from the widget cache.
+  state.lastStage='考试：计算核验范围';
   const windowSize=90*DAY;
   const storedIndex=state.examIndex||{};
   const storedStarts=Object.values(storedIndex).map(key=>{
@@ -1039,7 +1041,9 @@ async function syncExams(http,state,store,calendar,progress,now=Date.now(),check
     .map(start=>Math.floor(start/windowSize)*windowSize));
   const windows=[[now,end],...[...historical].map(start=>[start,Math.min(start+windowSize,now)])];
   checkpoint();
+  state.lastStage='考试：合并旧日历';
   await migrateLegacyExamCalendar(state,store,calendar,windows,progress,checkpoint);
+  state.lastStage='考试：核对旧标题';
   const index=Object.assign(Object.create(null),state.examIndex);
   await upgradeExamTitles(state,store,calendar,index,prefix,windows,checkpoint);
   const keyOf=ev=>String(ev.notes||'').startsWith(prefix)?ev.notes:index[ev.identifier];
@@ -1056,6 +1060,7 @@ async function syncExams(http,state,store,calendar,progress,now=Date.now(),check
     }
     checkpoint();return [...owned.values()];
   };
+  state.lastStage='考试：读取已有日程';
   const rows=await read();
   if(!rows.length&&!target.size){
     state.exams=[];
@@ -1072,6 +1077,7 @@ async function syncExams(http,state,store,calendar,progress,now=Date.now(),check
   }
   const matches=(ev,exam)=>ev.title===exam.title&&+ev.startDate===exam.start&&
     +ev.endDate===exam.stop&&(ev.location||'')===exam.location;
+  state.lastStage='考试：保存日程';
   let saved=false;
   for(const [key,exam] of target){
     const existing=current.get(key);
@@ -1086,6 +1092,7 @@ async function syncExams(http,state,store,calendar,progress,now=Date.now(),check
   const written=saved?await read():rows;
   const writtenByKey=groupBy(written,keyOf);
   for(const [key,exam] of target)assert(writtenByKey.get(key)?.some(ev=>matches(ev,exam)),'CALENDAR_VERIFY');
+  state.lastStage='考试：核对并清理旧日程';
   const kept=new Set();
   let removed=false;
   for(const ev of written){
@@ -1112,6 +1119,7 @@ async function syncExams(http,state,store,calendar,progress,now=Date.now(),check
     location:exam.location||''
   }));
   store.write(state);
+  state.lastStage='考试：更新同步备注';
   const expectedNotes=readableNotes(null,new Date().toISOString());
   const validNotes=ev=>ev.notes===expectedNotes||(!refreshTimestamp&&hasSyncTimestamp(ev));
   let notesChanged=false;
@@ -1165,11 +1173,7 @@ async function credentialForm({title='CourseSync 登录'}={}){
   }
   // The only fallback is still a native iOS Dialog (two secure prompts).
   // Ask before showing them; never silently downgrade the combined form.
-  const consent=await HostDialog.confirm({
-    title:'原生登录窗口不可用',
-    message:'无法打开账号密码窗口（'+code+'）。是否改用系统安全输入框？',
-    cancelLabel:'取消登录',confirmLabel:'继续'
-  });
+  const consent=await confirm('原生登录窗口不可用','无法打开账号密码窗口（'+code+'）。是否改用系统安全输入框？','继续','取消登录');
   if(!consent)fail('CANCELLED');
   return await fallbackCredentialForm({title});
 }
@@ -2208,7 +2212,15 @@ function actionFor(code){return (ERROR_GUIDE[code]||[null,'检查失败阶段、
 function briefTime(iso){if(!iso)return '无';try{return localDateTime(iso).replace(' ',' ');}catch(_){return '无';}}
 function errorMessage(error,state){
   const code=diagnosticCode(error),stage=state&&state.lastStage||'尚未记录阶段';
-  return '阶段：'+stage+'\n错误代码：'+code+'\n原因：'+reasonFor(code)+'\n建议：'+actionFor(code)+'\n时间：'+briefTime(new Date().toISOString())+'（北京时间）';
+  // Report only a local source line, never exception messages or raw stacks.
+  const match=typeof error?.stack==='string'?/\bindex\.(?:tsx|js):(\d{1,7})(?::(\d{1,5}))?/.exec(error.stack):null;
+  const location=match?'\n代码位置：index '+match[1]+(match[2]?':'+match[2]:''):'';
+  // Only allow fixed API names, never include the exception message itself.
+  const apiNames=['actionSheet','presentNativeDashboard','loadFreeRooms','createNativeProgressView','pause','finish','setTitle','resume','show'];
+  const rawMessage=typeof error?.message==='string'?error.message:'';
+  const api=apiNames.find(name=>new RegExp('\\b'+name+'\\b').test(rawMessage));
+  const clue=api?'\n关联接口：'+api:'';
+  return '阶段：'+stage+'\n错误代码：'+code+location+clue+'\n原因：'+reasonFor(code)+'\n建议：'+actionFor(code)+'\n时间：'+briefTime(new Date().toISOString())+'（北京时间）';
 }
 function stampStage(state,store,stage,persist=true){
   const at=new Date().toISOString();
@@ -2218,51 +2230,13 @@ function stampStage(state,store,stage,persist=true){
   // Console is safe: stage strings and requestLabel never contain secrets.
   if(typeof console!=='undefined'&&typeof console.log==='function')console.log('[CourseSync] '+stage);
 }
-function createProgress(state,store,interactive,activityLoader){
-  let ui=null,closed=false,started=false,waitingForVerification=false,finishing=null;
-  let activityStart=null,initialTitle=null;
-  const stage=message=>{
-    stampStage(state,store,message,interactive);
-    if(closed||!started||!interactive)return;
-    const label=String(message||'');
-    if(/等待输入学校登录信息|等待图形验证|等待二次认证/.test(label)){
-      waitingForVerification=true;
-      return ui?.pause();
-    }
-    if(waitingForVerification){
-      if(!/^(认证完成后读取课表页面|读取学期|请求学期|写入学期|读取考试日程|更新考试日程|核对旧|扫描专用日历)/.test(label))return;
-      waitingForVerification=false;
-      ui?.resume();
-    }
-  };
-  stage.setTitle=title=>{initialTitle=title;ui?.setTitle?.(title);};
-  stage.pause=()=>ui?.pause();
-  stage.resume=()=>{waitingForVerification=false;ui?.resume();};
-  stage.start=async()=>{
-    if(started||closed)return;
-    started=true;
-    if(!interactive){
-      if(activityLoader)activityStart=Promise.resolve().then(()=>activityLoader(()=>!closed)).catch(()=>null);
-      return;
-    }
-    try{
-      if(typeof hostAPI('Navigation')?.present==='function'){
-        ui=initialTitle?createNativeProgressView(initialTitle):createNativeProgressView();
-        ui.show();
-      }
-    }catch(_){ui=null;}
-  };
-  stage.finish=(result='failed')=>{
-    if(finishing)return finishing;
-    closed=true;
-    try{ui?.finish();}catch(_){}
-    ui=null;
-    const phase=result==='success'?'complete':result==='partial'?'partial':'finish';
-    // Even an unresponsive activity may only delay the Intent result briefly.
-    finishing=activityStart?bounded(activityStart.then(activity=>
-      activity?.end({phase},{dismissTimeInterval:2})),350,'ACTIVITY_TIMEOUT').catch(()=>{}):Promise.resolve();
-    return finishing;
-  };
+function createProgress(state,store,interactive){
+  // Stage tracking supports recovery and diagnostics; it does not present UI.
+  const stage=message=>stampStage(state,store,message,interactive);
+  stage.pause=()=>Promise.resolve();
+  stage.resume=()=>{};
+  stage.start=()=>Promise.resolve();
+  stage.finish=()=>Promise.resolve();
   return stage;
 }
 // Recognize a previously bound calendar even if it has not yet been renamed.
@@ -2323,12 +2297,10 @@ async function requestCalendarName(state){
     if(result?.action!=='create')fail('CANCELLED');
     return validCalendarName(result.title);
   }
-  const title=await HostDialog.prompt({
-    title:'新建 iCloud 日历',placeholder:'日历名称',defaultValue:'CourseSync',
-    cancelLabel:'取消',confirmLabel:'创建并绑定'
-  });
-  if(title==null)fail('CANCELLED');
-  return validCalendarName(title);
+  const prompt=new Alert();prompt.title='新建 iCloud 日历';
+  prompt.addTextField('日历名称','CourseSync');prompt.addAction('创建并绑定');prompt.addCancelAction('取消');
+  if(await prompt.presentAlert()<0)fail('CANCELLED');
+  return validCalendarName(prompt.textFieldValue(0));
 }
 async function pickCalendar(state,store,beforePrompt){
   let all=await visibleCalendars();
@@ -2667,7 +2639,7 @@ async function chooseAnchor(sid,name,http,state,store,{calendar,termDetail}={}) 
 }
 
 // New and changed events keep recovery markers until the native IDs are indexed.
-// Automatic runs keep readable timestamps on unchanged events.
+// Each successfully checked term receives the current readable timestamp.
 async function polishTermNotes(calendar,state,store,sid,budget,progress=()=>{},refreshTimestamp=true){
   const term=state.semesters[String(sid)];
   if(!term)return;
@@ -2798,9 +2770,11 @@ function selectTermIds(info,state,interactive){
   const available=[...new Set(info.semesters.map(s=>s.id))];
   assert(available.includes(info.current),'SCHEMA');
   if(interactive)return [info.current,...available.filter(sid=>sid!==info.current).sort((a,b)=>a-b)];
-  const history=available.filter(sid=>sid<info.current).sort((a,b)=>b-a);
-  const next=history.indexOf(state.lastBackgroundHistoryTerm)+1;
-  return [info.current,...history.slice(next).concat(history.slice(0,next)).slice(0,2)];
+  const otherTerms=available.filter(sid=>sid!==info.current).sort((a,b)=>b-a);
+  const next=otherTerms.indexOf(state.lastBackgroundHistoryTerm)+1;
+  const retry=(state.retryTermIds||[]).map(Number).find(sid=>otherTerms.includes(sid));
+  const rotation=otherTerms.slice(next).concat(otherTerms.slice(0,next)).filter(sid=>sid!==retry);
+  return [info.current,...(retry===undefined?[]:[retry]),...rotation].slice(0,3);
 }
 async function verifyUnchangedTerm(adapter,sid,anchor,events){
   const expected=new Map(events.map(event=>[event.id,event]));
@@ -2869,6 +2843,8 @@ async function synchronize(state,store,calendar,interactive,progress=null,manual
   }
   const adapter=new CalendarAdapter(calendar,state.owner,store,budget,state);
   delete state.historySyncCheckpoint;
+  state.retryTermIds=(Array.isArray(state.retryTermIds)?state.retryTermIds:[]).map(Number).filter(sid=>info.semesters.some(term=>term.id===sid)&&sid!==info.current);
+  const retrySid=!interactive?state.retryTermIds[0]:undefined;
   const selected=selectTermIds(info,state,interactive);
   const pendingSid=Number(interrupted?.sid);
   let sids=selected;
@@ -2885,12 +2861,13 @@ async function synchronize(state,store,calendar,interactive,progress=null,manual
   state.termErrors=[];
   for(const [position,sid] of sids.entries()) {
     const rotating=!interactive&&sid!==info.current&&sid!==pendingSid;
-    // Leave time for the exam list after the optional historical course reads.
+    // Leave time for the exam list after the optional rotating course reads.
     workDeadline=rotating?deadline-5000:deadline;
     if(!interactive)http.deadline=workDeadline;
     try {
     budget();stage('读取学期 '+sid);const name=(info.semesters.find(s=>s.id===sid)||{}).name||String(sid);
-    if(rotating)state.lastBackgroundHistoryTerm=sid;
+    if(rotating&&sid!==retrySid)state.lastBackgroundHistoryTerm=sid;
+    state.retryTermIds=state.retryTermIds.filter(id=>id!==sid);
     let anchor,normalized;
     if(usts){
       stage('请求学期 '+sid+' 课表数据');
@@ -2921,6 +2898,7 @@ async function synchronize(state,store,calendar,interactive,progress=null,manual
       const index=await verifyUnchangedTerm(adapter,sid,anchor,p.events);
       if(index){
         state.semesters[sid]={...old,events:p.events,index,name,skipped:normalized.skipped,lastSuccess:new Date().toISOString()};
+        await polishTermNotes(calendar,state,store,sid,budget);
         continue;
       }
     }
@@ -2928,8 +2906,9 @@ async function synchronize(state,store,calendar,interactive,progress=null,manual
     // Persist the complete target BEFORE touching EventKit. Future resume uses these IDs.
     stage('写入学期 '+sid+' 的日历事件');
     state.tx={id:uuid(),sid:String(sid),anchor,name,before:old.events,target:p.events,stamp:new Date().toISOString(),skipped:normalized.skipped,changes:{added:p.added.length,removed:p.removed.length,changed:p.changed.length}};
-    store.write(state);await finishTx(state,store,adapter,budget,interactive);
+    store.write(state);await finishTx(state,store,adapter,budget,true);
     } catch(e) {
+      if(rotating&&!state.retryTermIds.includes(sid))state.retryTermIds.push(sid);
       if(rotating&&e.code==='BUDGET'&&!state.tx){
         for(const deferred of sids.slice(position))state.termErrors.push({sid:String(deferred),code:e.code});
         break;
@@ -2989,6 +2968,7 @@ async function signOut(state,store){
   state.signedOut=true;state.authPaused=true;state.authExpiryNotifiedAt=null;
   delete state.historySyncCheckpoint;
   delete state.lastBackgroundHistoryTerm;
+  delete state.retryTermIds;
   state.failures=0;state.lastError=null;
   state.runStatus='signed_out';state.credentialCloudStatus=null;
   store.write(state);
@@ -3115,6 +3095,15 @@ function offlineAgenda(state,now=Date.now()) {
 const NUFE_FREE_ROOM_ENDPOINT='https://jwxt.nufe.edu.cn/student/ws/room-borrow/free-list';
 const BUILDING_PRIORITY=Object.freeze({'博远楼':1,'博观楼':2,'博文楼':3});
 
+function compareFreeRooms(a,b){
+  const bpA=BUILDING_PRIORITY[a.building?.nameZh||a.buildingName]||99;
+  const bpB=BUILDING_PRIORITY[b.building?.nameZh||b.buildingName]||99;
+  if(bpA!==bpB)return bpA-bpB;
+  const flA=Number(a.floor)||99,flB=Number(b.floor)||99;
+  if(flA!==flB)return flA-flB;
+  return String(a.nameZh||a.name||'').localeCompare(String(b.nameZh||b.name||''));
+}
+
 async function queryFreeRoomsForPeriod(http,date,units){
   const payload={
     campusId:2,buildingId:'',roomId:'',roomType:undefined,seatsForLessonGte:'',
@@ -3125,88 +3114,103 @@ async function queryFreeRoomsForPeriod(http,date,units){
   return data.roomList.filter(r=>{
     const bName=r.building?.nameZh||r.buildingName;
     return Boolean(BUILDING_PRIORITY[bName])&&!String(r.nameZh||r.name||'').includes('微');
-  }).sort((a,b)=>{
-    const bpA=BUILDING_PRIORITY[a.building?.nameZh||a.buildingName];
-    const bpB=BUILDING_PRIORITY[b.building?.nameZh||b.buildingName];
-    if(bpA!==bpB)return bpA-bpB;
-    const flA=Number(a.floor)||99,flB=Number(b.floor)||99;
-    if(flA!==flB)return flA-flB;
-    return String(a.nameZh||a.name).localeCompare(String(b.nameZh||b.name));
-  });
+  }).sort(compareFreeRooms);
 }
 
-const MORNING_UNITS=['1','2','3','4'];
-const AFTERNOON_UNITS=['5','6','7','8','9'];
-const AFTERNOON_FALLBACK=['5','6','7','8'];
-const EVENING_UNITS=['10','11','12'];
+const MORNING_UNITS=['1','2','3','4','5'];
+const AFTERNOON_UNITS=['6','7','8','9','10'];
+const EVENING_UNITS=['11','12','13'];
 
 function resolveDayRooms(mornRooms=[],aftRooms=[],eveRooms=[]){
-  const formatRoom=r=>r?String(r.nameZh||r.name||'').replace(/（[^）]*）|\([^)]*\)/g,'').trim():'无空闲教室';
-  const isSame=(a,b)=>a&&b&&(a.id!=null&&b.id!=null?a.id===b.id:(a.nameZh||a.name)===(b.nameZh||b.name));
-  const inList=(list,target)=>list.some(r=>isSame(r,target));
-
-  // 1. 全天同一教室 (上午 + 下午 + 晚上)
-  const allDayRoom=mornRooms.find(r=>inList(aftRooms,r)&&inList(eveRooms,r));
-  if(allDayRoom){
-    return [{period:'全天',room:formatRoom(allDayRoom)}];
-  }
-
-  // 2. 白天同一教室 (上午 + 下午)
-  const mornAftRoom=mornRooms.find(r=>inList(aftRooms,r));
-  const aftEveRoom=aftRooms.find(r=>inList(eveRooms,r));
-
-  if(mornAftRoom){
-    return [
-      {period:'白天',room:formatRoom(mornAftRoom)},
-      {period:'晚上',room:formatRoom(eveRooms[0]||null)}
-    ];
-  }
-
-  // 3. 下午至晚上同一教室 (下午 + 晚上)
-  if(aftEveRoom){
-    return [
-      {period:'上午',room:formatRoom(mornRooms[0]||null)},
-      {period:'下午至晚上',room:formatRoom(aftEveRoom)}
-    ];
-  }
-
-  // 4. 上午与晚上同一教室 (早晚同教室)
-  const mornEveRoom=mornRooms.find(r=>inList(eveRooms,r));
-  if(mornEveRoom){
-    return [
-      {period:'上午',room:formatRoom(mornEveRoom)},
-      {period:'下午',room:formatRoom(aftRooms[0]||null)},
-      {period:'晚上',room:`${formatRoom(mornEveRoom)}（同上午）`}
-    ];
-  }
-
-  // 5. 各时段独立教室
+  const name=r=>String(r?.nameZh||r?.name||'').replace(/（[^）]*）|\([^)]*\)/g,'').trim();
+  const same=(a,b)=>a&&b&&(a.id!=null&&b.id!=null?String(a.id)===String(b.id):name(a)===name(b));
+  const unique=rooms=>rooms.filter((room,index)=>name(room)&&rooms.findIndex(other=>same(other,room))===index);
+  const morning=unique(mornRooms),afternoon=unique(aftRooms),evening=unique(eveRooms);
+  const contains=(list,room)=>list.some(other=>same(other,room));
+  const allDay=morning.filter(room=>contains(afternoon,room)&&contains(evening,room));
+  const day=morning.filter(room=>contains(afternoon,room));
+  const afternoonEvening=afternoon.filter(room=>contains(evening,room));
+  let recommended='暂无可连续使用的教室';
+  if(allDay.length)recommended='全天：'+allDay.map(name).join('、');
+  else if(day.length)recommended='白天：'+day.map(name).join('、')+(evening.length?'\n晚上：'+name(evening[0]):'');
+  else if(afternoonEvening.length)recommended=(morning.length?'上午：'+name(morning[0])+'\n':'')+'下午至晚上：'+afternoonEvening.map(name).join('、');
+  else if(morning.length&&afternoon.length&&evening.length)recommended='上午：'+name(morning[0])+'\n下午：'+name(afternoon[0])+'\n晚上：'+name(evening[0]);
+  const show=rooms=>rooms.length?rooms.map(name).join('、'):'无空闲教室';
   return [
-    {period:'上午',room:formatRoom(mornRooms[0]||null)},
-    {period:'下午',room:formatRoom(aftRooms[0]||null)},
-    {period:'晚上',room:formatRoom(eveRooms[0]||null)}
+    {period:'建议教室',room:recommended},
+    {period:'上午',room:show(morning)},
+    {period:'下午',room:show(afternoon)},
+    {period:'晚上',room:show(evening)}
   ];
 }
 
+// Query individual lessons only for a period with no completely free room.
+// Never infer availability for a lesson whose request failed.
 async function queryDayRooms(http,date,onProgress=()=>{}){
-  async function getAft(){
-    let r=await queryFreeRoomsForPeriod(http,date,AFTERNOON_UNITS);
-    if(!r.length)r=await queryFreeRoomsForPeriod(http,date,AFTERNOON_FALLBACK);
-    return r;
+  const periods=[MORNING_UNITS,AFTERNOON_UNITS,EVENING_UNITS];
+  const names=['上午','下午','晚上'];
+  const fullResults=await Promise.allSettled(periods.map(units=>queryFreeRoomsForPeriod(http,date,units)));
+  const fullFailure=fullResults.find(result=>result.status==='rejected');
+  if(fullFailure)throw fullFailure.reason;
+  const full=fullResults.map(result=>result.value);
+  const rows=resolveDayRooms(...full);
+  const missing=periods.map((units,index)=>full[index].length?null:{index,units}).filter(Boolean);
+  if(missing.length){
+    const tasks=missing.flatMap(({index,units})=>units.map(unit=>({index,unit})));
+    const slots=periods.map(()=>new Map());
+    let next=0;
+    const worker=async()=>{
+      while(next<tasks.length){
+        const task=tasks[next++];
+        slots[task.index].set(task.unit,await queryFreeRoomsForPeriod(http,date,[task.unit]));
+      }
+    };
+    const workers=await Promise.allSettled(Array.from({length:Math.min(3,tasks.length)},()=>worker()));
+    const workerFailure=workers.find(result=>result.status==='rejected');
+    if(workerFailure)throw workerFailure.reason;
+    const roomName=r=>String(r?.nameZh||r?.name||'').replace(/（[^）]*）|\([^)]*\)/g,'').trim();
+    const roomKey=r=>r.id!=null?'id:'+String(r.id):'name:'+roomName(r);
+    const bestFor=(units,perSlot)=>{
+      const rooms=new Map();
+      for(const unit of units)for(const room of perSlot.get(unit)||[]){
+        const key=roomKey(room);if(!roomName(room))continue;
+        if(!rooms.has(key))rooms.set(key,{room,free:new Set()});
+        rooms.get(key).free.add(Number(unit));
+      }
+      const candidates=[];
+      for(const {room,free} of rooms.values()){
+        let start=null,previous=null;
+        for(const unit of [...units.map(Number),Infinity]){
+          if(free.has(unit)){
+            if(start===null)start=unit;
+            previous=unit;
+          }else if(start!==null){
+            candidates.push({room,start,end:previous,length:previous-start+1});
+            start=null;previous=null;
+          }
+        }
+      }
+      candidates.sort((a,b)=>b.length-a.length||compareFreeRooms(a.room,b.room)||a.start-b.start);
+      return candidates[0]||null;
+    };
+    const suggestions=periods.map((units,index)=>{
+      if(full[index].length)return names[index]+'：'+roomName(full[index][0])+'（第'+units[0]+'—'+units.at(-1)+'节）';
+      const best=bestFor(units,slots[index]);
+      if(!best)return names[index]+'：无可用教室';
+      const span=best.start===best.end?String(best.start):best.start+'—'+best.end;
+      return names[index]+'：'+roomName(best.room)+'（第'+span+'节）';
+    });
+    const sameRoom=(a,b)=>a&&b&&(a.id!=null&&b.id!=null?String(a.id)===String(b.id):roomName(a)===roomName(b));
+    const shared=(first,second)=>first.filter((room,index)=>roomName(room)&&first.findIndex(other=>sameRoom(other,room))===index&&second.some(other=>sameRoom(other,room)));
+    const daytime=shared(full[0],full[1]);
+    const afternoonEvening=shared(full[1],full[2]);
+    if(daytime.length)suggestions.splice(0,2,'白天：'+daytime.map(roomName).join('、')+'（第1—10节）');
+    else if(afternoonEvening.length)suggestions.splice(1,2,'下午至晚上：'+afternoonEvening.map(roomName).join('、')+'（第6—13节）');
+    rows[0].room=suggestions.join('\n');
+    for(const {index} of missing)rows[index+1].room='无完整时段空闲教室（见建议）';
   }
-  let completed=0;
-  const requests=[
-    queryFreeRoomsForPeriod(http,date,MORNING_UNITS),
-    getAft(),
-    queryFreeRoomsForPeriod(http,date,EVENING_UNITS)
-  ];
-  const results=await Promise.allSettled(requests.map(request=>request.then(rooms=>{
-    onProgress(0.25+0.25*++completed);
-    return rooms;
-  })));
-  const rejected=results.find(result=>result.status==='rejected');
-  if(rejected)throw rejected.reason;
-  return resolveDayRooms(...results.map(result=>result.value));
+  onProgress(1);
+  return rows;
 }
 
 async function queryFreeRoomsToday(http,onStage=()=>{},onProgress=()=>{},now=Date.now()){
@@ -3260,6 +3264,8 @@ async function runAttempt() {
     }
     if(interactive){
       state=store.read();
+      // A failure before synchronization must not reuse an earlier run's stage.
+      state.lastStage='准备主菜单';
     }
     // Skip the dashboard after logout so reopening the script starts with credentials.
     if(interactive&&(state.calendarId||state.calendarBindingPending)&&(!(reselectSchool||state.signedOut)||state.signedOut&&canOfferSignOut(state))){
@@ -3281,6 +3287,7 @@ async function runAttempt() {
       let selected=-1;
       const nav=hostAPI('Navigation');
       if(typeof nav?.present==='function'){
+        state.lastStage='打开主菜单';
         selected=await presentNativeDashboard({
           state,schoolName,canSignOut,statusMessage,
           loadFreeRooms:canFreeRooms?loadFreeRoomPage:undefined
@@ -3298,6 +3305,7 @@ async function runAttempt() {
       if(selected===null||selected===undefined||selected<0)return;
       signOutRequested=canSignOut&&selected===1;
     }
+    if(state)state.lastStage='准备获取同步锁';
     const slot=await acquireSyncSlot(store,interactive);
     if(slot!=='acquired'){
       // Never record a second task as a failed synchronization.
@@ -3309,6 +3317,7 @@ async function runAttempt() {
       return;
     }
     locked=true;state=store.read();
+    state.lastStage='准备同步';
     if(!state.owner){state.owner=uuid();store.write(state);}
     // Attempt one safe password migration per invocation. Failures never block
     // existing local credentials or trigger repeated school login attempts.
@@ -3355,13 +3364,12 @@ async function runAttempt() {
     }
     state.runStatus='running';state.runStartedAt=new Date().toISOString();state.runCompletedAt=null;store.write(state);
     __COURSESYNC_BOOT_PHASE='同步运行';
-    progress=createProgress(state,store,interactive,HostScript.env==='intent'?loadActivity:null);
+    progress=createProgress(state,store,interactive);
     let calendar;
     if(!interactive){
       progress('检查目标日历');
       calendar=await pickCalendar(state,store);
     }
-    if(interactive)progress.setTitle('正在登录账号');
     await progress.start();
     progress('连接教务系统');
     const http=await synchronize(state,store,interactive?async()=>{
@@ -3373,17 +3381,18 @@ async function runAttempt() {
         calendarCancelled=error?.code==='CANCELLED';
         throw error;
       }
-      progress.setTitle('正在同步课程和考试');
       progress.resume();
       return calendar;
     }:calendar,interactive,progress,manualAuth);
     try{
-      await syncExams(http,state,store,calendar,progress,Date.now(),http.before,interactive);
+      await syncExams(http,state,store,calendar,progress,Date.now(),http.before,true);
       state.lastExamError=null;
     }catch(error){
       if(['SYNC_SUPERSEDED','LOCK_LOST','BUSY'].includes(error?.code))throw error;
       state.lastExamError=diagnosticCode(error);
     }
+    // The last progress stage must identify failures after the exam step too.
+    state.lastStage='更新小组件数据';
     const examError=state.lastExamError;
     publishWidgetCache(state);
     // WidgetKit prefers the lightweight Storage mirror and may also use the
@@ -3394,6 +3403,7 @@ async function runAttempt() {
       const reload=typeof widgets?.reloadUserWidgets==='function'?widgets.reloadUserWidgets:widgets?.reloadAll;
       if(typeof reload==='function')Promise.resolve(reload.call(widgets)).catch(()=>{});
     }catch(_){}
+    state.lastStage='保存同步结果';
     state.runStatus=state.termErrors?.length||examError?'partial':'success';
     state.runCompletedAt=new Date().toISOString();
     if(state.runStatus==='success')state.resultNoticeError=null;
@@ -3401,6 +3411,7 @@ async function runAttempt() {
     progress(state.runStatus==='success'?'完成本次同步':'本次同步部分完成');
     if(progress){try{await progress.finish(state.runStatus);}
       catch(_){console.error('[CourseSync] completion progress cleanup failed');}}
+    state.lastStage='显示同步结果';
     if(state.termErrors?.length){
       if(interactive){
         const details=state.termErrors.map(({sid,code})=>{
@@ -3476,8 +3487,8 @@ else await run();
 
   }catch(error){await __COURSESYNC_REPORT_STARTUP(error);}
 }
-export function launchCourseSync(loadActivity) {
-  const launch = __NUFE_START(loadActivity);
+export function launchCourseSync() {
+  const launch = __NUFE_START();
   globalThis.__COURSESYNC_LAUNCH__ = launch;
   return launch;
 }
