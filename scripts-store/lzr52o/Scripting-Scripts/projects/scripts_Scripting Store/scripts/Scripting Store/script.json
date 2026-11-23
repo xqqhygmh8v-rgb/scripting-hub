@@ -1,0 +1,33 @@
+{
+  "version" : "2.0.2",
+  "remoteResource" : {
+    "autoUpdateInterval" : 3600,
+    "hash" : "b486b38bffdb74a1d15e7c3b8646d38f",
+    "url" : "https:\/\/imarkr.com\/api\/github\/download\/MolTau9527\/Scripting-Tools\/scripts\/Scripting Store.zip"
+  },
+  "contributors" : [
+
+  ],
+  "icon" : "wrench.and.screwdriver",
+  "iconImage" : null,
+  "intentInputTypes" : [
+
+  ],
+  "localizedDescriptions" : {
+
+  },
+  "author" : {
+    "name" : "MolTau9527",
+    "email" : "2933177144@qq.com",
+    "homepage" : "https:\/\/github.com\/MolTau9527"
+  },
+  "runInApp" : false,
+  "entry" : "index.tsx",
+  "description" : "本站非 Scripting 官方平台。所有组件均收集自互联网，版权归原作者所有。如有侵权，请TG联系 @RoayCallingBot 删除。\n仅做适配App，免访问网站，感谢原作者开发",
+  "permissions" : null,
+  "localizedNames" : {
+
+  },
+  "name" : "Scripting Store",
+  "color" : "rgba(28, 140, 255,1)"
+}

@@ -1,0 +1,22 @@
+{
+  "color" : "rgba(71, 102, 194,1)",
+  "name" : "万年历",
+  "runInApp" : false,
+  "contributors" : [
+
+  ],
+  "version" : "1.0.0",
+  "intentInputTypes" : [
+
+  ],
+  "localizedNames" : null,
+  "localizedDescriptions" : null,
+  "icon" : "calendar",
+  "remoteResource" : null,
+  "author" : {
+    "email" : "tilfon@live.com",
+    "name" : "thomfang",
+    "homepage" : "https:\/\/x.com\/thomfang"
+  },
+  "description" : null
+}

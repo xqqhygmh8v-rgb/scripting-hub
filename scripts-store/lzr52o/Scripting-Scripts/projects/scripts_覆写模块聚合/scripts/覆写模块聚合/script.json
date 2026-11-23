@@ -1,0 +1,37 @@
+{
+  "author": null,
+  "version": "1.1.0",
+  "permissions": null,
+  "name": "覆写模块聚合",
+  "icon": "square.stack.3d.up",
+  "entry": "index.tsx",
+  "contributors": [],
+  "description": "聚合 Surge、Loon、Egern、Stash 与 Shadowrocket 模块，支持多来源管理、搜索筛选、收藏、缓存同步、源码查看与一键导入，并提供 GitHub 限流保护。",
+  "localizedDescriptions": {
+    "de": "",
+    "zh": "聚合 Surge、Loon、Egern、Stash 与 Shadowrocket 模块，支持多来源管理、搜索筛选、收藏、缓存同步、源码查看与一键导入，并提供 GitHub 限流保护。",
+    "pt": "",
+    "fr": "",
+    "ja": "",
+    "ru": "",
+    "en": "Aggregates Surge, Loon, Egern, Stash and Shadowrocket modules, supports multi-source management, search and filtering, collection, cache synchronization, source code viewing and one-click import, and provides GitHub current limiting protection.",
+    "it": "",
+    "es": ""
+  },
+  "iconImage": null,
+  "remoteResource": {
+    "url": "https://raw.githubusercontent.com/xcheam/scripting/main/覆写模块聚合.scripting",
+    "hash": "8c234d6228e27067578f942d897a6675",
+    "autoUpdateInterval": 3600
+  },
+  "runInApp": false,
+  "localizedNames": {
+    "zh": "覆写模块聚合",
+    "zh-Hant": "覆写模块聚合",
+    "zh-Hans": "覆写模块聚合",
+    "en": "Override module aggregation"
+  },
+  "color": "#1D5FBF",
+  "remoteDefinitionId": null,
+  "intentInputTypes": []
+}

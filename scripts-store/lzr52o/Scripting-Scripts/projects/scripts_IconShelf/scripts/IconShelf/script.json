@@ -1,0 +1,46 @@
+{
+  "iconImage" : "",
+  "author" : {
+    "email" : "informal.termite.mcxg@mask.me",
+    "homepage" : null,
+    "name" : "CookiePie"
+  },
+  "permissions" : null,
+  "contributors" : [
+
+  ],
+  "color" : "#5965DE",
+  "localizedDescriptions" : {
+    "zh" : "",
+    "en" : "",
+    "ru" : "",
+    "es" : "",
+    "pt" : "",
+    "ja" : "",
+    "de" : "",
+    "it" : "",
+    "fr" : ""
+  },
+  "entry" : "index.tsx",
+  "intentInputTypes" : [
+
+  ],
+  "remoteResource" : null,
+  "runInApp" : true,
+  "version" : "0.4.0",
+  "icon" : "square.grid.2x2.fill",
+  "localizedNames" : {
+    "ja" : "",
+    "ru" : "",
+    "es" : "",
+    "it" : "",
+    "en" : "",
+    "pt" : "",
+    "de" : "",
+    "zh" : "",
+    "fr" : ""
+  },
+  "name" : "IconShelf",
+  "description" : "图标集订阅管理 · JSON 订阅、预览与更新",
+  "remoteDefinitionId" : null
+}

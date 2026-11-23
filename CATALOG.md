@@ -1,8 +1,8 @@
 # 脚本中心目录
 
-最近同步时间：2026-11-23T07:14:27+00:00
+最近同步时间：2026-11-23T23:44:41+00:00
 
-收录 25 个仓库 / 89 个可导入的 Scripting 项目。
+收录 27 个仓库 / 129 个可导入的 Scripting 项目。
 
 > 只收录包含合法 `script.json` 的 Scripting App 项目；说明文字优先取自脚本自带的 description。
 
@@ -12,7 +12,7 @@
 |---|---|---|---|---|---|
 | 活动转日历 | 0.1.6 | 粘贴活动通知，直接识别并添加到 iPhone 日历。缺少开始时间时记为全天。 | [Xykf-ya/activity-to-calendar](https://github.com/Xykf-ya/activity-to-calendar) | 0 | tree |
 
-### 小组件（88）
+### 小组件（128）
 
 | 脚本 | 版本 | 说明 | 仓库 | Star | 来源 |
 |---|---|---|---|---|---|
@@ -21,7 +21,7 @@
 | Icon Library | 1.1.2 | 管理多个 GitHub 公开图标库，按仓库独立授权、浏览和上传图标。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 92 | tree |
 | Itemory | 1.0.0 | 为每件物品记录购入价格、维修支出和转手收入，查看持有天数与日均成本，在时间线和置物架上回顾自己的物品。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 92 | tree |
 | Surge 监控 | 1.1.1 | Surge iOS Prometheus 指标小组件：Medium 聚焦累计流量与核心状态，Large 展开网络接口流量。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 92 | tree |
-| AI 额度看板 | 2.3.0 | 纯客户端直连查询 78 家 AI 供应商的订阅配额与 API 钱包余额 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
+| AI 额度看板 | 2.3.1 | 纯客户端直连查询 78 家 AI 供应商的订阅配额与 API 钱包余额 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | API Manager | — | 管理New API相关的 API 地址与 Key，并检测地址状态和可用模型 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | BiliFavor | 3.0.0 | 登录哔哩哔哩并查看关注 UP 主的视频动态 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | CAIS | 3.2.9 | Clipboard all in Scripting | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
@@ -96,6 +96,46 @@
 | AI 额度面板 | 0.8.0 | 桌面与锁屏小组件，汇总各家 AI 服务的剩余额度：Claude 订阅用量窗口、OpenRouter、DeepSeek、硅基流动、Moonshot、OpenAI 兼容中转站，或任意 JSON 接口。可扩展：一个文件一个服务商。 | [H4S2O8/ai-quota-widget](https://github.com/H4S2O8/ai-quota-widget) | 0 | tree |
 | 住宅代理控制 | 0.1.0 | 测试版。选择地区并更换住宅代理出口 IP。 | [H4S2O8/ai-quota-widget](https://github.com/H4S2O8/ai-quota-widget) | 0 | tree |
 | 南方电网 | 1.2.2 | 查看南方电网余额、欠费、当月用电与最新日用电信息。 | [liugaoxiao/scripting-csg](https://github.com/liugaoxiao/scripting-csg) | 0 | tree |
+| App Store Region | 1.0.0 | — | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| App多区价格查询 | 1.0.0 | — | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| CF 用量 | 1.0.0 | 查看 Cloudflare 账号与单个 Worker 的用量，并在接近额度时提醒。 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| Cloudflare Panel | — | — | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| Codex Panel | — | — | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| Colorful Clouds | — | — | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| Gist | 1.0.0 | — | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| Gist Editor | 2.0.3 | — | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| GitHub Actions 管理 | 2.0.2 | 管理 GitHub Actions 工作流程：瀏覽倉庫與工作流程、查看執行狀態與歷史、觸發執行，並在桌面小工具上查看自動化狀態與下次執行時間。 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| GitHub Stars | 1.1.1 | 浏览与管理 GitHub Stars、自定义列表和本人仓库，支持仓库资料维护、多年度贡献热力图与常用语言分析。 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| GitHub 密钥 | 1.0.0 | 编辑仓库的 Actions 密钥，并一键将同一密钥同步到多个仓库。 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| GitHub 規則添加 | 2.0.0 | 直接在已有規則檔案或 Gist 檔案基礎上，新增規則 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| Github Repo | 3.0 | 瀏覽、管理、編輯 Github倉庫 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| Github Repository | 3.0 | 瀏覽、管理、編輯 Github倉庫 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| Github Toolkit | 2.0 | GitHub 日常管理工具，整合三大功能： • Repository：浏览与编辑文件、切换分支、查看 Pull Requests。 • Gist：管理代码片段与多文件内容。 • Actions：查看工作流程、执行记录与执行状态。 支持多账号、搜索筛选、精简显示及主题切换。 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| Icon Library | 1.1.2 | 管理多个 GitHub 公开图标库，按仓库独立授权、浏览和上传图标。 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| IconShelf | 0.4.0 | 图标集订阅管理 · JSON 订阅、预览与更新 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| Iconset Helper | 1.0.0 | — | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| Itemory | 1.0.0 | 为每件物品记录购入价格、维修支出和转手收入，查看持有天数与日均成本，在时间线和置物架上回顾自己的物品。 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| Loon 面板 | 1.0.9 | 机场用量趋势和预测、节点延迟与出口体检、Loon 模式和节点切换。 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| RSS | 1.0.0 | — | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| Scripting Store | 2.0.2 | 本站非 Scripting 官方平台。所有组件均收集自互联网，版权归原作者所有。如有侵权，请TG联系 @RoayCallingBot 删除。 仅做适配App，免访问网站，感谢原作者开发 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| Storefront | 1.5.0 | 管理多区 Apple 账号、余额、订阅、应用收藏与 TestFlight 名额。 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| Surge 监控 | 1.1.1 | Surge iOS Prometheus 指标小组件：Medium 聚焦累计流量与核心状态，Large 展开网络接口流量。 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| qBitHelper | 1.0.6 | 远程监控 qBittorrent/Transmission 状态的脚本 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| 万年历 | 1.0.0 | — | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| 去除背景 | 0.1.0 | 基于 @imgly/background-removal 在本地 AI 推理实现图片背景去除。 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| 启动台 | 1.15.2 | 可自定义的应用启动器小组件，支持多份小组件配置：每个小组件通过参数选择自己的展示内容。大尺寸可分区展示多个文件夹，每个区域都能独立设置布局与外观；SF Symbol 可视化搜索选择并支持填充等样式，支持单应用、双应用、三/四/六/九宫格与自动网格布局，数据保存在 iCloud 共享数据储存库中。 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| 壁纸小工具 | 1.2.6 | ACG 二次元壁纸小组件。支持随机或指定 ID 获取图片，可设置自动刷新间隔（1分钟至1小时）。数据来源：ACG 图库。 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| 寒霜注入工具 | 1.2.4 | 本地提示词注入与网关代理工具（Scripting 版）：内置完整 WebUI、人物卡管理、提示词库与寒霜预设模板。 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| 微博热搜 | 1.1.0 | — | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| 日历 | 1.3.0 | — | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| 智慧交通 | 1.0.0 | 实时查看城市交通状况的桌面组件。显示交通拥堵指数（畅通/缓行/拥堵/严重拥堵）和拥堵道路排行，支持全国多城市切换。数据来源：百度交通指数。 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| 活着打卡 | 1.0.0 | 每天打卡，证明你还活着 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| 流媒體解鎖檢測 | 1.1.0 | Check the IP, region, and YouTube, Netflix, ChatGPT and Disney+ unlock status. | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| 网上国网 | 1.0.1 | 网上国网小组件：电费余额、用电量与阶梯进度。 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| 覆写模块聚合 | 1.1.0 | 聚合 Surge、Loon、Egern、Stash 与 Shadowrocket 模块，支持多来源管理、搜索筛选、收藏、缓存同步、源码查看与一键导入，并提供 GitHub 限流保护。 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| 视频转实况照片 | 1.0.0 | 选择视频、调整封面和时长，然后直接保存为实况照片。 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| 边框流光 | 1.0.0 | 沿着任意视图边框运行的光束，使用 Canvas 绘制。 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 0 | tree |
+| 日历 | 1.0.0 | 桌面日历小组件：农历、节气、休息与补班。 | [SmallMr/Scripting-Calendar](https://github.com/SmallMr/Scripting-Calendar) | 0 | tree |
 | 网上国网用电 | 1.5.9 | 网上国网小组件：浮岛 / 格栅主题、用电日历、月度汇总与阶梯。 | [SmallMr/Scripting-SGCC](https://github.com/SmallMr/Scripting-SGCC) | 0 | tree |
 | 天气日历 | 1.5.5 | — | [SmallMr/Scripting-WeatherWidget](https://github.com/SmallMr/Scripting-WeatherWidget) | 0 | tree |
 | 启动台 | 1.7.4 | 启动台：把常用 App、链接和自定义脚本放到桌面小组件上，一点直达（汉化版）。 | [vaeann/scripting-widgets](https://github.com/vaeann/scripting-widgets) | 0 | tree |
@@ -107,8 +147,4 @@
 
 ## 清理记录
 
-| 时间 | 类型 | 对象 | 原因 |
-|---|---|---|---|
-| 2026-11-23T07:14:27+00:00 | file | scripts-store/BlackCCCat/Scripting-Scripts/projects/Custom-Alarm/Custom-Alarm/components/PageGradientBackground.tsx | 已不在任何有效项目中 |
-| 2026-11-23T07:14:27+00:00 | file | scripts-store/b7f2d/CourseSync/projects/CourseSync/live_activity.tsx | 已不在任何有效项目中 |
-| 2026-11-23T07:14:27+00:00 | file | scripts-store/b7f2d/CourseSync/projects/CourseSync/progress-native.tsx | 已不在任何有效项目中 |
+本次没有需要清理的内容。

@@ -1,0 +1,54 @@
+{
+  "iconImage": null,
+  "entry": "index.tsx",
+  "remoteResource": null,
+  "localizedDescriptions": {
+    "zh": "直接在已有規則檔案或 Gist 檔案基礎上，新增規則",
+    "zh-Hant": "直接在已有規則檔案或 Gist 檔案基礎上，新增規則",
+    "zh-Hans": "直接在已有规则文件或 Gist 文件基础上，新增规则",
+    "en": "Add rules to an existing rule file or Gist file",
+    "it": "",
+    "de": "",
+    "ja": "",
+    "fr": "",
+    "pt": "",
+    "es": "",
+    "ru": ""
+  },
+  "intentInputTypes": [
+    "Text",
+    "URLs"
+  ],
+  "remoteDefinitionId": null,
+  "contributors": [],
+  "name": "GitHub 規則添加",
+  "icon": "list.bullet",
+  "color": "rgba(128, 135, 147, 1.00)",
+  "localizedNames": {
+    "de": "",
+    "es": "",
+    "ja": "",
+    "en": "GitHub Add Rules",
+    "it": "",
+    "pt": "",
+    "fr": "",
+    "zh": "GitHub 規則添加",
+    "zh-Hant": "GitHub 規則添加",
+    "zh-Hans": "GitHub 规则添加",
+    "zh-TW": "GitHub 規則添加",
+    "zh-HK": "GitHub 規則添加",
+    "zh-MO": "GitHub 規則添加",
+    "zh-CN": "GitHub 规则添加",
+    "zh-SG": "GitHub 规则添加",
+    "ru": ""
+  },
+  "version": "2.0.0",
+  "author": {
+    "homepage": null,
+    "email": null,
+    "name": "原作者：@sssLucasss"
+  },
+  "description": "v2.0.0：改名 GitHub 規則添加；全站多語言（簡中／繁中／英文）；圖標顏色 #808793",
+  "permissions": null,
+  "runInApp": false
+}

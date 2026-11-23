@@ -1,0 +1,285 @@
+/**
+ * Billing arithmetic. Every function here is pure — no Storage, no network, no
+ * UI — because these rules decide when we wake the user up, and a wrong answer
+ * is worse than no answer.
+ *
+ * Cross-currency is deliberately never summed (spec FR-SUB-04): v1 has no
+ * exchange rates, so an account only ever compares its balance against charges
+ * denominated in its own currency. Charges in another currency are surfaced
+ * separately by `foreignSubscriptions` and never folded into a total.
+ */
+import type { Account, BillingCycle, Entry } from './types'
+
+export type AlertLevel = 'none' | 'warn' | 'severe'
+
+/** How far ahead the "warn" level looks. */
+export const WARN_WINDOW_DAYS = 30
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Calendar-correct month arithmetic. `Date.setMonth` overflows — Jan 31 plus one
+ * month lands on Mar 3 — whereas a subscription started on the 31st bills on the
+ * 28th in February, so the day is clamped to the length of the target month.
+ */
+function addMonths(ts: number, months: number): number {
+  const source = new Date(ts)
+  const day = source.getDate()
+  const target = new Date(ts)
+  target.setDate(1)
+  target.setMonth(target.getMonth() + months)
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate()
+  target.setDate(Math.min(day, lastDay))
+  return target.getTime()
+}
+
+export function advanceOnce(
+  ts: number,
+  cycle: BillingCycle | undefined,
+  customCycleDays?: number
+): number {
+  switch (cycle) {
+    case 'monthly':
+      return addMonths(ts, 1)
+    case 'quarterly':
+      return addMonths(ts, 3)
+    case 'yearly':
+      return addMonths(ts, 12)
+    case 'custom':
+      return ts + Math.max(1, customCycleDays ?? 30) * DAY_MS
+    default:
+      return addMonths(ts, 1)
+  }
+}
+
+/**
+ * Rolls a stale billing date forward past `now` (FR-SUB-05). Returns the entry
+ * unchanged when nothing moved, so callers can cheaply detect a real advance.
+ */
+export function advanceEntry(entry: Entry, now: number = Date.now()): Entry {
+  if (entry.kind !== 'subscription' || entry.nextBillingAt == null) return entry
+  let at = entry.nextBillingAt
+  // Bounded so a corrupt date or a 1-day custom cycle cannot spin forever.
+  for (let i = 0; at <= now && i < 500; i++) {
+    at = advanceOnce(at, entry.cycle, entry.customCycleDays)
+  }
+  return at === entry.nextBillingAt ? entry : { ...entry, nextBillingAt: at }
+}
+
+export function isBillable(entry: Entry): boolean {
+  return (
+    entry.kind === 'subscription' &&
+    entry.active !== false &&
+    entry.nextBillingAt != null
+  )
+}
+
+/** Active subscriptions charged to this account, in the account's own currency. */
+export function subscriptionsFor(entries: Entry[], account: Account): Entry[] {
+  return entries.filter(
+    (e) => isBillable(e) && e.accountId === account.id && e.currency === account.currency
+  )
+}
+
+/** Active subscriptions on this account billed in some other currency. */
+export function foreignSubscriptions(entries: Entry[], account: Account): Entry[] {
+  return entries.filter(
+    (e) => isBillable(e) && e.accountId === account.id && e.currency !== account.currency
+  )
+}
+
+export function nextBill(subscriptions: Entry[]): Entry | null {
+  let best: Entry | null = null
+  for (const entry of subscriptions) {
+    if (best == null || entry.nextBillingAt! < best.nextBillingAt!) best = entry
+  }
+  return best
+}
+
+/**
+ * Total charged between `now` and `until`, counting a subscription once per
+ * occurrence — a 7-day custom cycle really does bill four times in a month.
+ */
+export function dueBetween(
+  subscriptions: Entry[],
+  now: number,
+  until: number
+): number {
+  let total = 0
+  for (const entry of subscriptions) {
+    let at = entry.nextBillingAt!
+    for (let i = 0; at <= until && i < 500; i++) {
+      if (at >= now) total += entry.price
+      at = advanceOnce(at, entry.cycle, entry.customCycleDays)
+    }
+  }
+  return total
+}
+
+/** Still to be charged before this calendar month ends (FR-ACC-02). */
+export function dueThisMonth(subscriptions: Entry[], now: number = Date.now()): number {
+  const end = new Date(now)
+  end.setMonth(end.getMonth() + 1, 1)
+  end.setHours(0, 0, 0, 0)
+  return dueBetween(subscriptions, now, end.getTime() - 1)
+}
+
+/**
+ * FR-ALERT-01. `severe` means the very next charge already cannot be paid —
+ * silent billing failure is imminent, which is the whole reason this app exists.
+ * `warn` means the next charge clears but the 30-day run does not.
+ */
+export function alertLevelFor(
+  account: Account,
+  entries: Entry[],
+  now: number = Date.now()
+): AlertLevel {
+  const subscriptions = subscriptionsFor(entries, account)
+  const next = nextBill(subscriptions)
+  if (next == null) return 'none'
+  if (account.balance < next.price) return 'severe'
+  if (account.balance < dueBetween(subscriptions, now, now + WARN_WINDOW_DAYS * DAY_MS)) {
+    return 'warn'
+  }
+  return 'none'
+}
+
+export type AccountStanding = {
+  account: Account
+  level: AlertLevel
+  /** The soonest charge in the account's own currency, if any. */
+  next: Entry | null
+  dueThisMonth: number
+}
+
+const LEVEL_RANK: Record<AlertLevel, number> = { severe: 0, warn: 1, none: 2 }
+
+/**
+ * Orders accounts by how much they need attention: anything that will fail to
+ * bill first, then anything that will run out within the month, then by how
+ * soon the next charge lands, and finally the user's own ordering.
+ *
+ * The widget shows only the first one or few, so this ranking decides what a
+ * glance at the Home Screen is worth. Sorting by the user's order alone would
+ * put a healthy account in front of one about to fail.
+ */
+export function rankAccounts(
+  accounts: Account[],
+  entries: Entry[],
+  now: number = Date.now()
+): AccountStanding[] {
+  return accounts
+    .map((account) => {
+      const subscriptions = subscriptionsFor(entries, account)
+      return {
+        account,
+        level: alertLevelFor(account, entries, now),
+        next: nextBill(subscriptions),
+        dueThisMonth: dueThisMonth(subscriptions, now)
+      }
+    })
+    .sort((a, b) => {
+      const byLevel = LEVEL_RANK[a.level] - LEVEL_RANK[b.level]
+      if (byLevel !== 0) return byLevel
+      const aAt = a.next?.nextBillingAt ?? Number.MAX_SAFE_INTEGER
+      const bAt = b.next?.nextBillingAt ?? Number.MAX_SAFE_INTEGER
+      if (aAt !== bAt) return aAt - bAt
+      return a.account.sortIndex - b.account.sortIndex
+    })
+}
+
+/**
+ * Money spent per currency, in first-seen order. Never one number: summing
+ * across currencies would need a rate this module deliberately does not have
+ * (FR-SUB-04).
+ */
+export function totalsByCurrency(entries: Entry[]): [string, number][] {
+  const totals = new Map<string, number>()
+  for (const entry of entries) {
+    totals.set(entry.currency, (totals.get(entry.currency) ?? 0) + entry.price)
+  }
+  return Array.from(totals.entries())
+}
+
+const CYCLE_MONTHS: Partial<Record<BillingCycle, number>> = {
+  monthly: 1,
+  quarterly: 3,
+  yearly: 12
+}
+
+/**
+ * The `k`-th charge before `anchor`. Anchored on the one known date rather than
+ * stepped back one cycle at a time, so a subscription billed on the 31st does
+ * not drift to the 28th after passing through February.
+ */
+function retreat(
+  anchor: number,
+  k: number,
+  cycle: BillingCycle | undefined,
+  customCycleDays?: number
+): number {
+  if (cycle === 'custom') {
+    return anchor - k * Math.max(1, customCycleDays ?? 30) * DAY_MS
+  }
+  return addMonths(anchor, -k * (CYCLE_MONTHS[cycle ?? 'monthly'] ?? 1))
+}
+
+/**
+ * Every charge of an active subscription that falls in one calendar month,
+ * keyed by day of month (1-31). `month` is 0-based, as in `Date`.
+ *
+ * `nextBillingAt` has already been rolled past today (FR-SUB-05), so charges
+ * taken earlier in the month are projected backwards from it; they stop at
+ * `purchasedAt` when one was recorded. Months further out are projected
+ * forwards with the same `advanceOnce` the reminders use, so the calendar and
+ * the notifications never disagree about a date.
+ *
+ * Within a day, records are ordered by app and then title, so several
+ * subscriptions of one app sit next to each other.
+ */
+export function chargesInMonth(
+  entries: Entry[],
+  year: number,
+  month: number
+): Map<number, Entry[]> {
+  const start = new Date(year, month, 1).getTime()
+  const end = new Date(year, month + 1, 1).getTime()
+  const days = new Map<number, Entry[]>()
+
+  const add = (entry: Entry, at: number) => {
+    const day = new Date(at).getDate()
+    const list = days.get(day) ?? []
+    // A custom cycle shorter than a day cannot exist (min 1), but two charges
+    // of the same record on one day would still be one icon too many.
+    if (!list.includes(entry)) list.push(entry)
+    days.set(day, list)
+  }
+
+  for (const entry of entries) {
+    if (!isBillable(entry)) continue
+    const anchor = entry.nextBillingAt!
+    const floor = entry.purchasedAt ?? Number.NEGATIVE_INFINITY
+
+    let at = anchor
+    for (let i = 0; at < end && i < 500; i++) {
+      if (at >= start) add(entry, at)
+      at = advanceOnce(at, entry.cycle, entry.customCycleDays)
+    }
+
+    for (let k = 1; k <= 500; k++) {
+      const back = retreat(anchor, k, entry.cycle, entry.customCycleDays)
+      if (back < start || back < floor) break
+      if (back < end) add(entry, back)
+    }
+  }
+
+  for (const list of days.values()) {
+    list.sort(
+      (a, b) =>
+        a.appId.localeCompare(b.appId) ||
+        a.title.localeCompare(b.title) ||
+        a.id.localeCompare(b.id)
+    )
+  }
+  return days
+}

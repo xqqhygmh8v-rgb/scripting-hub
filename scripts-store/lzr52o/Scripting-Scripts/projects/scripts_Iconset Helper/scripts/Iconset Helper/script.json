@@ -1,0 +1,18 @@
+{
+  "localizedNames" : null,
+  "contributors" : [
+
+  ],
+  "version" : "1.0.0",
+  "localizedDescriptions" : null,
+  "description" : null,
+  "name" : "Iconset Helper",
+  "runInApp" : false,
+  "color" : "rgba(28, 140, 255,1)",
+  "icon" : "arrow.down.app.dashed",
+  "author" : null,
+  "remoteResource" : null,
+  "intentInputTypes" : [
+    "URLs"
+  ]
+}

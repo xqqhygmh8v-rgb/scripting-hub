@@ -1,0 +1,37 @@
+{
+  "entry" : "index.tsx",
+  "contributors" : [
+
+  ],
+  "version" : "2.0",
+  "author" : {
+    "homepage" : "https:\/\/github.com\/iam-Kristen\/Scripting",
+    "name" : "Repo: Kristen · Gist: 001 · Action: Suairki",
+    "email" : null
+  },
+  "localizedNames" : {
+    "zh-TW" : "Github Toolkit",
+    "zh-Hant" : "Github Toolkit",
+    "en" : "Github Toolkit",
+    "zh" : "Github Toolkit"
+  },
+  "intentInputTypes" : [
+
+  ],
+  "iconImage" : "https:\/\/i.ibb.co\/SwRP27kX\/Github-icon-White.png",
+  "remoteResource" : null,
+  "localizedDescriptions" : {
+    "zh-Hant" : "GitHub 日常管理工具，整合三大功能：\n\n• Repository：瀏覽與編輯檔案、切換分支、查看 Pull Requests。\n• Gist：管理程式片段與多檔案內容。\n• Actions：查看工作流程、執行紀錄與執行狀態。\n\n支援多帳號、搜尋篩選、精簡顯示及主題切換。",
+    "zh" : "GitHub 日常管理工具，整合三大功能：\n\n• Repository：浏览与编辑文件、切换分支、查看 Pull Requests。\n• Gist：管理代码片段与多文件内容。\n• Actions：查看工作流程、执行记录与执行状态。\n\n支持多账号、搜索筛选、精简显示及主题切换。",
+    "zh-TW" : "GitHub 日常管理工具，整合三大功能：\n\n• Repository：瀏覽與編輯檔案、切換分支、查看 Pull Requests。\n• Gist：管理程式片段與多檔案內容。\n• Actions：查看工作流程、執行紀錄與執行狀態。\n\n支援多帳號、搜尋篩選、精簡顯示及主題切換。",
+    "zh-Hans" : "GitHub 日常管理工具，整合三大功能：\n\n• Repository：浏览与编辑文件、切换分支、查看 Pull Requests。\n• Gist：管理代码片段与多文件内容。\n• Actions：查看工作流程、执行记录与执行状态。\n\n支持多账号、搜索筛选、精简显示及主题切换。",
+    "en" : "A GitHub management tool for everyday use, bringing three core features together:\n\n• Repository: Browse and edit files, switch branches, and view Pull Requests.\n• Gist: Manage code snippets and multi-file content.\n• Actions: View workflows, run records, and execution status.\n\nSupports multiple accounts, search and filters, compact display, and theme switching."
+  },
+  "icon" : "wrench.and.screwdriver",
+  "permissions" : null,
+  "name" : "Github Toolkit",
+  "remoteDefinitionId" : null,
+  "description" : "GitHub 日常管理工具，整合三大功能：\n\n• Repository：瀏覽與編輯檔案、切換分支、查看 Pull Requests。\n• Gist：管理程式片段與多檔案內容。\n• Actions：查看工作流程、執行紀錄與執行狀態。\n\n支援多帳號、搜尋篩選、精簡顯示及主題切換。",
+  "runInApp" : false,
+  "color" : "rgba(32, 32, 34, 1)"
+}

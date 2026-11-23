@@ -1,0 +1,44 @@
+{
+  "remoteResource" : {
+    "autoUpdateInterval" : 600,
+    "url" : "https:\/\/github.com\/ScriptingApp\/Community-Scripts\/raw\/refs\/heads\/main\/Colorful Clouds.scripting",
+    "hash" : "dabbe7589d389ce8bcf9a8e8a226bbd8"
+  },
+  "entry" : "index.tsx",
+  "contributors" : [
+
+  ],
+  "localizedDescriptions" : {
+    "en" : "",
+    "zh" : "",
+    "de" : "",
+    "es" : "",
+    "fr" : "",
+    "pt" : "",
+    "ja" : "",
+    "it" : "",
+    "ru" : ""
+  },
+  "icon" : "cloud.sun.fill",
+  "version" : null,
+  "name" : "Colorful Clouds",
+  "intentInputTypes" : [
+
+  ],
+  "color" : "systemBlue",
+  "runInApp" : false,
+  "localizedNames" : {
+    "en" : "",
+    "zh" : "",
+    "de" : "",
+    "es" : "",
+    "fr" : "",
+    "pt" : "",
+    "ja" : "",
+    "it" : "",
+    "ru" : ""
+  },
+  "author" : null,
+  "iconImage" : null,
+  "description" : null
+}

@@ -1,0 +1,38 @@
+{
+  "intentInputTypes" : [
+
+  ],
+  "description" : "",
+  "color" : "rgba(252, 124, 93,1)",
+  "remoteResource" : null,
+  "icon" : "dot.radiowaves.up.forward",
+  "author" : null,
+  "localizedNames" : {
+    "ja" : "",
+    "en" : "",
+    "fr" : "",
+    "pt" : "",
+    "es" : "",
+    "ru" : "",
+    "zh" : "",
+    "it" : "",
+    "de" : ""
+  },
+  "version" : "1.0.0",
+  "localizedDescriptions" : {
+    "es" : "",
+    "zh" : "",
+    "de" : "",
+    "pt" : "",
+    "it" : "",
+    "en" : "",
+    "ja" : "",
+    "fr" : "",
+    "ru" : ""
+  },
+  "contributors" : [
+
+  ],
+  "runInApp" : false,
+  "name" : "RSS"
+}

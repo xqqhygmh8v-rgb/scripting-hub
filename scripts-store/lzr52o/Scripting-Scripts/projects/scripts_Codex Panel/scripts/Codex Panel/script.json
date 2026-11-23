@@ -1,0 +1,40 @@
+{
+  "localizedDescriptions" : {
+    "pt" : "",
+    "ru" : "",
+    "fr" : "",
+    "ja" : "",
+    "en" : "",
+    "zh" : "",
+    "de" : "",
+    "it" : "",
+    "es" : ""
+  },
+  "author" : null,
+  "intentInputTypes" : [
+
+  ],
+  "icon" : "bolt.fill",
+  "remoteResource" : null,
+  "entry" : "index.tsx",
+  "iconImage" : null,
+  "description" : null,
+  "contributors" : [
+
+  ],
+  "localizedNames" : {
+    "pt" : "",
+    "ru" : "",
+    "fr" : "",
+    "ja" : "",
+    "en" : "",
+    "zh" : "",
+    "de" : "",
+    "it" : "",
+    "es" : ""
+  },
+  "runInApp" : false,
+  "version" : null,
+  "color" : "rgba(0, 198, 165,1)",
+  "name" : "Codex Panel"
+}

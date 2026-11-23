@@ -1,0 +1,39 @@
+{
+  "localizedDescriptions" : {
+    "en" : "",
+    "ja" : "",
+    "it" : "",
+    "ru" : "",
+    "fr" : "",
+    "zh" : "",
+    "pt" : "",
+    "de" : "",
+    "es" : ""
+  },
+  "iconImage" : null,
+  "runInApp" : false,
+  "contributors" : [
+
+  ],
+  "author" : null,
+  "description" : "",
+  "intentInputTypes" : [
+    "URLs"
+  ],
+  "version" : "1.0.0",
+  "localizedNames" : {
+    "en" : "",
+    "ja" : "",
+    "it" : "",
+    "ru" : "",
+    "fr" : "",
+    "zh" : "",
+    "pt" : "",
+    "de" : "",
+    "es" : ""
+  },
+  "name" : "App多区价格查询",
+  "remoteResource" : null,
+  "color" : "rgba(28, 140, 255,1)",
+  "icon" : "text.magnifyingglass"
+}

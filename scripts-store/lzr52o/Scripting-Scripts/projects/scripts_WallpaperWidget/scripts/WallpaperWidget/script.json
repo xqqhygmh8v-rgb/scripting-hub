@@ -1,0 +1,37 @@
+{
+  "icon" : "photo.fill",
+  "author" : {
+    "email" : "2933177144@qq.com",
+    "name" : "MolTau9527",
+    "homepage" : "https:\/\/github.com\/MolTau9527"
+  },
+  "version" : "1.2.6",
+  "iconImage" : null,
+  "localizedNames" : {
+
+  },
+  "entry" : "index.tsx",
+  "description" : "ACG 二次元壁纸小组件。支持随机或指定 ID 获取图片，可设置自动刷新间隔（1分钟至1小时）。数据来源：ACG 图库。",
+  "localizedDescriptions" : {
+    "de" : "",
+    "fr" : "",
+    "ru" : "",
+    "it" : "",
+    "pt" : "",
+    "en" : "",
+    "es" : "",
+    "zh" : "",
+    "ja" : ""
+  },
+  "contributors" : [
+
+  ],
+  "name" : "壁纸小工具",
+  "runInApp" : false,
+  "intentInputTypes" : [
+
+  ],
+  "remoteResource" : null,
+  "permissions" : null,
+  "color" : "rgba(0, 198, 165,1)"
+}

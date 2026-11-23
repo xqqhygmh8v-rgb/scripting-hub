@@ -1,0 +1,43 @@
+{
+  "color" : "rgba(0, 198, 165,1)",
+  "remoteResource" : null,
+  "iconImage" : null,
+  "runInApp" : false,
+  "name" : "App Store Region",
+  "contributors" : [
+
+  ],
+  "intentInputTypes" : [
+
+  ],
+  "author" : {
+    "homepage" : "https:\/\/github.com\/001ProMax",
+    "name" : "001",
+    "email" : null
+  },
+  "description" : null,
+  "icon" : "shuffle",
+  "version" : "1.0.0",
+  "localizedDescriptions" : {
+    "es" : "",
+    "fr" : "",
+    "de" : "",
+    "it" : "",
+    "ja" : "",
+    "zh" : "",
+    "pt" : "",
+    "ru" : "",
+    "en" : ""
+  },
+  "localizedNames" : {
+    "fr" : "",
+    "es" : "",
+    "ja" : "",
+    "it" : "",
+    "de" : "",
+    "pt" : "",
+    "zh" : "",
+    "ru" : "",
+    "en" : ""
+  }
+}
