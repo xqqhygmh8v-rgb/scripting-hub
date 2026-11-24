@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-11-23T23:44:41+00:00",
+  "updated_at": "2026-11-24T09:37:24+00:00",
   "count": 27,
   "project_count": 129,
   "repos": [
@@ -73,11 +73,11 @@
       "projects": [
         {
           "name": "AI 额度看板",
-          "version": "2.3.1",
+          "version": "2.3.3",
           "description": "纯客户端直连查询 78 家 AI 供应商的订阅配额与 API 钱包余额",
           "dir": "scripts-store/BlackCCCat/Scripting-Scripts/projects/AI-Dashboard",
           "entry": "index.tsx",
-          "files": 224,
+          "files": 228,
           "icon": "chart.bar.doc.horizontal.fill",
           "source": "tree"
         },
@@ -253,11 +253,11 @@
         },
         {
           "name": "媒体下载",
-          "version": "3.0.2",
+          "version": "3.1.0",
           "description": "从分享菜单接收抖音、YouTube 或 m3u8 链接，自动选择对应下载器下载媒体，可保存到相册或导出到文件。",
           "dir": "scripts-store/BlackCCCat/Scripting-Scripts/projects/Media-Downloader",
           "entry": "index.tsx",
-          "files": 14,
+          "files": 15,
           "icon": "square.and.arrow.down",
           "source": "tree"
         },
@@ -987,7 +987,7 @@
           "description": "",
           "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_App多区价格查询",
           "entry": "index.tsx",
-          "files": 12,
+          "files": 13,
           "icon": "text.magnifyingglass",
           "source": "tree"
         },
@@ -1097,7 +1097,7 @@
           "description": "瀏覽、管理、編輯 Github倉庫",
           "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Github Repo",
           "entry": "index.tsx",
-          "files": 11,
+          "files": 12,
           "icon": "folder",
           "source": "tree"
         },
@@ -1157,7 +1157,7 @@
           "description": "为每件物品记录购入价格、维修支出和转手收入，查看持有天数与日均成本，在时间线和置物架上回顾自己的物品。",
           "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Itemory",
           "entry": "index.tsx",
-          "files": 104,
+          "files": 107,
           "icon": "shippingbox.fill",
           "source": "tree"
         },
@@ -1167,7 +1167,7 @@
           "description": "机场用量趋势和预测、节点延迟与出口体检、Loon 模式和节点切换。",
           "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Loon Panel",
           "entry": "index.tsx",
-          "files": 22,
+          "files": 23,
           "icon": "gauge.with.dots.needle.67percent",
           "source": "tree"
         },
@@ -1197,7 +1197,7 @@
           "description": "管理多区 Apple 账号、余额、订阅、应用收藏与 TestFlight 名额。",
           "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Storefront",
           "entry": "index.tsx",
-          "files": 61,
+          "files": 62,
           "icon": "creditcard.circle.fill",
           "source": "tree"
         },

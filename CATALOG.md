@@ -1,6 +1,6 @@
 # 脚本中心目录
 
-最近同步时间：2026-11-23T23:44:41+00:00
+最近同步时间：2026-11-24T09:37:24+00:00
 
 收录 27 个仓库 / 129 个可导入的 Scripting 项目。
 
@@ -21,7 +21,7 @@
 | Icon Library | 1.1.2 | 管理多个 GitHub 公开图标库，按仓库独立授权、浏览和上传图标。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 92 | tree |
 | Itemory | 1.0.0 | 为每件物品记录购入价格、维修支出和转手收入，查看持有天数与日均成本，在时间线和置物架上回顾自己的物品。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 92 | tree |
 | Surge 监控 | 1.1.1 | Surge iOS Prometheus 指标小组件：Medium 聚焦累计流量与核心状态，Large 展开网络接口流量。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 92 | tree |
-| AI 额度看板 | 2.3.1 | 纯客户端直连查询 78 家 AI 供应商的订阅配额与 API 钱包余额 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
+| AI 额度看板 | 2.3.3 | 纯客户端直连查询 78 家 AI 供应商的订阅配额与 API 钱包余额 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | API Manager | — | 管理New API相关的 API 地址与 Key，并检测地址状态和可用模型 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | BiliFavor | 3.0.0 | 登录哔哩哔哩并查看关注 UP 主的视频动态 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | CAIS | 3.2.9 | Clipboard all in Scripting | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
@@ -39,7 +39,7 @@
 | WorkBuddy2API | 2.0.1 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | 万象方案助手 | 3.0.4 | 万象方案下载更新 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | 今日油价 | 3.0.3 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| 媒体下载 | 3.0.2 | 从分享菜单接收抖音、YouTube 或 m3u8 链接，自动选择对应下载器下载媒体，可保存到相册或导出到文件。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
+| 媒体下载 | 3.1.0 | 从分享菜单接收抖音、YouTube 或 m3u8 链接，自动选择对应下载器下载媒体，可保存到相册或导出到文件。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | 密码生成器 | 3.0.1 | 支持 App 与自定义键盘的密码生成器 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | 快递小助手 | 3.0.0 | 修改自：https://raw.githubusercontent.com/1085481057/Scripting/refs/heads/main/快递小助手.scripting | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | 时光纪念 | 3.0.0 | 记录重要的人与日子，用尺寸卡片呈现生日、相识、恋爱和更多珍贵时刻。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
@@ -147,4 +147,7 @@
 
 ## 清理记录
 
-本次没有需要清理的内容。
+| 时间 | 类型 | 对象 | 原因 |
+|---|---|---|---|
+| 2026-11-24T09:37:24+00:00 | file | scripts-store/SmallMr/Scripting-Calendar/projects/Scripting-Calendar/vendor/solarlunar.d.ts | 已不在任何有效项目中 |
+| 2026-11-24T09:37:24+00:00 | file | scripts-store/SmallMr/Scripting-Calendar/projects/Scripting-Calendar/vendor/solarlunar.js | 已不在任何有效项目中 |

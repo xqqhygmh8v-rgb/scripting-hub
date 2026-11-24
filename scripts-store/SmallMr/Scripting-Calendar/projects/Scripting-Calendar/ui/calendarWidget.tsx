@@ -21,7 +21,7 @@ import type { CalendarCell } from '../core/calendar'
 import type { HolidayYearData } from '../core/holidays'
 import type { CalendarSettings } from '../core/settings'
 import type { MonthCursor } from '../core/monthState'
-import { paletteFor } from './theme'
+import { paletteFor, shiftWeight } from './theme'
 
 type CalendarWidgetProps = {
   settings: CalendarSettings
@@ -32,25 +32,23 @@ type CalendarWidgetProps = {
 function Badge({
   label,
   background,
-  scale
+  size
 }: {
   label: '休' | '班'
   background: string
-  scale: number
+  size: number
 }) {
-  const size = 13 * scale
   return (
     <ZStack
       frame={{ width: size, height: size }}
-      offset={{ x: -2 * scale, y: 2 * scale }}
     >
       <RoundedRectangle
         fill={background}
-        cornerRadius={4 * scale}
+        cornerRadius={size * 0.3}
         frame={{ width: size, height: size }}
       />
       <Text
-        font={9 * scale}
+        font={size * 0.72}
         fontWeight="bold"
         foregroundStyle="#FFFFFF"
         lineLimit={1}
@@ -66,6 +64,8 @@ function DayCell({
   width,
   height,
   scale,
+  fontScale,
+  weightStep,
   marker,
   palette
 }: {
@@ -73,14 +73,22 @@ function DayCell({
   width: number
   height: number
   scale: number
+  fontScale: number
+  weightStep: number
   marker: 'rest' | 'work' | null
   palette: ReturnType<typeof paletteFor>
 }) {
+  const fs = (value: number) => value * scale * fontScale
+  const w = (base: string) => shiftWeight(base, weightStep)
   const lunarLabel = getLunarDayLabel(cell.lunar)
   const eventLabel = cell.isCurrentMonth ? cell.eventLabel : ''
   const subline = eventLabel || lunarLabel
   const isOutside = !cell.isCurrentMonth
-  const numberColor = isOutside ? palette.outside : palette.ink
+  const numberColor = isOutside
+    ? palette.outside
+    : cell.isWeekend
+      ? palette.weekend
+      : palette.ink
   const sublineColor = isOutside
     ? palette.outside
     : eventLabel
@@ -89,6 +97,7 @@ function DayCell({
   const hasDot = !!eventLabel && !cell.isToday
   const coreWidth = 42 * scale
   const coreHeight = 44 * scale
+  const badgeSize = 11.5 * scale
 
   return (
     <ZStack frame={{ width, height }}>
@@ -101,16 +110,16 @@ function DayCell({
           />
           <VStack alignment="center" spacing={0}>
             <Text
-              font={16.5 * scale}
-              fontWeight="medium"
+              font={fs(16.5)}
+              fontWeight={w('medium')}
               foregroundStyle={palette.white}
               lineLimit={1}
             >
               {String(cell.day)}
             </Text>
             <Text
-              font={9.5 * scale}
-              fontWeight="medium"
+              font={fs(9.5)}
+              fontWeight={w('medium')}
               foregroundStyle="rgba(255,255,255,0.78)"
               lineLimit={1}
             >
@@ -121,16 +130,16 @@ function DayCell({
       ) : (
         <VStack alignment="center" spacing={0}>
           <Text
-            font={16.5 * scale}
-            fontWeight={isOutside ? 'regular' : 'medium'}
+            font={fs(16.5)}
+            fontWeight={isOutside ? w('regular') : w('medium')}
             foregroundStyle={numberColor}
             lineLimit={1}
           >
             {String(cell.day)}
           </Text>
           <Text
-            font={9.5 * scale}
-            fontWeight={eventLabel ? 'medium' : 'regular'}
+            font={fs(9.5)}
+            fontWeight={eventLabel ? w('medium') : w('regular')}
             foregroundStyle={sublineColor}
             lineLimit={1}
           >
@@ -147,11 +156,17 @@ function DayCell({
       )}
 
       {marker && !isOutside ? (
-        <ZStack alignment="topTrailing" frame={{ width, height }}>
+        <ZStack
+          frame={{ width: badgeSize, height: badgeSize }}
+          position={{
+            x: width - badgeSize / 2 - 1 * scale,
+            y: badgeSize / 2 + 1 * scale
+          }}
+        >
           <Badge
             label={marker === 'rest' ? '休' : '班'}
             background={marker === 'rest' ? palette.red : palette.work}
-            scale={scale}
+            size={badgeSize}
           />
         </ZStack>
       ) : null}
@@ -168,16 +183,22 @@ export function CalendarWidget({
   const year = cursor?.year ?? now.getFullYear()
   const month = cursor?.month ?? now.getMonth() + 1
   const palette = paletteFor(settings.background)
-  const display = Widget.displaySize
+  const display = Widget.displaySize ?? { width: 338, height: 354 }
   const width = display.width || 338
   const height = display.height || 354
   const scale = Math.max(0.45, Math.min(width / 390, height / 409))
+  const fontScale = settings.fontScale ?? 1
+  const weightStep = settings.fontWeightStep ?? 0
+  const fs = (value: number) => value * scale * fontScale
+  const w = (base: string) => shiftWeight(base, weightStep)
   const paddingX = 18 * scale
   const paddingTop = 15 * scale
   const paddingBottom = 11 * scale
   const innerWidth = width - paddingX * 2
   const innerHeight = height - paddingTop - paddingBottom
   const headHeight = 40 * scale
+  const arrowWidth = 34 * scale
+  const titleWidth = innerWidth - arrowWidth * 2
   const weekdayHeight = 25 * scale
   const footerHeight = 34 * scale
   const dayAreaHeight = Math.max(
@@ -191,7 +212,12 @@ export function CalendarWidget({
   const rowHeight = dayAreaHeight / 6
   const cellWidth = innerWidth / 7
   const weekLabels = getWeekLabels(settings.weekStart)
-  const cells = buildMonthGrid(year, month, settings.weekStart)
+  const cells = buildMonthGrid(
+    year,
+    month,
+    settings.weekStart,
+    settings.showIntlFestivals
+  )
   const restSet = new Set(holidays.rest)
   const workSet = new Set(holidays.work)
   const footer = getFooterParts(now)
@@ -209,12 +235,21 @@ export function CalendarWidget({
       frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }}
       widgetBackground={settings.background}
     >
-      <HStack spacing={0} frame={{ maxWidth: 'infinity', height: headHeight }}>
-        <HStack frame={{ width: 38 * scale }} alignment="leading">
+      <HStack
+        spacing={0}
+        frame={{ width: innerWidth, height: headHeight }}
+      >
+        <HStack
+          frame={{
+            width: arrowWidth,
+            height: headHeight,
+            alignment: 'leading'
+          }}
+        >
           <Button
             intent={MoveMonthIntent({ delta: -1 })}
             buttonStyle="plain"
-            frame={{ width: 33 * scale, height: 33 * scale }}
+            frame={{ width: 30 * scale, height: 30 * scale }}
           >
             <Image
               systemName="chevron.left"
@@ -222,22 +257,25 @@ export function CalendarWidget({
               scaleToFit
               renderingMode="template"
               foregroundStyle={palette.header}
-              frame={{ width: 18 * scale, height: 18 * scale }}
+              frame={{ width: 17 * scale, height: 17 * scale }}
             />
           </Button>
         </HStack>
 
         <HStack
-          alignment="center"
-          frame={{ maxWidth: 'infinity', height: headHeight }}
+          frame={{
+            width: titleWidth,
+            height: headHeight,
+            alignment: 'center'
+          }}
         >
           <Button
             intent={ResetMonthIntent(undefined)}
             buttonStyle="plain"
           >
-            <HStack alignment="lastTextBaseline" spacing={7 * scale}>
+            <HStack alignment="center" spacing={6 * scale}>
               <Text
-                font={22.5 * scale}
+                font={fs(22.5)}
                 fontWeight="regular"
                 foregroundStyle={palette.header}
                 lineLimit={1}
@@ -245,7 +283,7 @@ export function CalendarWidget({
                 {String(year)}
               </Text>
               <Text
-                font={18 * scale}
+                font={fs(22.5)}
                 fontWeight="regular"
                 foregroundStyle={palette.muted}
                 lineLimit={1}
@@ -253,7 +291,7 @@ export function CalendarWidget({
                 /
               </Text>
               <Text
-                font={22.5 * scale}
+                font={fs(22.5)}
                 fontWeight="regular"
                 foregroundStyle={palette.header}
                 lineLimit={1}
@@ -265,13 +303,16 @@ export function CalendarWidget({
         </HStack>
 
         <HStack
-          frame={{ width: 38 * scale }}
-          alignment="trailing"
+          frame={{
+            width: arrowWidth,
+            height: headHeight,
+            alignment: 'trailing'
+          }}
         >
           <Button
             intent={MoveMonthIntent({ delta: 1 })}
             buttonStyle="plain"
-            frame={{ width: 33 * scale, height: 33 * scale }}
+            frame={{ width: 30 * scale, height: 30 * scale }}
           >
             <Image
               systemName="chevron.right"
@@ -279,7 +320,7 @@ export function CalendarWidget({
               scaleToFit
               renderingMode="template"
               foregroundStyle={palette.header}
-              frame={{ width: 18 * scale, height: 18 * scale }}
+              frame={{ width: 17 * scale, height: 17 * scale }}
             />
           </Button>
         </HStack>
@@ -289,8 +330,8 @@ export function CalendarWidget({
         {weekLabels.map((label) => (
           <Text
             key={label}
-            font={13.5 * scale}
-            fontWeight="medium"
+            font={fs(13.5)}
+            fontWeight={w('medium')}
             foregroundStyle={palette.muted}
             lineLimit={1}
             frame={{ width: cellWidth, alignment: 'center' }}
@@ -326,6 +367,8 @@ export function CalendarWidget({
                   width={cellWidth}
                   height={rowHeight}
                   scale={scale}
+                  fontScale={fontScale}
+                  weightStep={weightStep}
                   marker={marker}
                   palette={palette}
                 />
@@ -335,7 +378,14 @@ export function CalendarWidget({
         ))}
       </VStack>
 
-      <HStack spacing={0} frame={{ width: innerWidth, height: footerHeight }}>
+      <HStack
+        spacing={0}
+        frame={{
+          width: innerWidth,
+          height: footerHeight,
+          alignment: 'leading'
+        }}
+      >
         <RoundedRectangle
           fill={palette.red}
           cornerRadius={2 * scale}
@@ -347,16 +397,16 @@ export function CalendarWidget({
           padding={{ leading: 8 * scale }}
         >
           <Text
-            font={11.5 * scale}
-            fontWeight="semibold"
+            font={fs(13)}
+            fontWeight={w('semibold')}
             foregroundStyle={palette.ink}
             lineLimit={1}
           >
             {footer.dateLabel}
           </Text>
           <Text
-            font={11.5 * scale}
-            fontWeight="regular"
+            font={fs(12.5)}
+            fontWeight={w('regular')}
             foregroundStyle={palette.muted}
             lineLimit={1}
           >

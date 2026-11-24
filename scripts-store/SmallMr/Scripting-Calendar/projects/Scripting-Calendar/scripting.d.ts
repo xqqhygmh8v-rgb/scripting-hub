@@ -43,13 +43,6 @@ declare module 'scripting' {
     }): AppIntentFactory<T>
   }
 
-  export const Storage: {
-    get<T = unknown>(key: string): T | null
-    set<T>(key: string, value: T): boolean
-    remove(key: string): void
-    contains(key: string): boolean
-  }
-
   export const Script: { exit(): void }
 
   export const Navigation: {
@@ -95,8 +88,12 @@ declare module 'scripting' {
   export const Rectangle: (props: any) => any
   export const RoundedRectangle: (props: any) => any
   export const Section: (props: any) => any
+  export const Slider: (props: any) => any
   export const Spacer: (props: any) => any
+  export const ScrollView: (props: any) => any
   export const Text: (props: any) => any
+  export const TextField: (props: any) => any
+  export const Toggle: (props: any) => any
   export const VStack: (props: any) => any
   export const ZStack: (props: any) => any
 }
@@ -113,6 +110,15 @@ declare const Dialog: {
     cancelLabel?: string
     confirmLabel?: string
   }): Promise<boolean>
+}
+
+declare const Storage: {
+  get<T = unknown>(key: string, options?: { shared?: boolean }): T | null
+  set<T>(key: string, value: T, options?: { shared?: boolean }): boolean
+  remove(key: string, options?: { shared?: boolean }): void
+  contains(key: string, options?: { shared?: boolean }): boolean
+  clear(): void
+  keys(): string[]
 }
 
 declare const console: {

@@ -1,5 +1,3 @@
-import { Storage } from 'scripting'
-
 export type MonthCursor = {
   year: number
   month: number

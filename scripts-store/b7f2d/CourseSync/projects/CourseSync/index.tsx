@@ -3093,7 +3093,23 @@ function offlineAgenda(state,now=Date.now()) {
     (lines.length?lines.join('\n\n'):'本地暂无尚未结束的课程和考试，请刷新后查看。')+'\n\n显示最近20节课程和考试。';
 }
 const NUFE_FREE_ROOM_ENDPOINT='https://jwxt.nufe.edu.cn/student/ws/room-borrow/free-list';
-const BUILDING_PRIORITY=Object.freeze({'博远楼':1,'博观楼':2,'博文楼':3});
+const BUILDING_PRIORITY=Object.freeze({'德经楼':1,'德济楼':2,'德正楼':3,'德业楼':4,'博远楼':5,'博观楼':6,'博文楼':7});
+const ROOM_CODE_PREFIX=Object.freeze({'博远楼':'JC','博观楼':'JB','博文楼':'JA','德经楼':'Z1-','德济楼':'Z2-','德正楼':'Z3-','德业楼':'Z4-'});
+const FIRST_FLOOR_BUILDINGS=new Set(['德经楼','德济楼','德正楼','德业楼']);
+function isEligibleFreeRoom(room){
+  if(!room||typeof room!=='object')return false;
+  const building=room.building?.nameZh||room.buildingName;
+  const prefix=ROOM_CODE_PREFIX[building];
+  if(typeof prefix!=='string')return false;
+  const firstOnly=FIRST_FLOOR_BUILDINGS.has(building);
+  if(firstOnly&&Number(room.floor)!==1)return false;
+  const name=String(room.nameZh||room.name||'').trim();
+  if(name.includes('微'))return false;
+  const code=(name.startsWith(building)?name.slice(building.length):name).trim();
+  if(!code.startsWith(prefix))return false;
+  const number=code.slice(prefix.length);
+  return (firstOnly?/^1\d{2}$/:/^[1-9]\d{2}$/).test(number);
+}
 
 function compareFreeRooms(a,b){
   const bpA=BUILDING_PRIORITY[a.building?.nameZh||a.buildingName]||99;
@@ -3111,10 +3127,7 @@ async function queryFreeRoomsForPeriod(http,date,units){
   };
   const data=await http.json(NUFE_FREE_ROOM_ENDPOINT,{body:JSON.stringify(payload),json:true});
   assert(Array.isArray(data?.roomList),'SCHEMA');
-  return data.roomList.filter(r=>{
-    const bName=r.building?.nameZh||r.buildingName;
-    return Boolean(BUILDING_PRIORITY[bName])&&!String(r.nameZh||r.name||'').includes('微');
-  }).sort(compareFreeRooms);
+  return data.roomList.filter(isEligibleFreeRoom).sort(compareFreeRooms);
 }
 
 const MORNING_UNITS=['1','2','3','4','5'];
@@ -3167,7 +3180,15 @@ async function queryDayRooms(http,date,onProgress=()=>{}){
     };
     const workers=await Promise.allSettled(Array.from({length:Math.min(3,tasks.length)},()=>worker()));
     const workerFailure=workers.find(result=>result.status==='rejected');
-    if(workerFailure)throw workerFailure.reason;
+    // Full-period results are already verified. Optional lesson-level suggestions
+    // must not turn an empty successful query into a failed page.
+    if(workerFailure){
+      if(diagnosticCode(workerFailure.reason)==='CANCELLED')throw workerFailure.reason;
+      if(!full.some(list=>list.length))rows[0].room='无完整时段空闲教室；分节建议未能获取';
+      else rows[0].room+='\n分节建议未能获取';
+      onProgress(1);
+      return rows;
+    }
     const roomName=r=>String(r?.nameZh||r?.name||'').replace(/（[^）]*）|\([^)]*\)/g,'').trim();
     const roomKey=r=>r.id!=null?'id:'+String(r.id):'name:'+roomName(r);
     const bestFor=(units,perSlot)=>{
@@ -3207,7 +3228,7 @@ async function queryDayRooms(http,date,onProgress=()=>{}){
     if(daytime.length)suggestions.splice(0,2,'白天：'+daytime.map(roomName).join('、')+'（第1—10节）');
     else if(afternoonEvening.length)suggestions.splice(1,2,'下午至晚上：'+afternoonEvening.map(roomName).join('、')+'（第6—13节）');
     rows[0].room=suggestions.join('\n');
-    for(const {index} of missing)rows[index+1].room='无完整时段空闲教室（见建议）';
+    for(const {index} of missing)rows[index+1].room='无空闲教室';
   }
   onProgress(1);
   return rows;
@@ -3237,7 +3258,7 @@ async function loadFreeRoomPage(isActive,onProgress){
     if(code==='CANCELLED')return {kind:'error',message:'查询已取消'};
     if(['AUTH_REQUIRED','AUTH_INTERACTIVE_REQUIRED','LOGIN_FAILED','AUTO_LOGIN_REJECTED'].includes(code))
       return {kind:'error',message:'登录失败，请重新登录后再查询。'};
-    return {kind:'error',message:'查询失败，请稍后重试。'};
+    return {kind:'error',message:'查询失败\n错误代码：'+code+'\n原因：'+reasonFor(code)};
   }
 }
 

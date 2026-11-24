@@ -1,5 +1,5 @@
-import { Storage, fetch } from 'scripting'
-import { dateKey, isWeekend, pad2 } from './calendar'
+import { fetch } from 'scripting'
+import { pad2 } from './dateUtils'
 
 export type HolidayMarker = 'rest' | 'work' | 'none'
 export type HolidaySource = 'online' | 'manual'
@@ -13,10 +13,88 @@ export type HolidayYearData = {
   provider?: string
 }
 
-const HOLIDAY_KEY_PREFIX = 'calendar-holidays-'
+const HOLIDAY_KEY_PREFIX = 'calendar-holidays-v2-'
+const LEGACY_HOLIDAY_KEY_PREFIX = 'calendar-holidays-'
+const FETCH_FAILURE_KEY = 'calendar-holidays-fetch-failure'
+
+export type HolidayFetchFailure = { year: number; message: string }
+
+export type HolidayFetchFailureState = {
+  time: number
+  failures: HolidayFetchFailure[]
+}
+
+export function readFetchFailure(): HolidayFetchFailureState | null {
+  try {
+    const value = Storage.get<HolidayFetchFailureState>(FETCH_FAILURE_KEY)
+    if (!value || !Array.isArray(value.failures)) return null
+    return {
+      time: Number(value.time) || 0,
+      failures: value.failures.filter(
+        (item) =>
+          item &&
+          typeof item.year === 'number' &&
+          typeof item.message === 'string'
+      )
+    }
+  } catch (error) {
+    console.error(error)
+    return null
+  }
+}
+
+export function writeFetchFailure(failures: HolidayFetchFailure[]) {
+  try {
+    if (failures.length === 0) {
+      Storage.remove(FETCH_FAILURE_KEY)
+      return
+    }
+    Storage.set<HolidayFetchFailureState>(FETCH_FAILURE_KEY, {
+      time: Date.now(),
+      failures
+    })
+  } catch (error) {
+    console.error(error)
+  }
+}
 
 function storageKey(year: number) {
   return `${HOLIDAY_KEY_PREFIX}${year}`
+}
+
+function legacyStorageKey(year: number) {
+  return `${LEGACY_HOLIDAY_KEY_PREFIX}${year}`
+}
+
+function isWeekendKey(key: string) {
+  const day = new Date(`${key}T00:00:00Z`).getUTCDay()
+  return day === 0 || day === 6
+}
+
+function dayDistance(first: string, second: string) {
+  const a = Date.parse(`${first}T00:00:00Z`)
+  const b = Date.parse(`${second}T00:00:00Z`)
+  return Math.round((b - a) / 86400000)
+}
+
+// 旧版数据把每个普通周末都写进了休息日，这里只保留含工作日的连续假期段。
+function dropPlainWeekendRuns(dates: string[]) {
+  const sorted = [...dates].sort()
+  const kept: string[] = []
+  let index = 0
+  while (index < sorted.length) {
+    let end = index
+    while (
+      end + 1 < sorted.length &&
+      dayDistance(sorted[end], sorted[end + 1]) === 1
+    ) {
+      end += 1
+    }
+    const run = sorted.slice(index, end + 1)
+    if (run.some((key) => !isWeekendKey(key))) kept.push(...run)
+    index = end + 1
+  }
+  return kept
 }
 
 function isValidDateForYear(value: string, year: number) {
@@ -50,37 +128,55 @@ function normalizeData(
 }
 
 export function readHolidayYear(year: number): HolidayYearData | null {
-  return normalizeData(
-    Storage.get<HolidayYearData>(storageKey(year)),
-    year
-  )
+  try {
+    const current = normalizeData(
+      Storage.get<HolidayYearData>(storageKey(year)),
+      year
+    )
+    if (current) return current
+
+    const legacy = normalizeData(
+      Storage.get<HolidayYearData>(legacyStorageKey(year)),
+      year
+    )
+    if (!legacy) return null
+
+    const migrated: HolidayYearData = {
+      ...legacy,
+      rest: dropPlainWeekendRuns(legacy.rest)
+    }
+    writeHolidayYear(migrated)
+    return migrated
+  } catch (error) {
+    console.error(error)
+    return null
+  }
 }
 
 export function writeHolidayYear(data: HolidayYearData) {
-  Storage.set(storageKey(data.year), {
-    ...data,
-    rest: uniqueSorted(data.rest, data.year),
-    work: uniqueSorted(data.work, data.year)
-  })
+  try {
+    Storage.set(storageKey(data.year), {
+      ...data,
+      rest: uniqueSorted(data.rest, data.year),
+      work: uniqueSorted(data.work, data.year)
+    })
+  } catch (error) {
+    console.error(error)
+  }
 }
 
 export function clearHolidayYear(year: number) {
   Storage.remove(storageKey(year))
+  Storage.remove(legacyStorageKey(year))
 }
 
-export function makeWeekendHolidayYear(
+export function makeEmptyHolidayYear(
   year: number,
   source: HolidaySource = 'manual'
 ): HolidayYearData {
-  const rest: string[] = []
-  const cursor = new Date(year, 0, 1, 12)
-  while (cursor.getFullYear() === year) {
-    if (isWeekend(cursor)) rest.push(dateKey(cursor))
-    cursor.setDate(cursor.getDate() + 1)
-  }
   return {
     year,
-    rest,
+    rest: [],
     work: [],
     updatedAt: 0,
     source
@@ -88,7 +184,7 @@ export function makeWeekendHolidayYear(
 }
 
 export function getEffectiveHolidayYear(year: number) {
-  return readHolidayYear(year) ?? makeWeekendHolidayYear(year)
+  return readHolidayYear(year) ?? makeEmptyHolidayYear(year)
 }
 
 export function applyHolidayMarker(
@@ -226,8 +322,7 @@ export async function fetchHolidayYear(
     throw new Error(`在线获取失败。${errors.join('；')}`)
   }
 
-  const base = makeWeekendHolidayYear(year, 'online')
-  const rest = new Set(base.rest)
+  const rest = new Set<string>()
   const work = new Set<string>()
 
   for (const day of result.days) {

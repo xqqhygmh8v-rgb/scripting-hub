@@ -4,6 +4,7 @@ export type CalendarPalette = {
   muted: string
   faint: string
   outside: string
+  weekend: string
   event: string
   eventDot: string
   red: string
@@ -11,12 +12,33 @@ export type CalendarPalette = {
   white: string
 }
 
+const WEIGHT_STEPS = [
+  'ultraLight',
+  'thin',
+  'light',
+  'regular',
+  'medium',
+  'semibold',
+  'bold'
+]
+
+export function shiftWeight(base: string, step: number) {
+  const index = WEIGHT_STEPS.indexOf(base)
+  if (index < 0) return base
+  const next = Math.min(
+    WEIGHT_STEPS.length - 1,
+    Math.max(0, index + Math.round(step))
+  )
+  return WEIGHT_STEPS[next]
+}
+
 const LIGHT_PALETTE: CalendarPalette = {
-  ink: '#1C1C1E',
+  ink: '#2F2F34',
   header: 'rgba(28,28,30,0.84)',
   muted: '#707075',
   faint: '#A1A1A7',
   outside: '#C9C9CE',
+  weekend: '#6E6E74',
   event: '#7C9DA9',
   eventDot: '#9BB5BE',
   red: '#E65356',
@@ -25,11 +47,12 @@ const LIGHT_PALETTE: CalendarPalette = {
 }
 
 const DARK_PALETTE: CalendarPalette = {
-  ink: '#F6F6F7',
+  ink: 'rgba(246,246,247,0.92)',
   header: 'rgba(246,246,247,0.88)',
   muted: 'rgba(246,246,247,0.64)',
   faint: 'rgba(246,246,247,0.46)',
   outside: 'rgba(246,246,247,0.28)',
+  weekend: 'rgba(246,246,247,0.70)',
   event: '#A7C6D0',
   eventDot: '#84AAB5',
   red: '#E65356',

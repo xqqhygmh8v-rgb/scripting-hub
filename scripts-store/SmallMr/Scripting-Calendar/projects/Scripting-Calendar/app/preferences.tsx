@@ -1,244 +1,74 @@
 import {
   Button,
-  ColorPicker,
   HStack,
   List,
   Navigation,
   NavigationStack,
   Picker,
   ProgressView,
-  RoundedRectangle,
   Section,
+  Slider,
   Spacer,
   Text,
+  TextField,
+  Toggle,
   VStack,
   Widget,
-  ZStack,
   useEffect,
   useState
 } from 'scripting'
 import {
-  buildMonthGrid,
-  getWeekLabels
-} from '../core/calendar'
-import type { CalendarCell } from '../core/calendar'
-import {
-  applyHolidayMarker,
-  clearHolidayYear,
   fetchHolidayYear,
   formatUpdatedAt,
-  makeWeekendHolidayYear,
+  makeEmptyHolidayYear,
+  readFetchFailure,
   readHolidayYear,
+  writeFetchFailure,
   writeHolidayYear
 } from '../core/holidays'
-import type {
-  HolidayMarker,
-  HolidayYearData
-} from '../core/holidays'
+import type { HolidayFetchFailure, HolidayYearData } from '../core/holidays'
 import {
+  FONT_SCALE_MAX,
+  FONT_SCALE_MIN,
+  FONT_SCALE_STEP,
+  FONT_WEIGHT_MAX,
+  FONT_WEIGHT_MIN,
+  FONT_WEIGHT_STEP,
   readSettings,
   writeSettings
 } from '../core/settings'
-import type {
-  CalendarSettings,
-  WeekStart
-} from '../core/settings'
+import type { CalendarSettings, WeekStart } from '../core/settings'
 
-const BACKGROUND_PRESETS = [
+const VERSION = '1.0.0'
+
+const AUTO_REFRESH_INTERVAL = 30 * 24 * 60 * 60 * 1000
+
+const PRESETS = [
   { color: '#F8F8FA', label: '云白' },
   { color: '#FFFFFF', label: '纯白' },
   { color: '#FAF7F1', label: '米白' },
   { color: '#F1F6F8', label: '雾蓝' }
 ]
 
-const EDITOR_MODES: { value: HolidayMarker; label: string }[] = [
-  { value: 'rest', label: '休息日（休）' },
-  { value: 'work', label: '补班日（班）' },
-  { value: 'none', label: '清除标记' }
-]
+const CUSTOM_TAG = 'custom'
 
-function PresetSwatch({
-  color,
-  label,
-  selected,
-  onPressed
-}: {
-  color: string
-  label: string
-  selected: boolean
-  onPressed: () => void
-}) {
-  return (
-    <Button action={onPressed} buttonStyle="plain">
-      <VStack alignment="center" spacing={5}>
-        <ZStack frame={{ width: 32, height: 32 }}>
-          <RoundedRectangle
-            fill={selected ? '#25262B' : 'rgba(120,120,128,0.16)'}
-            cornerRadius={16}
-            frame={{ width: 32, height: 32 }}
-          />
-          <RoundedRectangle
-            fill={color}
-            cornerRadius={13}
-            frame={{ width: 26, height: 26 }}
-          />
-        </ZStack>
-        <Text
-          font={10}
-          foregroundStyle="secondaryLabel"
-          lineLimit={1}
-        >
-          {label}
-        </Text>
-      </VStack>
-    </Button>
-  )
+const WEIGHT_LABELS: Record<number, string> = {
+  [-2]: '极细',
+  [-1]: '较细',
+  0: '标准',
+  1: '较粗',
+  2: '粗'
 }
 
-function MiniBadge({ type }: { type: 'rest' | 'work' }) {
-  return (
-    <ZStack frame={{ width: 15, height: 15 }}>
-      <RoundedRectangle
-        fill={type === 'rest' ? '#E65356' : '#455B6B'}
-        cornerRadius={4}
-        frame={{ width: 15, height: 15 }}
-      />
-      <Text font={9.5} fontWeight="bold" foregroundStyle="#FFFFFF">
-        {type === 'rest' ? '休' : '班'}
-      </Text>
-    </ZStack>
-  )
+function shortMessage(message: string) {
+  return message.length > 80 ? `${message.slice(0, 80)}…` : message
 }
 
-function EditorDayCell({
-  cell,
-  data,
-  onPressed
-}: {
-  cell: CalendarCell
-  data: HolidayYearData
-  onPressed: (key: string) => void
-}) {
-  const marker: HolidayMarker = data.work.includes(cell.key)
-    ? 'work'
-    : data.rest.includes(cell.key)
-      ? 'rest'
-      : 'none'
-
-  if (!cell.isCurrentMonth) {
-    return (
-      <VStack
-        alignment="center"
-        frame={{ maxWidth: 'infinity', height: 42 }}
-      >
-        <Text
-          font={14}
-          foregroundStyle="tertiaryLabel"
-          lineLimit={1}
-        >
-          {String(cell.day)}
-        </Text>
-      </VStack>
-    )
-  }
-
+function isValidColor(value: string) {
+  const color = value.trim()
   return (
-    <Button
-      action={() => onPressed(cell.key)}
-      buttonStyle="plain"
-      frame={{ maxWidth: 'infinity', height: 42 }}
-    >
-      <ZStack frame={{ maxWidth: 'infinity', height: 42 }}>
-        <VStack alignment="center" spacing={1}>
-          <Text
-            font={15}
-            fontWeight={cell.isToday ? 'semibold' : 'regular'}
-            foregroundStyle={cell.isToday ? '#E65356' : 'label'}
-            lineLimit={1}
-          >
-            {String(cell.day)}
-          </Text>
-          <Text
-            font={8.5}
-            foregroundStyle="tertiaryLabel"
-            lineLimit={1}
-          >
-            {marker === 'rest' ? '休息' : marker === 'work' ? '补班' : ' '}
-          </Text>
-        </VStack>
-
-        {marker !== 'none' ? (
-          <ZStack
-            alignment="topTrailing"
-            frame={{ maxWidth: 'infinity', height: 42 }}
-          >
-            <ZStack
-              frame={{ width: 14, height: 14 }}
-              offset={{ x: -1, y: 1 }}
-            >
-              <RoundedRectangle
-                fill={marker === 'rest' ? '#E65356' : '#455B6B'}
-                cornerRadius={3.5}
-                frame={{ width: 14, height: 14 }}
-              />
-              <Text
-                font={8.5}
-                fontWeight="bold"
-                foregroundStyle="#FFFFFF"
-              >
-                {marker === 'rest' ? '休' : '班'}
-              </Text>
-            </ZStack>
-          </ZStack>
-        ) : null}
-      </ZStack>
-    </Button>
-  )
-}
-
-function EditorGrid({
-  year,
-  month,
-  weekStart,
-  data,
-  onPressed
-}: {
-  year: number
-  month: number
-  weekStart: WeekStart
-  data: HolidayYearData
-  onPressed: (key: string) => void
-}) {
-  const cells = buildMonthGrid(year, month, weekStart)
-  const labels = getWeekLabels(weekStart)
-  return (
-    <VStack alignment="leading" spacing={0}>
-      <HStack spacing={0}>
-        {labels.map((label) => (
-          <Text
-            key={label}
-            font={10.5}
-            foregroundStyle="secondaryLabel"
-            lineLimit={1}
-            frame={{ maxWidth: 'infinity', alignment: 'center' }}
-          >
-            {label}
-          </Text>
-        ))}
-      </HStack>
-      {Array.from({ length: 6 }, (_, row) => (
-        <HStack key={String(row)} spacing={0}>
-          {cells.slice(row * 7, row * 7 + 7).map((cell) => (
-            <EditorDayCell
-              key={cell.key}
-              cell={cell}
-              data={data}
-              onPressed={onPressed}
-            />
-          ))}
-        </HStack>
-      ))}
-    </VStack>
+    /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color) ||
+    /^rgba?\(/i.test(color)
   )
 }
 
@@ -248,75 +78,140 @@ export function SettingsScreen() {
   const [settings, setSettings] = useState<CalendarSettings>(() =>
     readSettings()
   )
+  const [colorDraft, setColorDraft] = useState(settings.background)
   const [holidayYear, setHolidayYear] = useState(thisYear)
-  const [savedHolidays, setSavedHolidays] =
-    useState<HolidayYearData | null>(() => readHolidayYear(thisYear))
-  const [editorMonth, setEditorMonth] = useState(
-    () => new Date().getMonth() + 1
+  const [saved, setSaved] = useState<HolidayYearData | null>(() =>
+    readHolidayYear(thisYear)
   )
-  const [editorMode, setEditorMode] = useState<HolidayMarker>('rest')
   const [fetching, setFetching] = useState(false)
+  const [failureState, setFailureState] = useState<{
+    time: number
+    failures: HolidayFetchFailure[]
+  } | null>(() => readFetchFailure())
+  const failures = failureState?.failures ?? []
+
+  const applyFailures = (errors: HolidayFetchFailure[]) => {
+    setFailureState(
+      errors.length > 0 ? { time: Date.now(), failures: errors } : null
+    )
+    writeFetchFailure(errors)
+  }
 
   useEffect(() => {
     writeSettings(settings)
-    Widget.reloadAll()
+    try {
+      Widget.reloadAll()
+    } catch (error) {
+      console.error(error)
+    }
   }, [settings])
+
+  useEffect(() => {
+    let active = true
+    const refresh = async () => {
+      let changed = false
+      const errors: HolidayFetchFailure[] = []
+      for (const year of [thisYear - 1, thisYear, thisYear + 1]) {
+        const current = readHolidayYear(year)
+        if (
+          current &&
+          Date.now() - current.updatedAt < AUTO_REFRESH_INTERVAL
+        ) {
+          continue
+        }
+        try {
+          const fetched = await fetchHolidayYear(year)
+          if (!active) return
+          writeHolidayYear(fetched)
+          changed = true
+          if (year === holidayYear) setSaved(fetched)
+        } catch (error) {
+          console.error(error)
+          errors.push({ year, message: String(error) })
+        }
+      }
+      if (!active) return
+      applyFailures(errors)
+      if (!changed) return
+      try {
+        Widget.reloadAll()
+      } catch (error) {
+        console.error(error)
+      }
+    }
+    refresh()
+    return () => {
+      active = false
+    }
+  }, [])
 
   const patch = (changes: Partial<CalendarSettings>) =>
     setSettings((previous) => ({ ...previous, ...changes }))
 
-  const holidayData =
-    savedHolidays ?? makeWeekendHolidayYear(holidayYear)
+  const presetValue =
+    PRESETS.find(
+      (preset) =>
+        preset.color.toLowerCase() === settings.background.toLowerCase()
+    )?.color ?? CUSTOM_TAG
+
+  const changeColor = (value: string) => {
+    setColorDraft(value)
+    if (isValidColor(value)) {
+      patch({ background: value.trim() })
+    }
+  }
+
+  const data = saved ?? makeEmptyHolidayYear(holidayYear)
 
   const handleYearChange = (value: string) => {
     const nextYear = Number(value)
     setHolidayYear(nextYear)
-    setSavedHolidays(readHolidayYear(nextYear))
+    setSaved(readHolidayYear(nextYear))
   }
 
   const handleFetch = async () => {
     setFetching(true)
+    const done: string[] = []
+    const errors: HolidayFetchFailure[] = []
+    for (const year of [thisYear - 1, thisYear, thisYear + 1]) {
+      try {
+        const fetched = await fetchHolidayYear(year)
+        writeHolidayYear(fetched)
+        if (year === holidayYear) setSaved(fetched)
+        done.push(
+          `${year} 年：${fetched.rest.length} 个休息日、${fetched.work.length} 个补班日`
+        )
+      } catch (error) {
+        console.error(error)
+        errors.push({ year, message: String(error) })
+      }
+    }
+    applyFailures(errors)
     try {
-      const fetched = await fetchHolidayYear(holidayYear)
-      writeHolidayYear(fetched)
-      setSavedHolidays(fetched)
       Widget.reloadAll()
-      await Dialog.alert({
-        title: '节假日已更新',
-        message: `${holidayYear} 年：${fetched.rest.length} 个休息日、${fetched.work.length} 个补班日。来源：${fetched.provider ?? '在线数据'}`
-      })
     } catch (error) {
       console.error(error)
+    }
+    setFetching(false)
+    if (errors.length === 0) {
       await Dialog.alert({
-        title: '获取失败',
-        message: String(error)
+        title: '节假日已更新',
+        message: done.join('\n')
       })
-    } finally {
-      setFetching(false)
+    } else {
+      await Dialog.alert({
+        title: done.length > 0 ? '部分年份获取失败' : '获取失败',
+        message: [
+          ...done,
+          ...errors.map(
+            (item) => `${item.year} 年失败：${shortMessage(item.message)}`
+          )
+        ].join('\n')
+      })
     }
   }
 
-  const handleEditDay = (key: string) => {
-    const next = applyHolidayMarker(holidayData, key, editorMode)
-    writeHolidayYear(next)
-    setSavedHolidays(next)
-    Widget.reloadAll()
-  }
-
-  const handleClearYear = async () => {
-    const confirmed = await Dialog.confirm({
-      title: `清除 ${holidayYear} 年配置`,
-      message: '清除后该年只按普通周末显示休息日，法定节假日与补班标记会消失。',
-      cancelLabel: '取消',
-      confirmLabel: '清除'
-    })
-    if (!confirmed) return
-    clearHolidayYear(holidayYear)
-    setSavedHolidays(null)
-    Widget.reloadAll()
-  }
-
-  const previewWidget = async () => {
+  const openWidgetPreview = async () => {
     try {
       await Widget.preview()
     } catch (error) {
@@ -324,11 +219,11 @@ export function SettingsScreen() {
     }
   }
 
-  const sourceText = savedHolidays
-    ? savedHolidays.source === 'online'
-      ? `在线获取 · ${savedHolidays.provider ?? '节假日接口'}`
-      : '已本地编辑'
-    : '尚未在线获取，当前按普通周末显示'
+  const sourceText = saved
+    ? saved.source === 'online'
+      ? `在线获取 · ${saved.provider ?? '节假日接口'}`
+      : '本地保存的数据'
+    : '尚未在线获取，暂不显示休、班标记'
 
   return (
     <NavigationStack>
@@ -339,58 +234,88 @@ export function SettingsScreen() {
         }}
       >
         <Section
-          header={<Text>外观</Text>}
+          header={<Text>{`外观 · v${VERSION}`}</Text>}
           footer={
             <Text>
-              底色只作用于整块小组件，不会给每个日期格单独加背景或边框。
+              底色作用于整块小组件，不会给每个日期格单独加背景或边框。
+            </Text>
+          }
+        >
+          <Picker
+            title="组件背景色"
+            value={presetValue}
+            onChanged={(value: string) => {
+              if (value !== CUSTOM_TAG) changeColor(value)
+            }}
+          >
+            {PRESETS.map((preset) => (
+              <Text key={preset.color} tag={preset.color}>
+                {preset.label}
+              </Text>
+            ))}
+            <Text tag={CUSTOM_TAG}>自定义</Text>
+          </Picker>
+
+          <TextField
+            title="自定义背景"
+            prompt="#F8F8FA"
+            value={colorDraft}
+            onChanged={changeColor}
+          />
+        </Section>
+
+        <Section
+          header={<Text>字体</Text>}
+          footer={
+            <Text>
+              调节整块日历的字号与笔画粗细，公历、农历、表头与底部信息同步变化；字号 100%、粗细「较细」为默认效果。
             </Text>
           }
         >
           <VStack alignment="leading" spacing={10}>
-            <HStack alignment="center">
-              <Text>组件背景色</Text>
+            <HStack spacing={8}>
+              <Text font={15}>整体字号</Text>
               <Spacer />
-              <Text font={12} foregroundStyle="secondaryLabel">
-                {settings.background}
+              <Text font={15} foregroundStyle="#8E8E93">
+                {`${Math.round(settings.fontScale * 100)}%`}
               </Text>
             </HStack>
-            <HStack spacing={16}>
-              {BACKGROUND_PRESETS.map((preset) => (
-                <PresetSwatch
-                  key={preset.color}
-                  color={preset.color}
-                  label={preset.label}
-                  selected={
-                    settings.background.toLowerCase() ===
-                    preset.color.toLowerCase()
-                  }
-                  onPressed={() => patch({ background: preset.color })}
-                />
-              ))}
+            <Slider
+              min={FONT_SCALE_MIN}
+              max={FONT_SCALE_MAX}
+              step={FONT_SCALE_STEP}
+              value={settings.fontScale}
+              onChanged={(value: number) => patch({ fontScale: value })}
+            />
+            <HStack spacing={8}>
+              <Text font={15}>笔画粗细</Text>
+              <Spacer />
+              <Text font={15} foregroundStyle="#8E8E93">
+                {WEIGHT_LABELS[settings.fontWeightStep] ?? '标准'}
+              </Text>
             </HStack>
+            <Slider
+              min={FONT_WEIGHT_MIN}
+              max={FONT_WEIGHT_MAX}
+              step={FONT_WEIGHT_STEP}
+              value={settings.fontWeightStep}
+              onChanged={(value: number) =>
+                patch({ fontWeightStep: value })
+              }
+            />
           </VStack>
-
-          <ColorPicker
-            title="自定义背景"
-            value={settings.background}
-            supportsOpacity={false}
-            onChanged={(value: string) =>
-              patch({ background: value })
-            }
-          />
         </Section>
 
         <Section
           header={<Text>日历</Text>}
           footer={
             <Text>
-              切换每周起始后，表头和日期会立即按新顺序排列。点击组件顶部月份可回到本月。
+              切换每周起始后，表头和日期立即按新顺序排列。休息日右上角标「休」，补班日右上角标「班」。国际节日包含情人节、愚人节、母亲节、父亲节、万圣夜、万圣节、感恩节、平安夜、圣诞节与复活节，和节气一样显示在日期下方。
             </Text>
           }
         >
           <Picker
             title="每周起始"
-            pickerStyle="menu"
             value={settings.weekStart}
             onChanged={(value: string) =>
               patch({ weekStart: value as WeekStart })
@@ -400,121 +325,57 @@ export function SettingsScreen() {
             <Text tag="monday">周一</Text>
           </Picker>
 
-          <HStack spacing={16}>
-            <HStack spacing={5}>
-              <MiniBadge type="rest" />
-              <Text font={12} foregroundStyle="secondaryLabel">
-                休息
-              </Text>
-            </HStack>
-            <HStack spacing={5}>
-              <MiniBadge type="work" />
-              <Text font={12} foregroundStyle="secondaryLabel">
-                补班
-              </Text>
-            </HStack>
-          </HStack>
+          <Toggle
+            title="显示国际节日"
+            value={settings.showIntlFestivals}
+            onChanged={(value: boolean) =>
+              patch({ showIntlFestivals: value })
+            }
+          />
         </Section>
 
         <Section
           header={<Text>节假日数据</Text>}
           footer={
-            <Text>
-              数据按年在线获取并保存在本机。重新获取会覆盖该年的本地修改；接口失败时保留原配置。
-            </Text>
+            <VStack alignment="leading" spacing={4}>
+              <Text>
+                数据按年在线获取并保存在本机，失败时保留原配置。重新获取会覆盖该年已有的数据。
+              </Text>
+              <Text>
+                {`${holidayYear} 年 · ${data.rest.length} 个休息日 · ${data.work.length} 个补班日`}
+              </Text>
+              <Text>
+                {saved?.updatedAt
+                  ? `${sourceText} · 更新于 ${formatUpdatedAt(saved.updatedAt)}`
+                  : sourceText}
+              </Text>
+              {failures.length > 0 ? (
+                <Text foregroundStyle="#C0392B">
+                  {`自动获取失败${failureState?.time ? `（${formatUpdatedAt(failureState.time)}）` : ''}：${failures
+                    .map((item) => `${item.year} 年 ${shortMessage(item.message)}`)
+                    .join('；')}`}
+                </Text>
+              ) : null}
+            </VStack>
           }
         >
           <Picker
-            title="配置年份"
-            pickerStyle="menu"
+            title="查看年份"
             value={String(holidayYear)}
             onChanged={handleYearChange}
           >
+            <Text tag={String(thisYear - 1)}>{thisYear - 1} 年</Text>
             <Text tag={String(thisYear)}>{thisYear} 年</Text>
             <Text tag={String(thisYear + 1)}>{thisYear + 1} 年</Text>
           </Picker>
 
           <Button action={handleFetch} disabled={fetching}>
             <HStack>
-              <Text>{`在线获取 ${holidayYear} 年`}</Text>
+              <Text>在线获取</Text>
               <Spacer />
               {fetching ? <ProgressView /> : null}
             </HStack>
           </Button>
-
-          <VStack alignment="leading" spacing={5}>
-            <HStack spacing={8}>
-              <MiniBadge type="rest" />
-              <Text>
-                {`${holidayData.rest.length} 个休息日`}
-              </Text>
-              <MiniBadge type="work" />
-              <Text>
-                {`${holidayData.work.length} 个补班日`}
-              </Text>
-            </HStack>
-            <Text font={12} foregroundStyle="secondaryLabel">
-              {sourceText}
-            </Text>
-            {savedHolidays?.updatedAt ? (
-              <Text font={12} foregroundStyle="tertiaryLabel">
-                {`更新于 ${formatUpdatedAt(savedHolidays.updatedAt)}`}
-              </Text>
-            ) : null}
-          </VStack>
-        </Section>
-
-        <Section
-          header={<Text>逐日配置</Text>}
-          footer={
-            <Text>
-              先选好下方动作，再点日期。休息日包含周末；同一天不会同时显示休息与补班。
-            </Text>
-          }
-        >
-          <Picker
-            title="编辑月份"
-            pickerStyle="menu"
-            value={String(editorMonth)}
-            onChanged={(value: string) =>
-              setEditorMonth(Number(value))
-            }
-          >
-            {Array.from({ length: 12 }, (_, index) => (
-              <Text key={String(index + 1)} tag={String(index + 1)}>
-                {`${index + 1} 月`}
-              </Text>
-            ))}
-          </Picker>
-
-          <Picker
-            title="点按日期时"
-            pickerStyle="menu"
-            value={editorMode}
-            onChanged={(value: string) =>
-              setEditorMode(value as HolidayMarker)
-            }
-          >
-            {EDITOR_MODES.map((mode) => (
-              <Text key={mode.value} tag={mode.value}>
-                {mode.label}
-              </Text>
-            ))}
-          </Picker>
-
-          <EditorGrid
-            year={holidayYear}
-            month={editorMonth}
-            weekStart={settings.weekStart}
-            data={holidayData}
-            onPressed={handleEditDay}
-          />
-
-          <Button
-            title={`清除 ${holidayYear} 年配置`}
-            role="destructive"
-            action={handleClearYear}
-          />
         </Section>
 
         <Section
@@ -525,8 +386,9 @@ export function SettingsScreen() {
             </Text>
           }
         >
-          <Button title="预览小组件" action={previewWidget} />
+          <Button title="预览小组件" action={openWidgetPreview} />
         </Section>
+
       </List>
     </NavigationStack>
   )

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * 农历 1900-2100 的润大小信息表
  * @return Array
