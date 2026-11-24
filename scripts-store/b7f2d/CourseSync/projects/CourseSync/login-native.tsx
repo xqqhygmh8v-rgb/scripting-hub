@@ -3,7 +3,7 @@
 // Passwords remain in memory only until caller authenticates or discards them.
 import {
   Dialog, Navigation, NavigationStack, List, Section, Text,
-  TextField, SecureField, Button, Image, useState,
+  TextField, SecureField, Button, Image, ProgressView, VStack, useState, useEffect,
 } from 'scripting';
 
 function LoginView({title, confirmTitle, allowReuse}: {title:string;confirmTitle:string;allowReuse:boolean}) {
@@ -106,8 +106,8 @@ type RefreshFormOutcome=
   | {kind:'credentials';schoolId:string;username:string;password:string}
   | {kind:'reuse';schoolId:string};
 
-export async function presentNativeRefreshForm(schoolId:string,allowReuse=false):Promise<RefreshFormOutcome|null>{
-  const result=await presentLoginView('登录账号','开始刷新',allowReuse);
+export async function presentNativeRefreshForm(schoolId:string,allowReuse=false,title='登录账号'):Promise<RefreshFormOutcome|null>{
+  const result=await presentLoginView(title,'开始刷新',allowReuse);
   if(result?.reuse===true)return allowReuse?{kind:'reuse',schoolId}:null;
   const credentials=readNativeCredentials(result);
   return credentials?{kind:'credentials',schoolId,...credentials}:null;
@@ -116,6 +116,7 @@ export async function presentNativeRefreshForm(schoolId:string,allowReuse=false)
 type FreeRoomResult =
   | {kind: 'ready'; date: string; rooms: {period: string; room: string}[]}
   | {kind: 'error'; message: string};
+type ReadyRooms = Extract<FreeRoomResult, {kind:'ready'}>;
 export type DashboardOptions = {
   state: any;
   schoolName: string;
@@ -123,6 +124,7 @@ export type DashboardOptions = {
   statusMessage: string;
   loadFreeRooms?: (isActive: () => boolean, updateProgress: (value: number) => void) => Promise<FreeRoomResult>;
 };
+type RoomLoader = NonNullable<DashboardOptions['loadFreeRooms']>;
 
 // Some Scripting releases do not expose Dialog.actionSheet. Use the native
 // confirm dialog in that case, keeping every option available without a page.
@@ -165,30 +167,139 @@ async function chooseNativeAction(options) {
   return null;
 }
 
-// Native dialog messages have one font style. Separate sections and put each
-// classroom on its own line so the period and recommendations remain scannable.
-function formatRoomResults(date, rooms) {
+const ROOM_CAMPUS='仙林校区';
+const ROOM_SCOPE='查询范围为博远楼、博观楼、博文楼的普通教室，以及德经楼、德济楼、德正楼和德业楼一楼的普通教室。';
+
+function roomResultSections(rooms: ReadyRooms['rooms']) {
   const periods={'上午':'上午 · 第1—5节','下午':'下午 · 第6—10节','晚上':'晚上 · 第11—13节'};
-  const sections=rooms.map(({period,room})=>{
+  return rooms.map(({period,room})=>{
     const heading=periods[period] || period;
     const content=String(room || '').split('\n').map(line=>{
       const match=line.match(/^(.*?：)(.+、.+?)(（第[^）]+节）)$/);
       if(match)return match[1]+'\n'+match[2].split('、').map(value=>value+match[3]).join('\n');
-      if(period==='建议教室'&&line.includes('：'))return line.replace('：','：\n').replace(/、/g,'\n');
+      if(period==='建议教室'&&line.includes('、'))return line.replace('：','：\n').replace(/、/g,'\n');
+      if(line==='无空闲教室')return '无整段空闲教室';
       return line.replace(/、/g,'\n');
-    }).join('\n');
-    return (period==='上午'?'完整空闲教室列表\n':'')+heading+'\n'+content;
+    }).flatMap(line=>line.split('\n'));
+    const count=periods[period]?content.filter(line=>line.trim()&&!/^无(?:空闲教室|整段空闲教室|完整时段空闲教室)/.test(line)).length:0;
+    return {period,heading,content,count};
   });
-  const firstPeriod=rooms.findIndex(({period})=>period==='上午');
+}
+
+function formatRoomResults(date, rooms) {
+  const results=roomResultSections(rooms);
+  const sections=results.map(({period,heading,content})=>
+    (period==='上午'?'整段空闲教室\n':'')+heading+'\n'+content.join('\n'));
+  const firstPeriod=results.findIndex(({period})=>period==='上午');
   const grouped=firstPeriod<0?sections:[...sections.slice(0,firstPeriod),sections.slice(firstPeriod).join('\n')];
-  return ['今天 · '+date,'仅包含博远楼、博观楼、博文楼，以及德经楼、德济楼、德正楼和德业楼的一楼普通教室',...grouped].join('\n\n');
+  return [date+' · '+ROOM_CAMPUS,...grouped,ROOM_SCOPE].join('\n\n');
+}
+
+async function readRoomResults(loadRooms:RoomLoader,isActive=()=>true,updateProgress=(_value:number)=>{}) {
+  try{return await loadRooms(isActive,updateProgress);}
+  catch(_){return {kind:'error',message:'查询失败，请稍后重试。'} as const;}
+}
+
+function RoomResultsView({loadRooms,isOpen,onClose}: {loadRooms:RoomLoader;isOpen:()=>boolean;onClose:()=>void}) {
+  const dismiss=Navigation.useDismiss();
+  const [result,setResult]=useState<FreeRoomResult|null>(null);
+  const [attempt,setAttempt]=useState(0);
+  const [connected,setConnected]=useState(false);
+  useEffect(()=>{
+    let active=true;
+    const isActive=()=>active&&isOpen();
+    void readRoomResults(loadRooms,isActive,value=>{
+      if(isActive()&&value>=0.25)setConnected(true);
+    }).then(next=>{if(isActive())setResult(next);});
+    return ()=>{active=false;};
+  },[attempt]);
+  const ready=result?.kind==='ready'?result:null;
+  const sections=ready?roomResultSections(ready.rooms):[];
+  const close=()=>{onClose();dismiss();};
+  const toolbar={cancellationAction:<Button title={result?'返回':'取消'} action={close}/>};
+  return <NavigationStack presentationDetents={['large']} presentationDragIndicator="visible">
+    {!result?<VStack navigationTitle="空闲教室" navigationBarTitleDisplayMode="inline"
+      toolbar={toolbar} spacing={12} padding={24}
+      frame={{maxWidth:'infinity',maxHeight:'infinity',alignment:'center'}}>
+      <ProgressView progressViewStyle="circular" scaleEffect={1.4}/>
+      <Text font="body" fontWeight="medium" multilineTextAlignment="center">
+        {connected?'正在查询空闲教室':'正在连接教务系统'}
+      </Text>
+    </VStack>:result.kind==='error'?<VStack navigationTitle="空闲教室"
+      navigationBarTitleDisplayMode="inline" toolbar={toolbar} spacing={14} padding={24}
+      frame={{maxWidth:'infinity',maxHeight:'infinity',alignment:'center'}}>
+      <Image systemName="exclamationmark.circle" font="largeTitle" foregroundStyle="secondary"/>
+      <Text font="headline">查询未完成</Text>
+      <Text font="subheadline" foregroundStyle="secondary" multilineTextAlignment="center">{result.message}</Text>
+      <Button title="重试" action={()=>{
+        setResult(null);setConnected(false);setAttempt(attempt+1);
+      }}/>
+    </VStack>:<List navigationTitle="空闲教室" navigationBarTitleDisplayMode="inline" listStyle="insetGroup"
+      toolbar={toolbar}>
+      {ready?<Section>
+        <Text font="subheadline" foregroundStyle="secondary">{ready.date} · {ROOM_CAMPUS}</Text>
+      </Section>:null}
+      {sections.filter(({period})=>period==='建议教室').map(({period,heading,content})=>
+        <Section key={period} header={<Text>{heading}</Text>}>
+          {content.map((line,index)=><Text key={index}
+            font={line.endsWith('：')?'subheadline':'body'}
+            fontWeight={line.endsWith('：')?'semibold':undefined}
+            foregroundStyle={line.endsWith('：')?'secondary':undefined}>{line}</Text>)}
+        </Section>)}
+      {sections.some(({period})=>period!=='建议教室')?<Section
+        header={<Text>整段空闲教室</Text>} footer={<Text>{ROOM_SCOPE}</Text>}>
+        {sections.filter(({period})=>period!=='建议教室').flatMap(({period,heading,content,count})=>[
+          <Text key={period} font="subheadline" fontWeight="semibold" foregroundStyle="secondary">
+            {heading}{count?' · '+count+' 间':''}
+          </Text>,
+          ...content.map((line,index)=><Text key={period+'-'+index}
+            foregroundStyle={/^无(?:整段|完整时段)空闲教室/.test(line)?'secondary':undefined}>{line}</Text>)
+        ])}
+      </Section>:null}
+    </List>}
+  </NavigationStack>;
+}
+
+async function presentRoomQuery(loadRooms:RoomLoader) {
+  if(typeof Navigation?.present==='function'&&typeof useEffect==='function'&&ProgressView){
+    let open=true,started=false;
+    const trackedLoad:RoomLoader=(isActive,updateProgress)=>{
+      started=true;
+      return loadRooms(isActive,updateProgress);
+    };
+    try{
+      await Navigation.present({element:<RoomResultsView loadRooms={trackedLoad} isOpen={()=>open} onClose={()=>{open=false;}}/>,
+        modalPresentationStyle:'pageSheet'});
+      return;
+    }catch(_){
+      // A failed presentation may already have started a request. Do not
+      // automatically issue a second request while the original is unwinding.
+      open=false;
+      if(started){
+        await chooseNativeAction({title:'空闲教室',message:'查询界面未能正常显示，请返回后重新查询。',
+          actions:[{label:'返回'}],cancelButton:false});
+        return;
+      }
+    }finally{open=false;}
+  }
+  while(true){
+    const result=await readRoomResults(loadRooms);
+    if(result.kind==='ready'){
+      await chooseNativeAction({title:'空闲教室',message:formatRoomResults(result.date,result.rooms),
+        actions:[{label:'返回'}],cancelButton:false});
+      return;
+    }
+    const selected=await chooseNativeAction({title:'空闲教室',message:result.message,
+      actions:[{label:'重试'}],cancelButton:true,cancelLabel:'返回'});
+    if(selected!==0)return;
+  }
 }
 
 export async function presentNativeDashboard(options: DashboardOptions): Promise<any> {
   const {state, schoolName, canSignOut, statusMessage, loadFreeRooms} = options;
-  const stateLabel = state?.signedOut ? '未登录' : state?.runStatus === 'failed' ? '刷新失败' :
-    state?.runStatus === 'partial' ? '部分完成' : state?.runStatus === 'success' ? '已同步' :
-    state?.calendarBindingPending && canSignOut ? '已登录' : '';
+  const outcomes={failed:'上次刷新失败',partial:'上次同步部分完成',success:'已同步',cancelled:'上次刷新已取消'};
+  const stateLabel=state?.signedOut?'未登录':state?.calendarBindingPending&&canSignOut?'已登录':
+    outcomes[state?.runStatus]||'';
   const calendar = state?.calendarBindingPending || !state?.calendarId ? '未绑定日历' :
     (state.calendarTitle || '专用课程和考试日历');
   const ms = Date.parse(state?.lastCheck || '');
@@ -205,18 +316,7 @@ export async function presentNativeDashboard(options: DashboardOptions): Promise
     if (selection == null || selection < 0) return 'dismiss';
     if (selection === 0) return 0;
     if (loadFreeRooms && selection === 1) {
-      let retry = true;
-      while (retry) {
-        retry = false;
-        let result: FreeRoomResult;
-        try { result = await loadFreeRooms(() => true, () => {}); }
-        catch (_) { result = {kind:'error',message:'查询失败，请稍后重试。'}; }
-        const roomText = result.kind === 'error' ? result.message :
-          formatRoomResults(result.date,result.rooms);
-        const roomActions = result.kind === 'error' ? [{label:'重试'}] : [{label:'返回'}];
-        const selected = await chooseNativeAction({title:'空闲教室',message:roomText,actions:roomActions,cancelButton:result.kind === 'error',cancelLabel:'返回'});
-        if (result.kind === 'error' && selected === 0) retry = true;
-      }
+      await presentRoomQuery(loadFreeRooms);
       continue;
     }
     if (canSignOut && selection === (loadFreeRooms ? 2 : 1)) return 1;

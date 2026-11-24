@@ -1,6 +1,6 @@
 # 脚本中心目录
 
-最近同步时间：2026-11-24T09:37:24+00:00
+最近同步时间：2026-11-24T22:16:55+00:00
 
 收录 27 个仓库 / 129 个可导入的 Scripting 项目。
 
@@ -21,7 +21,7 @@
 | Icon Library | 1.1.2 | 管理多个 GitHub 公开图标库，按仓库独立授权、浏览和上传图标。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 92 | tree |
 | Itemory | 1.0.0 | 为每件物品记录购入价格、维修支出和转手收入，查看持有天数与日均成本，在时间线和置物架上回顾自己的物品。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 92 | tree |
 | Surge 监控 | 1.1.1 | Surge iOS Prometheus 指标小组件：Medium 聚焦累计流量与核心状态，Large 展开网络接口流量。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 92 | tree |
-| AI 额度看板 | 2.3.3 | 纯客户端直连查询 78 家 AI 供应商的订阅配额与 API 钱包余额 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
+| AI 额度看板 | 2.3.4 | 纯客户端直连查询 78 家 AI 供应商的订阅配额与 API 钱包余额 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | API Manager | — | 管理New API相关的 API 地址与 Key，并检测地址状态和可用模型 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | BiliFavor | 3.0.0 | 登录哔哩哔哩并查看关注 UP 主的视频动态 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
 | CAIS | 3.2.9 | Clipboard all in Scripting | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
@@ -75,10 +75,10 @@
 | 联通 | 1.0.7 | — | [Nanako718/Scripting](https://github.com/Nanako718/Scripting) | 13 | tree |
 | 选择选项 | 1.0.0 | 用于在 Assistant 工具里让用户进行单选或多选确认。 | [Nanako718/Scripting](https://github.com/Nanako718/Scripting) | 13 | tree |
 | 金价收益 | 1.0.0 | — | [Nanako718/Scripting](https://github.com/Nanako718/Scripting) | 13 | tree |
-| CourseSync | — | CourseSync：本地同步课程和考试至 Apple 日历，支持快捷指令自动更新。 | [b7f2d/CourseSync](https://github.com/b7f2d/CourseSync) | 1 | tree |
+| CourseSync | — | 同步课程和考试到 Apple 日历，查询空闲教室，支持快捷指令自动刷新。 | [b7f2d/CourseSync](https://github.com/b7f2d/CourseSync) | 1 | tree |
 | RSS 阅读 | 1.1.0 | 显示 Google Reader 兼容 RSS 平台的未读数与最新文章，支持 FreshRSS；也可从本地或线上 OPML 读取订阅源，并可在 App、主屏组件与 Scripting 主页默认 UI 中阅读文章。 | [bmqy/Scripting-Scripts](https://github.com/bmqy/Scripting-Scripts) | 1 | tree |
 | 限号 | 1.0.0 | 根据当前位置自动查询所在城市机动车尾号限行信息 | [bmqy/Scripting-Scripts](https://github.com/bmqy/Scripting-Scripts) | 1 | tree |
-| LocalDNS | 1.15.17 | 本地 DNS 与安全服务系统，v1.15.17 修 Surge 联动状态条被一次瞬时探测失败焊死成「未连接」：工作台改为三态（检测中/已连通/未连接并就地显示原因），探测失败自动重试一次，停在配置页每 30s 重探且只重绘状态条不丢当前 tab；后端零改动。v1.15.16 已精确同步上游 UI 2026.11.08.4（发行线 fjn01 → fjn8c，内核仍为零改动的 FJMOS），安装包经 SHA256SUMS 校验（b8c50e03…），7 处 Surge 补丁锚点… | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
+| LocalDNS | 1.15.21 | 本地 DNS 与安全服务系统，v1.15.21 为托管模块加入上游更新检测：模块表新增内容哈希与巡检字段，刷新时采用上游 #!name（毒奶这类日期名会跟着更新），新增 check-updates / updates 接口与后台巡检（启动 45 秒后 + 每 6 小时），模块工作台显示「🆕 有更新」徽标、上游版本与「🔍 检查更新」按钮；本机来源（ad-hunter）不参与巡检。沿用 v1.15.18 的 FJO02 / UI 2026.11.21.1、FJMOS 内核与全部本… | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | ZakoProxy（AI 代理中转） | 1.4.3 | 基于 ckldy/ZakoProxyCLI 深度移植的自托管 AI API 中转代理。原生运行于 Scripting，具备 LocalDNS 风格的流光毛玻璃 Web 控制台（支持全屏 WebViewController/Safari/局域网）、OpenAI / Claude / Responses 多协议、36 款针对性提示词预设与 Astra 通用执行策略、多账号优先级故障转移与熔断、AES-256 本地加密存储及原生 iOS 控制台。 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | 台风路径 | 2.3.1 | 实时台风路径与多机构预报路径地图（数据源: 四创科技）；大号小组件地图需高德 Web服务 Key，可在小组件参数或主程序「更多」中填写 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | 寒霜注入工具 | 1.2.4 | 本地提示词注入与网关代理工具（Scripting 版）：内置完整 WebUI、人物卡管理、提示词库与寒霜预设模板。 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
@@ -87,7 +87,7 @@
 | 黃豆短劇 | 1.2.0 | 浏览、搜索与收藏黃豆短劇内容，支持播放历史和剧集播放。 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | RefreshSideStore | 1.0.4 | SideStore 签名倒计时 · 马蹄圈 · RefreshSideStore | [dompling/Scripting](https://github.com/dompling/Scripting) | 1 | tree |
 | 中国联通 | 1.1.0 | 通过代理客户端抓取联通凭据，读取 Zayia BoxJS 变量并查询联通余量。 | [Timkeltis/ChinaUnicom-Scripting](https://github.com/Timkeltis/ChinaUnicom-Scripting) | 1 | tree |
-| 日历 | 1.8.22 | 农历与倒班日历：首页及日、周、月小组件，支持节气、休班、班次排序循环、假日自动刷新与日夜外观 | [Wangsc1/calendar](https://github.com/Wangsc1/calendar) | 1 | tree |
+| 日历 | 1.8.24 | 农历与倒班日历：首页及日、周、月小组件，支持节气、休班、班次排序循环、假日自动刷新与日夜外观 | [Wangsc1/calendar](https://github.com/Wangsc1/calendar) | 1 | tree |
 | WLinker | 0.1.0 | Wuling vehicle status widget built on the official SGMW open API. | [zy5120/WLinker](https://github.com/zy5120/WLinker) | 1 | tree |
 | 华农表 | 1.6.4 | 华南农业大学课表：登录教务看每周课表；校历放假/调休自动同步（放假不上课、调休按次周上课）；空白课表加课（选周次→点格子→填名字）。支持深色模式、月历校历、学期进度条与主屏小组件 | [condedby/scripting](https://github.com/condedby/scripting) | 0 | tree |
 | 小组件奥捷智行 | 3.0.2 | 小组件奥捷智行 · 每个按钮独立二次确认、按钮图标与文字独立配色 | [emilylakewa/scripting-car-widgets](https://github.com/emilylakewa/scripting-car-widgets) | 0 | tree |
@@ -139,7 +139,7 @@
 | 网上国网用电 | 1.5.9 | 网上国网小组件：浮岛 / 格栅主题、用电日历、月度汇总与阶梯。 | [SmallMr/Scripting-SGCC](https://github.com/SmallMr/Scripting-SGCC) | 0 | tree |
 | 天气日历 | 1.5.5 | — | [SmallMr/Scripting-WeatherWidget](https://github.com/SmallMr/Scripting-WeatherWidget) | 0 | tree |
 | 启动台 | 1.7.4 | 启动台：把常用 App、链接和自定义脚本放到桌面小组件上，一点直达（汉化版）。 | [vaeann/scripting-widgets](https://github.com/vaeann/scripting-widgets) | 0 | tree |
-| AI 用量 | 1.64 | 基于 Scripting 的 iPhone AI 用量小组件：查看 Codex／Claude／Antigravity 额度、DeepSeek 余额与 WorkBuddy 国内个人积分及只读签到状态。支持官方直连、Parrot、Sub2API、独立用量统计、Antigravity 分组切换、账号详情单独刷新、拖动排序及自定义名称，适用于主屏和锁屏。 | [Wangsc1/ai-usage](https://github.com/Wangsc1/ai-usage) | 0 | tree |
+| AI 用量 | 1.65 | 基于 Scripting 的 iPhone AI 用量小组件：查看 Codex／Claude／Antigravity 额度、DeepSeek 余额与 WorkBuddy 国内个人积分及只读签到状态。支持官方直连、Parrot、Sub2API、独立用量统计、Antigravity 分组切换、账号详情单刷、原地拖动排序、超时缓存回退与自定义名称，适用于主屏和锁屏。 | [Wangsc1/ai-usage](https://github.com/Wangsc1/ai-usage) | 0 | tree |
 | 国网电费 | 1.0.7 | 网上国网余额、用电和阶梯小组件。只在本机直连国网接口，不经过任何第三方服务器。 | [YePiXpert/scripting-scripts](https://github.com/YePiXpert/scripting-scripts) | 0 | tree |
 | DeepSeek 用量 | 1.3.0 | — | [youniube/scripting-deepseek-widget](https://github.com/youniube/scripting-deepseek-widget) | 0 | tree |
 | AWS EC2 流量监控 | 1.1.2 | 仅查询 AWS EC2 的 CloudWatch NetworkOut 月度用量；不启动、停止、重启或修改任何 AWS 资源。 | [ZTTYBB/AWSEC2Monitor](https://github.com/ZTTYBB/AWSEC2Monitor) | 0 | tree |
@@ -149,5 +149,12 @@
 
 | 时间 | 类型 | 对象 | 原因 |
 |---|---|---|---|
-| 2026-11-24T09:37:24+00:00 | file | scripts-store/SmallMr/Scripting-Calendar/projects/Scripting-Calendar/vendor/solarlunar.d.ts | 已不在任何有效项目中 |
-| 2026-11-24T09:37:24+00:00 | file | scripts-store/SmallMr/Scripting-Calendar/projects/Scripting-Calendar/vendor/solarlunar.js | 已不在任何有效项目中 |
+| 2026-11-24T22:16:55+00:00 | file | scripts-store/b7f2d/CourseSync/projects/CourseSync/widget.tsx | 已不在任何有效项目中 |
+| 2026-11-24T22:16:55+00:00 | file | scripts-store/b7f2d/CourseSync/projects/CourseSync/widget-data.ts | 已不在任何有效项目中 |
+| 2026-11-24T22:16:55+00:00 | file | scripts-store/ckldy/scripting-scripts/projects/LocalDNS/LocalDNS/web/assets/app-BF6QW_hf.js | 已不在任何有效项目中 |
+| 2026-11-24T22:16:55+00:00 | file | scripts-store/ckldy/scripting-scripts/projects/LocalDNS/LocalDNS/web/assets/index-3nLTlqR7.css | 已不在任何有效项目中 |
+| 2026-11-24T22:16:55+00:00 | file | scripts-store/ckldy/scripting-scripts/projects/LocalDNS/LocalDNS/docs/superpowers/specs/2026-11-08-youtube-full-pipeline-design.md | 已不在任何有效项目中 |
+| 2026-11-24T22:16:55+00:00 | file | scripts-store/ckldy/scripting-scripts/projects/LocalDNS/LocalDNS/docs/superpowers/specs/2026-11-04-surge-tf436-features-design.md | 已不在任何有效项目中 |
+| 2026-11-24T22:16:55+00:00 | file | scripts-store/ckldy/scripting-scripts/projects/LocalDNS/LocalDNS/docs/youtube-pipeline-phase0-report.md | 已不在任何有效项目中 |
+| 2026-11-24T22:16:55+00:00 | file | scripts-store/ckldy/scripting-scripts/projects/LocalDNS/LocalDNS/docs/youtube-adblock-verification.md | 已不在任何有效项目中 |
+| 2026-11-24T22:16:55+00:00 | file | scripts-store/ckldy/scripting-scripts/projects/LocalDNS/LocalDNS/docs/pipeline-optimization-plan.md | 已不在任何有效项目中 |

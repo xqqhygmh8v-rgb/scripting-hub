@@ -268,12 +268,13 @@ export interface ProviderMeta {
   webSessionProfile?: WebSessionProfile
 }
 
-export type DashboardLanguagePreference = "system" | "zh" | "en"
+export type DashboardLanguagePreference = "system" | "zh" | "zh-Hant" | "en"
 
 export interface DashboardSettings {
   languagePreference: DashboardLanguagePreference
   isDemoMode: boolean
   autoRefreshOnLaunch: boolean
+  dashboardAnimationsEnabled: boolean
   prefersICloudKeychain: boolean
   groupByRouteCategory: boolean
   protectAccountIdentity: boolean

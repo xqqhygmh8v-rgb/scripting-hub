@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-11-24T09:37:24+00:00",
+  "updated_at": "2026-11-24T22:16:55+00:00",
   "count": 27,
   "project_count": 129,
   "repos": [
@@ -73,11 +73,11 @@
       "projects": [
         {
           "name": "AI 额度看板",
-          "version": "2.3.3",
+          "version": "2.3.4",
           "description": "纯客户端直连查询 78 家 AI 供应商的订阅配额与 API 钱包余额",
           "dir": "scripts-store/BlackCCCat/Scripting-Scripts/projects/AI-Dashboard",
           "entry": "index.tsx",
-          "files": 228,
+          "files": 229,
           "icon": "chart.bar.doc.horizontal.fill",
           "source": "tree"
         },
@@ -654,10 +654,10 @@
         {
           "name": "CourseSync",
           "version": "",
-          "description": "CourseSync：本地同步课程和考试至 Apple 日历，支持快捷指令自动更新。",
+          "description": "同步课程和考试到 Apple 日历，查询空闲教室，支持快捷指令自动刷新。",
           "dir": "scripts-store/b7f2d/CourseSync/projects/CourseSync",
           "entry": "index.tsx",
-          "files": 8,
+          "files": 6,
           "icon": "calendar",
           "source": "tree"
         }
@@ -703,8 +703,8 @@
       "projects": [
         {
           "name": "LocalDNS",
-          "version": "1.15.17",
-          "description": "本地 DNS 与安全服务系统，v1.15.17 修 Surge 联动状态条被一次瞬时探测失败焊死成「未连接」：工作台改为三态（检测中/已连通/未连接并就地显示原因），探测失败自动重试一次，停在配置页每 30s 重探且只重绘状态条不丢当前 tab；后端零改动。v1.15.16 已精确同步上游 UI 2026.11.08.4（发行线 fjn01 → fjn8c，内核仍为零改动的 FJMOS），安装包经 SHA256SUMS 校验（b8c50e03…），7 处 Surge 补丁锚点…",
+          "version": "1.15.21",
+          "description": "本地 DNS 与安全服务系统，v1.15.21 为托管模块加入上游更新检测：模块表新增内容哈希与巡检字段，刷新时采用上游 #!name（毒奶这类日期名会跟着更新），新增 check-updates / updates 接口与后台巡检（启动 45 秒后 + 每 6 小时），模块工作台显示「🆕 有更新」徽标、上游版本与「🔍 检查更新」按钮；本机来源（ad-hunter）不参与巡检。沿用 v1.15.18 的 FJO02 / UI 2026.11.21.1、FJMOS 内核与全部本…",
           "dir": "scripts-store/ckldy/scripting-scripts/projects/LocalDNS",
           "entry": "index.tsx",
           "files": 119,
@@ -823,7 +823,7 @@
       "projects": [
         {
           "name": "日历",
-          "version": "1.8.22",
+          "version": "1.8.24",
           "description": "农历与倒班日历：首页及日、周、月小组件，支持节气、休班、班次排序循环、假日自动刷新与日夜外观",
           "dir": "scripts-store/Wangsc1/calendar/projects/calendar",
           "entry": "index.tsx",
@@ -1453,8 +1453,8 @@
       "projects": [
         {
           "name": "AI 用量",
-          "version": "1.64",
-          "description": "基于 Scripting 的 iPhone AI 用量小组件：查看 Codex／Claude／Antigravity 额度、DeepSeek 余额与 WorkBuddy 国内个人积分及只读签到状态。支持官方直连、Parrot、Sub2API、独立用量统计、Antigravity 分组切换、账号详情单独刷新、拖动排序及自定义名称，适用于主屏和锁屏。",
+          "version": "1.65",
+          "description": "基于 Scripting 的 iPhone AI 用量小组件：查看 Codex／Claude／Antigravity 额度、DeepSeek 余额与 WorkBuddy 国内个人积分及只读签到状态。支持官方直连、Parrot、Sub2API、独立用量统计、Antigravity 分组切换、账号详情单刷、原地拖动排序、超时缓存回退与自定义名称，适用于主屏和锁屏。",
           "dir": "scripts-store/Wangsc1/ai-usage/projects/ai-usage",
           "entry": "index.tsx",
           "files": 12,
