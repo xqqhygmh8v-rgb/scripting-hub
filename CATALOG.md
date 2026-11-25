@@ -1,6 +1,6 @@
 # 脚本中心目录
 
-最近同步时间：2026-11-25T08:08:47+00:00
+最近同步时间：2026-11-25T21:32:44+00:00
 
 收录 27 个仓库 / 129 个可导入的 Scripting 项目。
 
@@ -21,32 +21,32 @@
 | Icon Library | 1.1.2 | 管理多个 GitHub 公开图标库，按仓库独立授权、浏览和上传图标。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 92 | tree |
 | Itemory | 1.0.0 | 为每件物品记录购入价格、维修支出和转手收入，查看持有天数与日均成本，在时间线和置物架上回顾自己的物品。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 92 | tree |
 | Surge 监控 | 1.1.1 | Surge iOS Prometheus 指标小组件：Medium 聚焦累计流量与核心状态，Large 展开网络接口流量。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 92 | tree |
-| AI 额度看板 | 2.3.4 | 纯客户端直连查询 78 家 AI 供应商的订阅配额与 API 钱包余额 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| API Manager | — | 管理New API相关的 API 地址与 Key，并检测地址状态和可用模型 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| BiliFavor | 3.0.0 | 登录哔哩哔哩并查看关注 UP 主的视频动态 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| CAIS | 3.2.9 | Clipboard all in Scripting | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| Calendar Pomodoro | 3.0.3 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| FileStore | 3.0.4 | File Store, 文件挂载、预览各种文件类型 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| Fonts Installer | 3.0.1 | 批量导入、验证、预览并通过 iOS 配置描述文件逐个安装 TrueType 与 OpenType 字体。支持私有字体历史，以及从快捷指令或分享表单直接传入单个字体文件。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| PDFHelper | 3.0.5 | 图片转PDF、PDF按页选择合并 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| PhotoSlide | 3.0.4 | 卡片式照片整理工具，支持全部照片、相簿和截图筛选，左右滑切换照片，上下滑待删、收藏标记和移动到相簿。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| Regex Tester | 3.0.2 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| Scripting Rime Keyboard | 4.1.2 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| Surge模块管理 | 3.1.3 | Surge 模块管理：管理、分类、下载/更新 Surge .sgmodule 模块，支持递归子文件夹、链接格式识别、本地模块、并发更新和 HTTP 远程开关控制。 快捷指令：可用 Scripting 的“运行脚本”调用本脚本来更新模块。 参数示例： 1. 不传参数，或传 all / 全部：更新全部远程模块。 2. 传分类名，例如 广告拦截：只更新该分类。 3. 传 JSON：{"category":"广告拦截","dir":"子文件夹名称","name":"模块名称"} 4.… | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| TG 贴纸键盘 | 3.0.3 | 导入 Telegram 贴纸包，在自定义键盘中按分组使用。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| Vision OCR | — | 图像文本识别 配合快捷指令使用：https://www.icloud.com/shortcuts/1c7e7ed35e9f42eebb70ea4c0a9d2417 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| WLOC 虚拟定位 | 3.0.0 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| WorkBuddy2API | 2.0.1 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| 万象方案助手 | 3.0.4 | 万象方案下载更新 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| 今日油价 | 3.0.3 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| 媒体下载 | 3.1.0 | 从分享菜单接收抖音、YouTube 或 m3u8 链接，自动选择对应下载器下载媒体，可保存到相册或导出到文件。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| 密码生成器 | 3.0.1 | 支持 App 与自定义键盘的密码生成器 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| 快递小助手 | 3.0.0 | 修改自：https://raw.githubusercontent.com/1085481057/Scripting/refs/heads/main/快递小助手.scripting | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| 时光纪念 | 3.0.0 | 记录重要的人与日子，用尺寸卡片呈现生日、相识、恋爱和更多珍贵时刻。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| 汉典 | 3.0.1 | 汉典 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| 睡眠追踪 | 3.0.0 | 读取健康中的睡眠数据，展示趋势统计和小组件。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| 翻译器 | 3.1.6 | 一个支持系统翻译、Apple Intelligence、Google 网页翻译和可配置 AI 接口的翻译脚本。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
-| 自定义闹钟 | 3.1.0 | 创建和管理单次、每日、每周的自定义闹钟。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 53 | tree |
+| AI 额度看板 | 2.3.4 | 纯客户端直连查询 78 家 AI 供应商的订阅配额与 API 钱包余额 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| API Manager | — | 管理New API相关的 API 地址与 Key，并检测地址状态和可用模型 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| BiliFavor | 3.0.0 | 登录哔哩哔哩并查看关注 UP 主的视频动态 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| CAIS | 3.2.9 | Clipboard all in Scripting | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| Calendar Pomodoro | 3.0.3 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| FileStore | 3.0.4 | File Store, 文件挂载、预览各种文件类型 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| Fonts Installer | 3.0.1 | 批量导入、验证、预览并通过 iOS 配置描述文件逐个安装 TrueType 与 OpenType 字体。支持私有字体历史，以及从快捷指令或分享表单直接传入单个字体文件。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| PDFHelper | 3.0.5 | 图片转PDF、PDF按页选择合并 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| PhotoSlide | 3.0.4 | 卡片式照片整理工具，支持全部照片、相簿和截图筛选，左右滑切换照片，上下滑待删、收藏标记和移动到相簿。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| Regex Tester | 3.0.2 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| Scripting Rime Keyboard | 4.1.2 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| Surge模块管理 | 3.1.3 | Surge 模块管理：管理、分类、下载/更新 Surge .sgmodule 模块，支持递归子文件夹、链接格式识别、本地模块、并发更新和 HTTP 远程开关控制。 快捷指令：可用 Scripting 的“运行脚本”调用本脚本来更新模块。 参数示例： 1. 不传参数，或传 all / 全部：更新全部远程模块。 2. 传分类名，例如 广告拦截：只更新该分类。 3. 传 JSON：{"category":"广告拦截","dir":"子文件夹名称","name":"模块名称"} 4.… | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| TG 贴纸键盘 | 3.0.3 | 导入 Telegram 贴纸包，在自定义键盘中按分组使用。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| Vision OCR | — | 图像文本识别 配合快捷指令使用：https://www.icloud.com/shortcuts/1c7e7ed35e9f42eebb70ea4c0a9d2417 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| WLOC 虚拟定位 | 3.0.0 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| WorkBuddy2API | 2.0.1 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| 万象方案助手 | 3.0.4 | 万象方案下载更新 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| 今日油价 | 3.0.3 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| 媒体下载 | 3.1.0 | 从分享菜单接收抖音、YouTube 或 m3u8 链接，自动选择对应下载器下载媒体，可保存到相册或导出到文件。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| 密码生成器 | 3.0.1 | 支持 App 与自定义键盘的密码生成器 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| 快递小助手 | 3.0.0 | 修改自：https://raw.githubusercontent.com/1085481057/Scripting/refs/heads/main/快递小助手.scripting | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| 时光纪念 | 3.0.0 | 记录重要的人与日子，用尺寸卡片呈现生日、相识、恋爱和更多珍贵时刻。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| 汉典 | 3.0.1 | 汉典 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| 睡眠追踪 | 3.0.0 | 读取健康中的睡眠数据，展示趋势统计和小组件。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| 翻译器 | 3.1.6 | 一个支持系统翻译、Apple Intelligence、Google 网页翻译和可配置 AI 接口的翻译脚本。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| 自定义闹钟 | 3.1.0 | 创建和管理单次、每日、每周的自定义闹钟。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
 | DashBoard-Kit | 1.5.0 | 多组件看板套件：同一后台配置管理，支持方案A桌面参数切换多种看板 | [SylvanRoe/Scripting](https://github.com/SylvanRoe/Scripting) | 36 | tree |
 | 今日油价 | 1.5.0 | 实时全国各省市汽柴油价格监控与调价预测桌面小组件，支持系统定位与自定义省份。 | [SylvanRoe/Scripting](https://github.com/SylvanRoe/Scripting) | 36 | tree |
 | 喝水记录 | 2.0.0 | 记录饮水和饮品摄入量，支持交互小组件与前台饮水健康同步 | [SylvanRoe/Scripting](https://github.com/SylvanRoe/Scripting) | 36 | tree |
@@ -81,7 +81,7 @@
 | LocalDNS | 1.15.21 | 本地 DNS 与安全服务系统，v1.15.21 为托管模块加入上游更新检测：模块表新增内容哈希与巡检字段，刷新时采用上游 #!name（毒奶这类日期名会跟着更新），新增 check-updates / updates 接口与后台巡检（启动 45 秒后 + 每 6 小时），模块工作台显示「🆕 有更新」徽标、上游版本与「🔍 检查更新」按钮；本机来源（ad-hunter）不参与巡检。沿用 v1.15.18 的 FJO02 / UI 2026.11.21.1、FJMOS 内核与全部本… | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | ZakoProxy（AI 代理中转） | 1.4.3 | 基于 ckldy/ZakoProxyCLI 深度移植的自托管 AI API 中转代理。原生运行于 Scripting，具备 LocalDNS 风格的流光毛玻璃 Web 控制台（支持全屏 WebViewController/Safari/局域网）、OpenAI / Claude / Responses 多协议、36 款针对性提示词预设与 Astra 通用执行策略、多账号优先级故障转移与熔断、AES-256 本地加密存储及原生 iOS 控制台。 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | 台风路径 | 2.3.1 | 实时台风路径与多机构预报路径地图（数据源: 四创科技）；大号小组件地图需高德 Web服务 Key，可在小组件参数或主程序「更多」中填写 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
-| 寒霜注入工具 | 1.2.4 | 本地提示词注入与网关代理工具（Scripting 版）：内置完整 WebUI、人物卡管理、提示词库与寒霜预设模板。 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
+| 寒霜注入工具 | 1.2.8 | 本地提示词注入与网关代理工具（Scripting 版）：内置完整 WebUI、人物卡管理、提示词库与寒霜预设模板。 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | 网络收音机 | 1.0.1 | 基于 net-redio 的网络收音机：收录全球上千家公开流媒体电台，支持黑胶唱片旋转、电平示波器、主题调色板与后台锁屏播控。 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | 音乐大合集 | 1.2.0 | 多源聚合音乐播放器，支持在线/离线播放与下载管理 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | 黃豆短劇 | 1.2.0 | 浏览、搜索与收藏黃豆短劇内容，支持播放历史和剧集播放。 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |

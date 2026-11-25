@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-11-25T08:08:47+00:00",
+  "updated_at": "2026-11-25T21:32:44+00:00",
   "count": 27,
   "project_count": 129,
   "repos": [
@@ -66,7 +66,7 @@
     {
       "repo": "BlackCCCat/Scripting-Scripts",
       "url": "https://github.com/BlackCCCat/Scripting-Scripts",
-      "stars": 53,
+      "stars": 54,
       "language": "TypeScript",
       "branch": "main",
       "category": "小组件",
@@ -733,11 +733,11 @@
         },
         {
           "name": "寒霜注入工具",
-          "version": "1.2.4",
+          "version": "1.2.8",
           "description": "本地提示词注入与网关代理工具（Scripting 版）：内置完整 WebUI、人物卡管理、提示词库与寒霜预设模板。",
           "dir": "scripts-store/ckldy/scripting-scripts/projects/寒霜注入工具 2",
           "entry": "index.tsx",
-          "files": 23,
+          "files": 32,
           "icon": "wand.and.stars",
           "source": "tree"
         },
