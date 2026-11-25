@@ -1,12 +1,14 @@
 import {
-  Button, Form, Navigation, NavigationStack, Section, SecureField, Text,
+  Button, DatePicker, Form, Navigation, NavigationStack, Section, SecureField, Text, Toggle,
   TextField, useState,
 } from "scripting"
-import { dateText, EventDraft, recognize, SingleClickFlow, UserError } from "./core"
+import { EventDraft, recognize, SingleClickFlow, UserError } from "./core"
 import { forgetKey, loadKey, nativeAPI, rememberKey, safeError } from "./runtime"
 import { DEEPSEEK_API_KEY } from "./api-key"
+import { EventEditor, lastDay } from "./editor"
 
 const flow = new SingleClickFlow()
+let activeEditor: EventEditor | null = null
 const configKey = DEEPSEEK_API_KEY.trim()
 let sessionKey = configKey
 let keyLoadError = ""
@@ -14,17 +16,7 @@ if (!configKey) {
   try { sessionKey = loadKey() } catch (error) { keyLoadError = safeError(error, "") }
 }
 
-function displayTime(event: EventDraft): string {
-  const fmt = (date: Date) => `${dateText(date)} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
-  if (!event.allDay) return `${fmt(event.start)} — ${fmt(event.end)}`
-  const lastDay = new Date(event.end)
-  lastDay.setDate(lastDay.getDate() - 1)
-  return dateText(lastDay) === dateText(event.start)
-    ? `${dateText(event.start)} · 全天`
-    : `${dateText(event.start)} 至 ${dateText(lastDay)} · 全天`
-}
-
-async function saveToCalendar(draft: EventDraft): Promise<void> {
+async function saveToCalendar(draft: EventDraft): Promise<any> {
   const calendar = await nativeAPI("Calendar").defaultForEvents()
   if (!calendar || !calendar.allowsContentModifications) {
     throw new UserError("找不到可写入的默认日历。请在 iPhone 的日历设置中选择默认日历，并允许 Scripting 访问日历。")
@@ -39,6 +31,7 @@ async function saveToCalendar(draft: EventDraft): Promise<void> {
   event.endDate = draft.end
   event.notes = "由「活动转日历」从活动通知自动识别添加。"
   await event.save()
+  return event
 }
 
 function App() {
@@ -52,6 +45,9 @@ function App() {
   const [keySaved, setKeySaved] = useState(!!sessionKey)
   const [preview, setPreview] = useState("")
   const [showSettings, setShowSettings] = useState(!sessionKey)
+  const [editor, setEditor] = useState<EventEditor | null>(null)
+  const [editRevision, setEditRevision] = useState(0)
+  let createdEvent: any = null
 
   // 保存 Key 是一个独立动作，不再挂在"粘贴并识别"上。
   function saveKey() {
@@ -82,14 +78,13 @@ function App() {
   }
 
   async function run() {
-    if (busy) return
+    if (busy || activeEditor?.dirty) return
     if (!sessionKey.trim()) {
       setShowSettings(true)
       setStatus("还没有可用的 Key，请先在上面填入并点「保存 Key」。")
       return
     }
     setBusy(true)
-    setResult(null)
     setStatus("正在读取活动信息…")
     let stage = "读取剪贴板"
     try {
@@ -110,9 +105,13 @@ function App() {
           setStatus(`已读取 ${text.length} 字，正在识别活动…`)
           return recognize(text, sessionKey, (url, init) => nativeAPI("fetch")(url, init))
         },
-        async draft => { stage = "写入系统日历"; setStatus("识别成功，正在添加到系统日历…"); await saveToCalendar(draft) },
+        async draft => { stage = "写入系统日历"; setStatus("识别成功，正在添加到系统日历…"); createdEvent = await saveToCalendar(draft) },
       )
       setResult(event)
+      let revision = editRevision
+      activeEditor = new EventEditor(event, createdEvent, () => setEditRevision(++revision),
+        value => flow.rememberEdited(value), error => safeError(error, sessionKey))
+      setEditor(activeEditor)
       setManualText("")
       setStatus("已添加到系统日历")
     } catch (error) {
@@ -137,7 +136,7 @@ function App() {
       <Section footer={<Text>{keySaved
         ? "点击后会把文字发到 DeepSeek 识别，并直接写入系统日历。"
         : "填好并保存 Key 后，这个按钮才可用。"}</Text>}>
-        <Button action={run} disabled={busy || !keySaved} buttonStyle="borderedProminent" controlSize="large">
+        <Button action={run} disabled={busy || !keySaved || !!editor?.dirty} buttonStyle="borderedProminent" controlSize="large">
           <Text frame={{ maxWidth: "infinity", alignment: "center" }}>{busy ? "正在处理…" : "粘贴并识别"}</Text>
         </Button>
         <Text>{status}</Text>
@@ -148,12 +147,21 @@ function App() {
         : null}
 
       {preview ? <Section header={<Text>已读取的文字</Text>}><Text>{preview}</Text></Section> : null}
-      {result ? <Section header={<Text>添加成功</Text>}>
-        <Text font="headline">{result.title}</Text>
-        <Text>{displayTime(result)}</Text>
-        <Text>{result.location || "未提供地点"}</Text>
-        {result.defaultDuration ? <Text>原文没有结束时间，已按一小时添加。</Text> : null}
-        <Text foregroundStyle="secondary">需要修改或删除时，请到 iPhone 系统日历操作。</Text>
+      {result && editor ? <Section header={<Text>添加成功</Text>}
+        footer={<Text>修改后自动同步，请等“已同步”再关闭。调整开始时间会同时平移结束时间。</Text>}>
+        <TextField title="活动名称" value={editor.value.title} onChanged={value => editor.change({ title: value })}
+          prompt="活动名称" disabled={busy} />
+        <TextField title="地点" value={editor.value.location} onChanged={value => editor.change({ location: value })}
+          prompt="补充地点" disabled={busy} />
+        <Toggle title="全天" value={editor.value.allDay} onChanged={value => editor.setAllDay(value)} disabled={busy} />
+        <DatePicker title={editor.value.allDay ? "开始日期" : "开始时间"} value={editor.value.start.getTime()}
+          onChanged={value => editor.setStart(value)} displayedComponents={editor.value.allDay ? ["date"] : ["date", "hourAndMinute"]}
+          datePickerStyle="compact" disabled={busy} />
+        <DatePicker title={editor.value.allDay ? "结束日期（含当天）" : "结束时间"} value={lastDay(editor.value).getTime()}
+          onChanged={value => editor.setEnd(value)} displayedComponents={editor.value.allDay ? ["date"] : ["date", "hourAndMinute"]}
+          datePickerStyle="compact" disabled={busy} />
+        <Text foregroundStyle="secondary">{editor.message}</Text>
+        {editor.message.startsWith("同步失败") ? <Button title="重试同步" action={() => editor.flush()} /> : null}
       </Section> : null}
       <Section header={<Text>可选：输入或修改活动原文</Text>}>
         <TextField title="活动原文" value={manualText} onChanged={setManualText}
@@ -166,6 +174,6 @@ function App() {
 
 async function main() {
   try { await Navigation.present({ element: <App /> }) }
-  finally { nativeAPI("Script").exit() }
+  finally { try { await activeEditor?.flush() } finally { nativeAPI("Script").exit() } }
 }
 void main()

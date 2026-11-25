@@ -131,6 +131,7 @@ export function fingerprint(event: EventDraft): string {
 }
 
 export class SingleClickFlow {
+  rememberEdited(event: EventDraft) { this.savedEvents.add(fingerprint(event)) }
   private busy = false
   private savedTexts = new Set<string>()
   private savedEvents = new Set<string>()

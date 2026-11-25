@@ -1,6 +1,6 @@
 # 脚本中心目录
 
-最近同步时间：2026-11-24T22:16:55+00:00
+最近同步时间：2026-11-25T08:08:47+00:00
 
 收录 27 个仓库 / 129 个可导入的 Scripting 项目。
 
@@ -10,7 +10,7 @@
 
 | 脚本 | 版本 | 说明 | 仓库 | Star | 来源 |
 |---|---|---|---|---|---|
-| 活动转日历 | 0.1.6 | 粘贴活动通知，直接识别并添加到 iPhone 日历。缺少开始时间时记为全天。 | [Xykf-ya/activity-to-calendar](https://github.com/Xykf-ya/activity-to-calendar) | 0 | tree |
+| 活动转日历 | 0.1.7 | 粘贴活动通知，直接识别并添加到 iPhone 日历。缺少开始时间时记为全天。 | [Xykf-ya/activity-to-calendar](https://github.com/Xykf-ya/activity-to-calendar) | 0 | tree |
 
 ### 小组件（128）
 
@@ -147,14 +147,4 @@
 
 ## 清理记录
 
-| 时间 | 类型 | 对象 | 原因 |
-|---|---|---|---|
-| 2026-11-24T22:16:55+00:00 | file | scripts-store/b7f2d/CourseSync/projects/CourseSync/widget.tsx | 已不在任何有效项目中 |
-| 2026-11-24T22:16:55+00:00 | file | scripts-store/b7f2d/CourseSync/projects/CourseSync/widget-data.ts | 已不在任何有效项目中 |
-| 2026-11-24T22:16:55+00:00 | file | scripts-store/ckldy/scripting-scripts/projects/LocalDNS/LocalDNS/web/assets/app-BF6QW_hf.js | 已不在任何有效项目中 |
-| 2026-11-24T22:16:55+00:00 | file | scripts-store/ckldy/scripting-scripts/projects/LocalDNS/LocalDNS/web/assets/index-3nLTlqR7.css | 已不在任何有效项目中 |
-| 2026-11-24T22:16:55+00:00 | file | scripts-store/ckldy/scripting-scripts/projects/LocalDNS/LocalDNS/docs/superpowers/specs/2026-11-08-youtube-full-pipeline-design.md | 已不在任何有效项目中 |
-| 2026-11-24T22:16:55+00:00 | file | scripts-store/ckldy/scripting-scripts/projects/LocalDNS/LocalDNS/docs/superpowers/specs/2026-11-04-surge-tf436-features-design.md | 已不在任何有效项目中 |
-| 2026-11-24T22:16:55+00:00 | file | scripts-store/ckldy/scripting-scripts/projects/LocalDNS/LocalDNS/docs/youtube-pipeline-phase0-report.md | 已不在任何有效项目中 |
-| 2026-11-24T22:16:55+00:00 | file | scripts-store/ckldy/scripting-scripts/projects/LocalDNS/LocalDNS/docs/youtube-adblock-verification.md | 已不在任何有效项目中 |
-| 2026-11-24T22:16:55+00:00 | file | scripts-store/ckldy/scripting-scripts/projects/LocalDNS/LocalDNS/docs/pipeline-optimization-plan.md | 已不在任何有效项目中 |
+本次没有需要清理的内容。

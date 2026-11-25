@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-11-24T22:16:55+00:00",
+  "updated_at": "2026-11-25T08:08:47+00:00",
   "count": 27,
   "project_count": 129,
   "repos": [
@@ -1473,11 +1473,11 @@
       "projects": [
         {
           "name": "活动转日历",
-          "version": "0.1.6",
+          "version": "0.1.7",
           "description": "粘贴活动通知，直接识别并添加到 iPhone 日历。缺少开始时间时记为全天。",
           "dir": "scripts-store/Xykf-ya/activity-to-calendar/projects/src",
           "entry": "index.tsx",
-          "files": 5,
+          "files": 6,
           "icon": "calendar.badge.plus",
           "source": "tree"
         }

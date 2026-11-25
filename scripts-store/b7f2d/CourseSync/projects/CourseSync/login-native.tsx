@@ -3,7 +3,7 @@
 // Passwords remain in memory only until caller authenticates or discards them.
 import {
   Dialog, Navigation, NavigationStack, List, Section, Text,
-  TextField, SecureField, Button, Image, ProgressView, VStack, useState, useEffect,
+  TextField, SecureField, Button, Image, ProgressView, VStack, HStack, useState, useEffect,
 } from 'scripting';
 
 function LoginView({title, confirmTitle, allowReuse}: {title:string;confirmTitle:string;allowReuse:boolean}) {
@@ -113,8 +113,9 @@ export async function presentNativeRefreshForm(schoolId:string,allowReuse=false,
   return credentials?{kind:'credentials',schoolId,...credentials}:null;
 }
 
+type RoomBuilding = {name: string; floors: {floor: number; roomCodes: string[]}[]};
 type FreeRoomResult =
-  | {kind: 'ready'; date: string; rooms: {period: string; room: string}[]}
+  | {kind: 'ready'; date: string; rooms: {period: string; lessons: string; buildings: RoomBuilding[]}[]}
   | {kind: 'error'; message: string};
 type ReadyRooms = Extract<FreeRoomResult, {kind:'ready'}>;
 export type DashboardOptions = {
@@ -168,31 +169,16 @@ async function chooseNativeAction(options) {
 }
 
 const ROOM_CAMPUS='仙林校区';
-const ROOM_SCOPE='查询范围为博远楼、博观楼、博文楼的普通教室，以及德经楼、德济楼、德正楼和德业楼一楼的普通教室。';
+const NO_FULL_PERIOD_ROOMS='无整段空闲教室';
 
-function roomResultSections(rooms: ReadyRooms['rooms']) {
-  const periods={'上午':'上午 · 第1—5节','下午':'下午 · 第6—10节','晚上':'晚上 · 第11—13节'};
-  return rooms.map(({period,room})=>{
-    const heading=periods[period] || period;
-    const content=String(room || '').split('\n').map(line=>{
-      const match=line.match(/^(.*?：)(.+、.+?)(（第[^）]+节）)$/);
-      if(match)return match[1]+'\n'+match[2].split('、').map(value=>value+match[3]).join('\n');
-      if(period==='建议教室'&&line.includes('、'))return line.replace('：','：\n').replace(/、/g,'\n');
-      if(line==='无空闲教室')return '无整段空闲教室';
-      return line.replace(/、/g,'\n');
-    }).flatMap(line=>line.split('\n'));
-    const count=periods[period]?content.filter(line=>line.trim()&&!/^无(?:空闲教室|整段空闲教室|完整时段空闲教室)/.test(line)).length:0;
-    return {period,heading,content,count};
+function formatRoomResults(date, rooms: ReadyRooms['rooms']) {
+  const periods=rooms.map(({period,lessons,buildings})=>{
+    const lines=buildings.flatMap(({name,floors})=>[
+      name,...floors.map(({floor,roomCodes})=>floor+'楼  '+roomCodes.join('  '))
+    ]);
+    return [period+' · '+lessons,...(lines.length?lines:[NO_FULL_PERIOD_ROOMS])].join('\n');
   });
-}
-
-function formatRoomResults(date, rooms) {
-  const results=roomResultSections(rooms);
-  const sections=results.map(({period,heading,content})=>
-    (period==='上午'?'整段空闲教室\n':'')+heading+'\n'+content.join('\n'));
-  const firstPeriod=results.findIndex(({period})=>period==='上午');
-  const grouped=firstPeriod<0?sections:[...sections.slice(0,firstPeriod),sections.slice(firstPeriod).join('\n')];
-  return [date+' · '+ROOM_CAMPUS,...grouped,ROOM_SCOPE].join('\n\n');
+  return [date+' · '+ROOM_CAMPUS,periods.join('\n')].join('\n\n');
 }
 
 async function readRoomResults(loadRooms:RoomLoader,isActive=()=>true,updateProgress=(_value:number)=>{}) {
@@ -213,8 +199,6 @@ function RoomResultsView({loadRooms,isOpen,onClose}: {loadRooms:RoomLoader;isOpe
     }).then(next=>{if(isActive())setResult(next);});
     return ()=>{active=false;};
   },[attempt]);
-  const ready=result?.kind==='ready'?result:null;
-  const sections=ready?roomResultSections(ready.rooms):[];
   const close=()=>{onClose();dismiss();};
   const toolbar={cancellationAction:<Button title={result?'返回':'取消'} action={close}/>};
   return <NavigationStack presentationDetents={['large']} presentationDragIndicator="visible">
@@ -236,26 +220,25 @@ function RoomResultsView({loadRooms,isOpen,onClose}: {loadRooms:RoomLoader;isOpe
       }}/>
     </VStack>:<List navigationTitle="空闲教室" navigationBarTitleDisplayMode="inline" listStyle="insetGroup"
       toolbar={toolbar}>
-      {ready?<Section>
-        <Text font="subheadline" foregroundStyle="secondary">{ready.date} · {ROOM_CAMPUS}</Text>
-      </Section>:null}
-      {sections.filter(({period})=>period==='建议教室').map(({period,heading,content})=>
-        <Section key={period} header={<Text>{heading}</Text>}>
-          {content.map((line,index)=><Text key={index}
-            font={line.endsWith('：')?'subheadline':'body'}
-            fontWeight={line.endsWith('：')?'semibold':undefined}
-            foregroundStyle={line.endsWith('：')?'secondary':undefined}>{line}</Text>)}
-        </Section>)}
-      {sections.some(({period})=>period!=='建议教室')?<Section
-        header={<Text>整段空闲教室</Text>} footer={<Text>{ROOM_SCOPE}</Text>}>
-        {sections.filter(({period})=>period!=='建议教室').flatMap(({period,heading,content,count})=>[
-          <Text key={period} font="subheadline" fontWeight="semibold" foregroundStyle="secondary">
-            {heading}{count?' · '+count+' 间':''}
-          </Text>,
-          ...content.map((line,index)=><Text key={period+'-'+index}
-            foregroundStyle={/^无(?:整段|完整时段)空闲教室/.test(line)?'secondary':undefined}>{line}</Text>)
-        ])}
-      </Section>:null}
+      <Section header={<Text>{result.date} · {ROOM_CAMPUS}</Text>}>
+        {result.rooms.map(({period,lessons,buildings})=>
+          <VStack key={period} alignment="leading" spacing={8}>
+            <Text font="headline">{period} · {lessons}</Text>
+            {buildings.length?buildings.map(({name,floors})=>
+              <HStack key={name} alignment="top" spacing={12}>
+                <Text font="subheadline" fontWeight="semibold" fixedSize>{name}</Text>
+                <VStack alignment="leading" spacing={4}>
+                  {floors.map(({floor,roomCodes})=>
+                    <HStack key={floor} alignment="firstTextBaseline" spacing={8}>
+                      <Text font="subheadline" foregroundStyle="secondary" fixedSize>{floor}楼</Text>
+                      <Text font="subheadline" multilineTextAlignment="leading"
+                        fixedSize={{horizontal:false,vertical:true}}>{roomCodes.join('  ')}</Text>
+                    </HStack>)}
+                </VStack>
+              </HStack>):
+              <Text font="subheadline" foregroundStyle="secondary">{NO_FULL_PERIOD_ROOMS}</Text>}
+          </VStack>)}
+      </Section>
     </List>}
   </NavigationStack>;
 }
