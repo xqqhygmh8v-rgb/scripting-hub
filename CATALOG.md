@@ -1,8 +1,8 @@
 # 脚本中心目录
 
-最近同步时间：2026-11-26T07:57:22+00:00
+最近同步时间：2026-11-26T21:20:33+00:00
 
-收录 27 个仓库 / 129 个可导入的 Scripting 项目。
+收录 27 个仓库 / 163 个可导入的 Scripting 项目。
 
 > 只收录包含合法 `script.json` 的 Scripting App 项目；说明文字优先取自脚本自带的 description。
 
@@ -12,7 +12,7 @@
 |---|---|---|---|---|---|
 | 活动转日历 | 0.1.7 | 粘贴活动通知，直接识别并添加到 iPhone 日历。缺少开始时间时记为全天。 | [Xykf-ya/activity-to-calendar](https://github.com/Xykf-ya/activity-to-calendar) | 0 | tree |
 
-### 小组件（128）
+### 小组件（162）
 
 | 脚本 | 版本 | 说明 | 仓库 | Star | 来源 |
 |---|---|---|---|---|---|
@@ -31,6 +31,7 @@
 | PDFHelper | 3.0.5 | 图片转PDF、PDF按页选择合并 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
 | PhotoSlide | 3.0.4 | 卡片式照片整理工具，支持全部照片、相簿和截图筛选，左右滑切换照片，上下滑待删、收藏标记和移动到相簿。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
 | Regex Tester | 3.0.2 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| Reloc in Scripting | 1.1.0 | 面向 iOS 的外设级定位模拟工具（iAP2 / MFi-v3 / NMEA），支持本地加载 MFi 凭据、本机配对、画中画指引、GCJ-02 纠偏与协议实测日志 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
 | Scripting Rime Keyboard | 4.1.2 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
 | Surge模块管理 | 3.1.3 | Surge 模块管理：管理、分类、下载/更新 Surge .sgmodule 模块，支持递归子文件夹、链接格式识别、本地模块、并发更新和 HTTP 远程开关控制。 快捷指令：可用 Scripting 的“运行脚本”调用本脚本来更新模块。 参数示例： 1. 不传参数，或传 all / 全部：更新全部远程模块。 2. 传分类名，例如 广告拦截：只更新该分类。 3. 传 JSON：{"category":"广告拦截","dir":"子文件夹名称","name":"模块名称"} 4.… | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
 | TG 贴纸键盘 | 3.0.3 | 导入 Telegram 贴纸包，在自定义键盘中按分组使用。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
@@ -52,8 +53,42 @@
 | 喝水记录 | 2.0.0 | 记录饮水和饮品摄入量，支持交互小组件与前台饮水健康同步 | [SylvanRoe/Scripting](https://github.com/SylvanRoe/Scripting) | 36 | tree |
 | 国家电网 | 1.0.2 | 国家电网电费中号小组件，展示年度/月度电费电量与近日用电。移植自 Scriptable 脚本（@脑瓜 v2.3.3）。 https://github.com/SylvanRoe/Scripting | [SylvanRoe/Scripting](https://github.com/SylvanRoe/Scripting) | 36 | tree |
 | 网上电网 | 1.2.1 | 网上国网电费中号小组件，全面复刻三栏显示内容自由定制功能，可展示年度/月度电费电量与近日用电/账户余额。移植自 Scriptable 脚本（@脑瓜 v2.3.3）。 https://github.com/SylvanRoe/Scripting | [SylvanRoe/Scripting](https://github.com/SylvanRoe/Scripting) | 36 | tree |
-| Stash 网络诊断雷达 | 1.0.5 | 出口 IP / 参考评分 / 延迟 / 网页可达性检测与 Stash 只读状态展示，无需覆写或配套脚本。 | [your98k/Stash-Panel](https://github.com/your98k/Stash-Panel) | 19 | tree |
-| Stash 面板 | 1.1.6 | Stash 原生模式和策略组切换、节点延迟与历史、多机场用量趋势和预测、桌面与锁屏小组件。 | [your98k/Stash-Panel](https://github.com/your98k/Stash-Panel) | 19 | tree |
+| 115获取Cookie | 1.6.0 | — | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| AI 角色扮演 | 1.0.0 | — | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| App Store限免 | 1.0.0 | — | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| App 搜索 | 1.0.0 | 搜索 App Store 应用，查看详情、复制 Bundle ID | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| CF Workers面板 | 1.2.0 | Cloudflare Workers 与 Pages 调用监控面板。 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| Gist | 1.0.0 | — | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| Gist客户端 | 1.0.0 | GitHub Gist 私密仓库管理器 - 列出/创建/编辑/删除 Gist | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| Github上传 | 1.2.0 | — | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| Hegre | 1.0.0 | — | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| Inkling | 0.5.0 | Inkling - 微信读书划线回顾。卡片式重温、封面墙书架、大家都在划、阅读统计，支持跳回微信读书原文。 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| Logoly | 1.0.0 | Pornhub / OnlyFans 风格 Logo 生成器：实时预览、自定义配色与字号、导出 PNG / SVG。 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| MediaHub | 0.2.1 | 全能媒体播放器：Emby / Plex / 115 / 脚本源 / 本地与直链播放 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| MoonTVPlua | 1.0.0 | — | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| One 每日一言（旧） | 1.0.0 | ONE 每日一言小组件，支持小/中/大尺寸，暗色遮罩自适应，最新内容与手动指定日期模式。 数据来源：v3.wufazhuce.com 致敬韩寒 🫡 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| PulseNet | 1.0.0 | 网络测速、设备信息、数据监控与抢票时间工具 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| PureBox | 2.8.1 | 安全整理联系人、照片、日程、本地数据与 Safari 扩展。 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| Surge_Pro | 1.5.1 | 原生 Scripting 版 Surge Core 状态、流量与策略组监控面板 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| TG订阅管理 | 1.0.0 | 查看频道粉丝数量的小组件 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| TMP.link | 1.0.0 | 安全、快速的临时文件分享服务，支持局域网内高速传输 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| iwara | 1.0.0 | — | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| xbookcn 电子书下载器 | 1.0.0 | 从 blog.xbookcn.net 和 book.xbookcn.net 下载成人情色小说，支持分类浏览、选择下载、导出为文本文件。 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| 亚洲色吧 | 1.0.0 | — | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| 仙女棒 | 1.0.0 | 这漫漫长夜…… 主人的手指终于落在了这不存在的第七档。 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| 优雅听书 | 1.3.6 | 优雅听书聚合播放器 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| 和风天气 | 1.0.0 | — | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| 抖音 Cookie 获取 | 1.1.0 | 登录抖音并提取经过校验的 Cookie | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| 日历 | 3.9.0 | 公历、农历、节气与节日同屏的月历，日程读自系统「日历」，待办读自系统「提醒事项」，另有纪念日倒数与周期进度。全屏呈现，左上角关闭。 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| 每日图文 | 1.1.0 | 每日图文 — 随机背景图片 + 文字句子，支持小号/中号/大号三种尺寸小组件 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| 破壳日 | 1.0.0 | 显示生日倒数、农历、年龄、相识纪念日和每日一言 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| 磁力资源预览 | 1.1.0 | 磁力、ED2K 与下载链接资源预览工具。基于 whatslink.info 查询接口，展示资源名称、大小、文件数量、类型和截图，并支持收藏、复制链接、保存预览截图。 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| 红果短剧 | 1.27.0 | 直连红果短剧 App 协议：X-Gorgon 签名取详情与播放地址，CENC 加密流由本机代理边拉边解，原生播放器起播快、可拖动；分集 + 同名跨季自动连播；可整集解密下载到本机离线观看；首页精选橱窗，发现页按频道 / 题材 / 榜单浏览全部内容。 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| 视频解析下载 | 1.2.0 | — | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| 负一屏低栏 | 1.0.0 | 负一屏底部小组件，显示天气与每日一句。 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| 镜花水月 | 3.9 | 镜花水月 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| Stash 网络诊断雷达 | 1.0.5 | 出口 IP / 参考评分 / 延迟 / 网页可达性检测与 Stash 只读状态展示，无需覆写或配套脚本。 | [your98k/Stash-Panel](https://github.com/your98k/Stash-Panel) | 20 | tree |
+| Stash 面板 | 1.1.6 | Stash 原生模式和策略组切换、节点延迟与历史、多机场用量趋势和预测、桌面与锁屏小组件。 | [your98k/Stash-Panel](https://github.com/your98k/Stash-Panel) | 20 | tree |
 | BigMe.Pro | 1.0.2 | BigMe.Pro 机场流量小组件，支持两种UI样式，可显示订阅信息、流量使用情况和有效期 | [Nanako718/Scripting](https://github.com/Nanako718/Scripting) | 13 | tree |
 | EdgeOne | 1.0.0 | 腾讯云 EdgeOne：总流量、总请求、带宽峰值、命中率。 | [Nanako718/Scripting](https://github.com/Nanako718/Scripting) | 13 | tree |
 | HomeKit 演示 | 1.0.0 | HomeKit 演示脚本：浏览家、配件、服务、特征值与场景，并在脚本里读写控制。 | [Nanako718/Scripting](https://github.com/Nanako718/Scripting) | 13 | tree |
@@ -75,17 +110,16 @@
 | 联通 | 1.0.7 | — | [Nanako718/Scripting](https://github.com/Nanako718/Scripting) | 13 | tree |
 | 选择选项 | 1.0.0 | 用于在 Assistant 工具里让用户进行单选或多选确认。 | [Nanako718/Scripting](https://github.com/Nanako718/Scripting) | 13 | tree |
 | 金价收益 | 1.0.0 | — | [Nanako718/Scripting](https://github.com/Nanako718/Scripting) | 13 | tree |
-| CourseSync | — | 同步课程和考试到 Apple 日历，查询空闲教室，支持快捷指令自动刷新。 | [b7f2d/CourseSync](https://github.com/b7f2d/CourseSync) | 1 | tree |
 | RSS 阅读 | 1.1.0 | 显示 Google Reader 兼容 RSS 平台的未读数与最新文章，支持 FreshRSS；也可从本地或线上 OPML 读取订阅源，并可在 App、主屏组件与 Scripting 主页默认 UI 中阅读文章。 | [bmqy/Scripting-Scripts](https://github.com/bmqy/Scripting-Scripts) | 1 | tree |
 | 限号 | 1.0.0 | 根据当前位置自动查询所在城市机动车尾号限行信息 | [bmqy/Scripting-Scripts](https://github.com/bmqy/Scripting-Scripts) | 1 | tree |
-| LocalDNS | 1.15.21 | 本地 DNS 与安全服务系统，v1.15.21 为托管模块加入上游更新检测：模块表新增内容哈希与巡检字段，刷新时采用上游 #!name（毒奶这类日期名会跟着更新），新增 check-updates / updates 接口与后台巡检（启动 45 秒后 + 每 6 小时），模块工作台显示「🆕 有更新」徽标、上游版本与「🔍 检查更新」按钮；本机来源（ad-hunter）不参与巡检。沿用 v1.15.18 的 FJO02 / UI 2026.11.21.1、FJMOS 内核与全部本… | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
+| LocalDNS | 1.15.22 | 本地 DNS 与安全服务系统，v1.15.22 依据 smartdns 审计结果补齐上游回落与节点熔断：主组全失败时按 off/safe/aggressive 三档回落（默认 safe：foreign→foreign_ecs、proxy→foreign→foreign_ecs，永不污染），aggressive 才允许降级国内 DNS 且结果不进境外缓存池、TTL 上限 60 秒、日志与 metrics 全标记；单节点连续失败 2 次冷却 45 秒不参与竞速；新增 /api/v… | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | ZakoProxy（AI 代理中转） | 1.4.3 | 基于 ckldy/ZakoProxyCLI 深度移植的自托管 AI API 中转代理。原生运行于 Scripting，具备 LocalDNS 风格的流光毛玻璃 Web 控制台（支持全屏 WebViewController/Safari/局域网）、OpenAI / Claude / Responses 多协议、36 款针对性提示词预设与 Astra 通用执行策略、多账号优先级故障转移与熔断、AES-256 本地加密存储及原生 iOS 控制台。 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | 台风路径 | 2.3.1 | 实时台风路径与多机构预报路径地图（数据源: 四创科技）；大号小组件地图需高德 Web服务 Key，可在小组件参数或主程序「更多」中填写 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | 寒霜注入工具 | 1.2.8 | 本地提示词注入与网关代理工具（Scripting 版）：内置完整 WebUI、人物卡管理、提示词库与寒霜预设模板。 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | 网络收音机 | 1.0.1 | 基于 net-redio 的网络收音机：收录全球上千家公开流媒体电台，支持黑胶唱片旋转、电平示波器、主题调色板与后台锁屏播控。 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | 音乐大合集 | 1.2.0 | 多源聚合音乐播放器，支持在线/离线播放与下载管理 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | 黃豆短劇 | 1.2.0 | 浏览、搜索与收藏黃豆短劇内容，支持播放历史和剧集播放。 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
-| RefreshSideStore | 1.0.4 | SideStore 签名倒计时 · 马蹄圈 · RefreshSideStore | [dompling/Scripting](https://github.com/dompling/Scripting) | 1 | tree |
+| RefreshSideStore | 1.0.5 | SideStore 签名倒计时 · 马蹄圈 · RefreshSideStore | [dompling/Scripting](https://github.com/dompling/Scripting) | 1 | tree |
 | App Store Region | 1.0.0 | — | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 1 | tree |
 | App多区价格查询 | 1.0.0 | — | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 1 | tree |
 | CF 用量 | 1.0.0 | 查看 Cloudflare 账号与单个 Worker 的用量，并在接近额度时提醒。 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 1 | tree |
@@ -126,7 +160,7 @@
 | 视频转实况照片 | 1.0.0 | 选择视频、调整封面和时长，然后直接保存为实况照片。 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 1 | tree |
 | 边框流光 | 1.0.0 | 沿着任意视图边框运行的光束，使用 Canvas 绘制。 | [lzr52o/Scripting-Scripts](https://github.com/lzr52o/Scripting-Scripts) | 1 | tree |
 | 中国联通 | 1.1.0 | 通过代理客户端抓取联通凭据，读取 Zayia BoxJS 变量并查询联通余量。 | [Timkeltis/ChinaUnicom-Scripting](https://github.com/Timkeltis/ChinaUnicom-Scripting) | 1 | tree |
-| 日历 | 1.8.24 | 农历与倒班日历：首页及日、周、月小组件，支持节气、休班、班次排序循环、假日自动刷新与日夜外观 | [Wangsc1/calendar](https://github.com/Wangsc1/calendar) | 1 | tree |
+| 日历 | 1.8.25 | 农历与倒班日历：首页及日、周、月小组件，支持节气、休班、班次排序循环、假日自动刷新与日夜外观 | [Wangsc1/calendar](https://github.com/Wangsc1/calendar) | 1 | tree |
 | WLinker | 0.1.0 | Wuling vehicle status widget built on the official SGMW open API. | [zy5120/WLinker](https://github.com/zy5120/WLinker) | 1 | tree |
 | 华农表 | 1.6.4 | 华南农业大学课表：登录教务看每周课表；校历放假/调休自动同步（放假不上课、调休按次周上课）；空白课表加课（选周次→点格子→填名字）。支持深色模式、月历校历、学期进度条与主屏小组件 | [condedby/scripting](https://github.com/condedby/scripting) | 0 | tree |
 | 小组件奥捷智行 | 3.0.2 | 小组件奥捷智行 · 每个按钮独立二次确认、按钮图标与文字独立配色 | [emilylakewa/scripting-car-widgets](https://github.com/emilylakewa/scripting-car-widgets) | 0 | tree |
@@ -139,7 +173,7 @@
 | 网上国网用电 | 1.5.9 | 网上国网小组件：浮岛 / 格栅主题、用电日历、月度汇总与阶梯。 | [SmallMr/Scripting-SGCC](https://github.com/SmallMr/Scripting-SGCC) | 0 | tree |
 | 天气日历 | 1.5.5 | — | [SmallMr/Scripting-WeatherWidget](https://github.com/SmallMr/Scripting-WeatherWidget) | 0 | tree |
 | 启动台 | 1.7.4 | 启动台：把常用 App、链接和自定义脚本放到桌面小组件上，一点直达（汉化版）。 | [vaeann/scripting-widgets](https://github.com/vaeann/scripting-widgets) | 0 | tree |
-| AI 用量 | 1.65 | 基于 Scripting 的 iPhone AI 用量小组件：查看 Codex／Claude／Antigravity 额度、DeepSeek 余额与 WorkBuddy 国内个人积分及只读签到状态。支持官方直连、Parrot、Sub2API、独立用量统计、Antigravity 分组切换、账号详情单刷、原地拖动排序、超时缓存回退与自定义名称，适用于主屏和锁屏。 | [Wangsc1/ai-usage](https://github.com/Wangsc1/ai-usage) | 0 | tree |
+| AI 用量 | 1.66 | 基于 Scripting 的 iPhone AI 用量小组件：查看 Codex／Claude／Antigravity 额度、DeepSeek 余额与 WorkBuddy 国内个人积分及只读签到状态。支持官方直连、Parrot、Sub2API、独立用量统计、Antigravity 分组切换、账号详情单刷、原地拖动排序、超时缓存回退与自定义名称，适用于主屏和锁屏。 | [Wangsc1/ai-usage](https://github.com/Wangsc1/ai-usage) | 0 | tree |
 | 国网电费 | 1.0.7 | 网上国网余额、用电和阶梯小组件。只在本机直连国网接口，不经过任何第三方服务器。 | [YePiXpert/scripting-scripts](https://github.com/YePiXpert/scripting-scripts) | 0 | tree |
 | DeepSeek 用量 | 1.3.0 | — | [youniube/scripting-deepseek-widget](https://github.com/youniube/scripting-deepseek-widget) | 0 | tree |
 | AWS EC2 流量监控 | 1.1.2 | 仅查询 AWS EC2 的 CloudWatch NetworkOut 月度用量；不启动、停止、重启或修改任何 AWS 资源。 | [ZTTYBB/AWSEC2Monitor](https://github.com/ZTTYBB/AWSEC2Monitor) | 0 | tree |
@@ -147,4 +181,7 @@
 
 ## 清理记录
 
-本次没有需要清理的内容。
+| 时间 | 类型 | 对象 | 原因 |
+|---|---|---|---|
+| 2026-11-26T21:20:33+00:00 | file | scripts-store/Wangsc1/calendar/projects/calendar/shift-date-picker.tsx | 已不在任何有效项目中 |
+| 2026-11-26T21:20:33+00:00 | repo | jokruger/kavun | 未发现合法 script.json 项目 |

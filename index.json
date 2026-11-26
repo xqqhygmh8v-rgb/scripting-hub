@@ -1,7 +1,7 @@
 {
-  "updated_at": "2026-11-26T07:57:22+00:00",
+  "updated_at": "2026-11-26T21:20:33+00:00",
   "count": 27,
-  "project_count": 129,
+  "project_count": 163,
   "repos": [
     {
       "repo": "StarYunLee/Scripting",
@@ -169,6 +169,16 @@
           "entry": "index.tsx",
           "files": 17,
           "icon": "square.2.layers.3d.fill",
+          "source": "tree"
+        },
+        {
+          "name": "Reloc in Scripting",
+          "version": "1.1.0",
+          "description": "面向 iOS 的外设级定位模拟工具（iAP2 / MFi-v3 / NMEA），支持本地加载 MFi 凭据、本机配对、画中画指引、GCJ-02 纠偏与协议实测日志",
+          "dir": "scripts-store/BlackCCCat/Scripting-Scripts/projects/Reloc-in-Scripting",
+          "entry": "index.tsx",
+          "files": 46,
+          "icon": "mappin.and.ellipse",
           "source": "tree"
         },
         {
@@ -394,9 +404,359 @@
       ]
     },
     {
+      "repo": "7452323/Scripting",
+      "url": "https://github.com/7452323/Scripting",
+      "stars": 25,
+      "language": "TypeScript",
+      "branch": "main",
+      "category": "小组件",
+      "projects": [
+        {
+          "name": "115获取Cookie",
+          "version": "1.6.0",
+          "description": "",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_115获取Cookie",
+          "entry": "index.tsx",
+          "files": 3,
+          "icon": "square.2.layers.3d.fill",
+          "source": "tree"
+        },
+        {
+          "name": "AI 角色扮演",
+          "version": "1.0.0",
+          "description": "",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_角色扮演",
+          "entry": "index.tsx",
+          "files": 5,
+          "icon": "pencil.and.outline",
+          "source": "tree"
+        },
+        {
+          "name": "App Store限免",
+          "version": "1.0.0",
+          "description": "",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_App Store限免",
+          "entry": "index.tsx",
+          "files": 4,
+          "icon": "square.2.layers.3d.fill",
+          "source": "tree"
+        },
+        {
+          "name": "App 搜索",
+          "version": "1.0.0",
+          "description": "搜索 App Store 应用，查看详情、复制 Bundle ID",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_App 搜索",
+          "entry": "index.tsx",
+          "files": 4,
+          "icon": "magnifyingglass",
+          "source": "tree"
+        },
+        {
+          "name": "CF Workers面板",
+          "version": "1.2.0",
+          "description": "Cloudflare Workers 与 Pages 调用监控面板。",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_CF Workers面板",
+          "entry": "index.tsx",
+          "files": 4,
+          "icon": "square.2.layers.3d.fill",
+          "source": "tree"
+        },
+        {
+          "name": "Gist",
+          "version": "1.0.0",
+          "description": "",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_Gist",
+          "entry": "index.tsx",
+          "files": 11,
+          "icon": "link",
+          "source": "tree"
+        },
+        {
+          "name": "Gist客户端",
+          "version": "1.0.0",
+          "description": "GitHub Gist 私密仓库管理器 - 列出/创建/编辑/删除 Gist",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_Gist客户端",
+          "entry": "index.tsx",
+          "files": 5,
+          "icon": "doc.text.fill",
+          "source": "tree"
+        },
+        {
+          "name": "Github上传",
+          "version": "1.2.0",
+          "description": "",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_Github上传",
+          "entry": "index.tsx",
+          "files": 4,
+          "icon": "level.fill",
+          "source": "tree"
+        },
+        {
+          "name": "Hegre",
+          "version": "1.0.0",
+          "description": "",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_Hegre",
+          "entry": "index.tsx",
+          "files": 3,
+          "icon": "square.2.layers.3d.fill",
+          "source": "tree"
+        },
+        {
+          "name": "Inkling",
+          "version": "0.5.0",
+          "description": "Inkling - 微信读书划线回顾。卡片式重温、封面墙书架、大家都在划、阅读统计，支持跳回微信读书原文。",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_Inkling",
+          "entry": "index.tsx",
+          "files": 4,
+          "icon": "text.quote",
+          "source": "tree"
+        },
+        {
+          "name": "Logoly",
+          "version": "1.0.0",
+          "description": "Pornhub / OnlyFans 风格 Logo 生成器：实时预览、自定义配色与字号、导出 PNG / SVG。",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_Logoly",
+          "entry": "index.tsx",
+          "files": 3,
+          "icon": "paintpalette",
+          "source": "tree"
+        },
+        {
+          "name": "MediaHub",
+          "version": "0.2.1",
+          "description": "全能媒体播放器：Emby / Plex / 115 / 脚本源 / 本地与直链播放",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_MediaHub",
+          "entry": "index.tsx",
+          "files": 21,
+          "icon": "play.rectangle.on.rectangle.fill",
+          "source": "tree"
+        },
+        {
+          "name": "MoonTVPlua",
+          "version": "1.0.0",
+          "description": "",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_MoonTVPlua",
+          "entry": "index.tsx",
+          "files": 14,
+          "icon": "square.2.layers.3d.fill",
+          "source": "tree"
+        },
+        {
+          "name": "One 每日一言（旧）",
+          "version": "1.0.0",
+          "description": "ONE 每日一言小组件，支持小/中/大尺寸，暗色遮罩自适应，最新内容与手动指定日期模式。 数据来源：v3.wufazhuce.com 致敬韩寒 🫡",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_One 每日一言（旧）",
+          "entry": "index.tsx",
+          "files": 6,
+          "icon": "text.alignleft",
+          "source": "tree"
+        },
+        {
+          "name": "PulseNet",
+          "version": "1.0.0",
+          "description": "网络测速、设备信息、数据监控与抢票时间工具",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_PulseNet",
+          "entry": "index.tsx",
+          "files": 4,
+          "icon": "square.2.layers.3d.fill",
+          "source": "tree"
+        },
+        {
+          "name": "PureBox",
+          "version": "2.8.1",
+          "description": "安全整理联系人、照片、日程、本地数据与 Safari 扩展。",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_PureBox",
+          "entry": "index.tsx",
+          "files": 3,
+          "icon": "sparkles.rectangle.stack.fill",
+          "source": "tree"
+        },
+        {
+          "name": "Surge_Pro",
+          "version": "1.5.1",
+          "description": "原生 Scripting 版 Surge Core 状态、流量与策略组监控面板",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_Surge_Pro",
+          "entry": "index.tsx",
+          "files": 5,
+          "icon": "square.2.layers.3d.fill",
+          "source": "tree"
+        },
+        {
+          "name": "TG订阅管理",
+          "version": "1.0.0",
+          "description": "查看频道粉丝数量的小组件",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_TG订阅管理",
+          "entry": "index.tsx",
+          "files": 16,
+          "icon": "location.fill",
+          "source": "tree"
+        },
+        {
+          "name": "TMP.link",
+          "version": "1.0.0",
+          "description": "安全、快速的临时文件分享服务，支持局域网内高速传输",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_TMP.link",
+          "entry": "index.tsx",
+          "files": 3,
+          "icon": "link.circle.fill",
+          "source": "tree"
+        },
+        {
+          "name": "iwara",
+          "version": "1.0.0",
+          "description": "",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_Iwara",
+          "entry": "index.tsx",
+          "files": 3,
+          "icon": "square.2.layers.3d.fill",
+          "source": "tree"
+        },
+        {
+          "name": "xbookcn 电子书下载器",
+          "version": "1.0.0",
+          "description": "从 blog.xbookcn.net 和 book.xbookcn.net 下载成人情色小说，支持分类浏览、选择下载、导出为文本文件。",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_中文成人文学网",
+          "entry": "index.tsx",
+          "files": 3,
+          "icon": "square.2.layers.3d.fill",
+          "source": "tree"
+        },
+        {
+          "name": "亚洲色吧",
+          "version": "1.0.0",
+          "description": "",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_亚洲色吧",
+          "entry": "index.tsx",
+          "files": 6,
+          "icon": "headphones",
+          "source": "tree"
+        },
+        {
+          "name": "仙女棒",
+          "version": "1.0.0",
+          "description": "这漫漫长夜…… 主人的手指终于落在了这不存在的第七档。",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_仙女棒",
+          "entry": "index.tsx",
+          "files": 5,
+          "icon": "sparkles",
+          "source": "tree"
+        },
+        {
+          "name": "优雅听书",
+          "version": "1.3.6",
+          "description": "优雅听书聚合播放器",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_优雅听书",
+          "entry": "index.tsx",
+          "files": 20,
+          "icon": "book.fill",
+          "source": "tree"
+        },
+        {
+          "name": "和风天气",
+          "version": "1.0.0",
+          "description": "",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_和风天气",
+          "entry": "index.tsx",
+          "files": 5,
+          "icon": "cloud.rain.fill",
+          "source": "tree"
+        },
+        {
+          "name": "抖音 Cookie 获取",
+          "version": "1.1.0",
+          "description": "登录抖音并提取经过校验的 Cookie",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_抖音 Cookie 获取",
+          "entry": "index.tsx",
+          "files": 3,
+          "icon": "key.fill",
+          "source": "tree"
+        },
+        {
+          "name": "日历",
+          "version": "3.9.0",
+          "description": "公历、农历、节气与节日同屏的月历，日程读自系统「日历」，待办读自系统「提醒事项」，另有纪念日倒数与周期进度。全屏呈现，左上角关闭。",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_日历",
+          "entry": "index.tsx",
+          "files": 15,
+          "icon": "calendar",
+          "source": "tree"
+        },
+        {
+          "name": "每日图文",
+          "version": "1.1.0",
+          "description": "每日图文 — 随机背景图片 + 文字句子，支持小号/中号/大号三种尺寸小组件",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_每日图文",
+          "entry": "index.tsx",
+          "files": 4,
+          "icon": "square.2.layers.3d.fill",
+          "source": "tree"
+        },
+        {
+          "name": "破壳日",
+          "version": "1.0.0",
+          "description": "显示生日倒数、农历、年龄、相识纪念日和每日一言",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_破壳日",
+          "entry": "index.tsx",
+          "files": 5,
+          "icon": "birthday.cake.fill",
+          "source": "tree"
+        },
+        {
+          "name": "磁力资源预览",
+          "version": "1.1.0",
+          "description": "磁力、ED2K 与下载链接资源预览工具。基于 whatslink.info 查询接口，展示资源名称、大小、文件数量、类型和截图，并支持收藏、复制链接、保存预览截图。",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_磁力资源预览",
+          "entry": "index.tsx",
+          "files": 3,
+          "icon": "link.circle.fill",
+          "source": "tree"
+        },
+        {
+          "name": "红果短剧",
+          "version": "1.27.0",
+          "description": "直连红果短剧 App 协议：X-Gorgon 签名取详情与播放地址，CENC 加密流由本机代理边拉边解，原生播放器起播快、可拖动；分集 + 同名跨季自动连播；可整集解密下载到本机离线观看；首页精选橱窗，发现页按频道 / 题材 / 榜单浏览全部内容。",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_红果短剧",
+          "entry": "index.tsx",
+          "files": 26,
+          "icon": "play.tv.fill",
+          "source": "tree"
+        },
+        {
+          "name": "视频解析下载",
+          "version": "1.2.0",
+          "description": "",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_视频解析下载",
+          "entry": "index.tsx",
+          "files": 14,
+          "icon": "photo.fill",
+          "source": "tree"
+        },
+        {
+          "name": "负一屏低栏",
+          "version": "1.0.0",
+          "description": "负一屏底部小组件，显示天气与每日一句。",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_负一屏低栏",
+          "entry": "index.tsx",
+          "files": 4,
+          "icon": "rectangle.bottomthird.inset.filled",
+          "source": "tree"
+        },
+        {
+          "name": "镜花水月",
+          "version": "3.9",
+          "description": "镜花水月",
+          "dir": "scripts-store/7452323/Scripting/projects/Scripting_镜花水月",
+          "entry": "index.tsx",
+          "files": 7,
+          "icon": "livephoto",
+          "source": "tree"
+        }
+      ]
+    },
+    {
       "repo": "your98k/Stash-Panel",
       "url": "https://github.com/your98k/Stash-Panel",
-      "stars": 19,
+      "stars": 20,
       "language": "TypeScript",
       "branch": "main",
       "category": "小组件",
@@ -644,26 +1004,6 @@
       ]
     },
     {
-      "repo": "b7f2d/CourseSync",
-      "url": "https://github.com/b7f2d/CourseSync",
-      "stars": 1,
-      "language": "TypeScript",
-      "branch": "main",
-      "category": "小组件",
-      "projects": [
-        {
-          "name": "CourseSync",
-          "version": "",
-          "description": "同步课程和考试到 Apple 日历，查询空闲教室，支持快捷指令自动刷新。",
-          "dir": "scripts-store/b7f2d/CourseSync/projects/CourseSync",
-          "entry": "index.tsx",
-          "files": 6,
-          "icon": "calendar",
-          "source": "tree"
-        }
-      ]
-    },
-    {
       "repo": "bmqy/Scripting-Scripts",
       "url": "https://github.com/bmqy/Scripting-Scripts",
       "stars": 1,
@@ -703,11 +1043,11 @@
       "projects": [
         {
           "name": "LocalDNS",
-          "version": "1.15.21",
-          "description": "本地 DNS 与安全服务系统，v1.15.21 为托管模块加入上游更新检测：模块表新增内容哈希与巡检字段，刷新时采用上游 #!name（毒奶这类日期名会跟着更新），新增 check-updates / updates 接口与后台巡检（启动 45 秒后 + 每 6 小时），模块工作台显示「🆕 有更新」徽标、上游版本与「🔍 检查更新」按钮；本机来源（ad-hunter）不参与巡检。沿用 v1.15.18 的 FJO02 / UI 2026.11.21.1、FJMOS 内核与全部本…",
+          "version": "1.15.22",
+          "description": "本地 DNS 与安全服务系统，v1.15.22 依据 smartdns 审计结果补齐上游回落与节点熔断：主组全失败时按 off/safe/aggressive 三档回落（默认 safe：foreign→foreign_ecs、proxy→foreign→foreign_ecs，永不污染），aggressive 才允许降级国内 DNS 且结果不进境外缓存池、TTL 上限 60 秒、日志与 metrics 全标记；单节点连续失败 2 次冷却 45 秒不参与竞速；新增 /api/v…",
           "dir": "scripts-store/ckldy/scripting-scripts/projects/LocalDNS",
           "entry": "index.tsx",
-          "files": 119,
+          "files": 120,
           "icon": "shield.lefthalf.filled",
           "source": "tree"
         },
@@ -783,7 +1123,7 @@
       "projects": [
         {
           "name": "RefreshSideStore",
-          "version": "1.0.4",
+          "version": "1.0.5",
           "description": "SideStore 签名倒计时 · 马蹄圈 · RefreshSideStore",
           "dir": "scripts-store/dompling/Scripting/projects/RefreshSideStore_src",
           "entry": "index.tsx",
@@ -1223,11 +1563,11 @@
       "projects": [
         {
           "name": "日历",
-          "version": "1.8.24",
+          "version": "1.8.25",
           "description": "农历与倒班日历：首页及日、周、月小组件，支持节气、休班、班次排序循环、假日自动刷新与日夜外观",
           "dir": "scripts-store/Wangsc1/calendar/projects/calendar",
           "entry": "index.tsx",
-          "files": 22,
+          "files": 21,
           "icon": "calendar",
           "source": "tree"
         }
@@ -1453,7 +1793,7 @@
       "projects": [
         {
           "name": "AI 用量",
-          "version": "1.65",
+          "version": "1.66",
           "description": "基于 Scripting 的 iPhone AI 用量小组件：查看 Codex／Claude／Antigravity 额度、DeepSeek 余额与 WorkBuddy 国内个人积分及只读签到状态。支持官方直连、Parrot、Sub2API、独立用量统计、Antigravity 分组切换、账号详情单刷、原地拖动排序、超时缓存回退与自定义名称，适用于主屏和锁屏。",
           "dir": "scripts-store/Wangsc1/ai-usage/projects/ai-usage",
           "entry": "index.tsx",
