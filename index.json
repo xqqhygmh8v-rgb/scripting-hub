@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-11-25T21:32:44+00:00",
+  "updated_at": "2026-11-26T07:57:22+00:00",
   "count": 27,
   "project_count": 129,
   "repos": [
@@ -794,179 +794,9 @@
       ]
     },
     {
-      "repo": "Timkeltis/ChinaUnicom-Scripting",
-      "url": "https://github.com/Timkeltis/ChinaUnicom-Scripting",
-      "stars": 1,
-      "language": "TypeScript",
-      "branch": "main",
-      "category": "小组件",
-      "projects": [
-        {
-          "name": "中国联通",
-          "version": "1.1.0",
-          "description": "通过代理客户端抓取联通凭据，读取 Zayia BoxJS 变量并查询联通余量。",
-          "dir": "scripts-store/Timkeltis/ChinaUnicom-Scripting/projects/ChinaUnicom-Scripting",
-          "entry": "index.tsx",
-          "files": 40,
-          "icon": "antenna.radiowaves.left.and.right",
-          "source": "tree"
-        }
-      ]
-    },
-    {
-      "repo": "Wangsc1/calendar",
-      "url": "https://github.com/Wangsc1/calendar",
-      "stars": 1,
-      "language": "TypeScript",
-      "branch": "main",
-      "category": "小组件",
-      "projects": [
-        {
-          "name": "日历",
-          "version": "1.8.24",
-          "description": "农历与倒班日历：首页及日、周、月小组件，支持节气、休班、班次排序循环、假日自动刷新与日夜外观",
-          "dir": "scripts-store/Wangsc1/calendar/projects/calendar",
-          "entry": "index.tsx",
-          "files": 22,
-          "icon": "calendar",
-          "source": "tree"
-        }
-      ]
-    },
-    {
-      "repo": "zy5120/WLinker",
-      "url": "https://github.com/zy5120/WLinker",
-      "stars": 1,
-      "language": "TypeScript",
-      "branch": "main",
-      "category": "小组件",
-      "projects": [
-        {
-          "name": "WLinker",
-          "version": "0.1.0",
-          "description": "Wuling vehicle status widget built on the official SGMW open API.",
-          "dir": "scripts-store/zy5120/WLinker/projects/WLinker",
-          "entry": "index.tsx",
-          "files": 13,
-          "icon": "car.side.fill",
-          "source": "tree"
-        }
-      ]
-    },
-    {
-      "repo": "condedby/scripting",
-      "url": "https://github.com/condedby/scripting",
-      "stars": 0,
-      "language": "TypeScript",
-      "branch": "main",
-      "category": "小组件",
-      "projects": [
-        {
-          "name": "华农表",
-          "version": "1.6.4",
-          "description": "华南农业大学课表：登录教务看每周课表；校历放假/调休自动同步（放假不上课、调休按次周上课）；空白课表加课（选周次→点格子→填名字）。支持深色模式、月历校历、学期进度条与主屏小组件",
-          "dir": "scripts-store/condedby/scripting/projects/华农表",
-          "entry": "index.tsx",
-          "files": 28,
-          "icon": "calendar",
-          "source": "tree"
-        }
-      ]
-    },
-    {
-      "repo": "emilylakewa/scripting-car-widgets",
-      "url": "https://github.com/emilylakewa/scripting-car-widgets",
-      "stars": 0,
-      "language": "TypeScript",
-      "branch": "main",
-      "category": "小组件",
-      "projects": [
-        {
-          "name": "小组件奥捷智行",
-          "version": "3.0.2",
-          "description": "小组件奥捷智行 · 每个按钮独立二次确认、按钮图标与文字独立配色",
-          "dir": "scripts-store/emilylakewa/scripting-car-widgets/projects/小组件奥捷智行",
-          "entry": "index.tsx",
-          "files": 13,
-          "icon": "car.fill",
-          "source": "tree"
-        },
-        {
-          "name": "小组件奥智联",
-          "version": "3.0.2",
-          "description": "小组件奥智联 · 每个按钮独立二次确认、按钮图标与文字独立配色",
-          "dir": "scripts-store/emilylakewa/scripting-car-widgets/projects/小组件奥智联",
-          "entry": "index.tsx",
-          "files": 13,
-          "icon": "car.fill",
-          "source": "tree"
-        },
-        {
-          "name": "小组件车联",
-          "version": "3.10.10",
-          "description": "自动识别奥智联与奥捷智行 Token，统一车辆小组件与控车功能",
-          "dir": "scripts-store/emilylakewa/scripting-car-widgets/projects/小组件车联",
-          "entry": "index.tsx",
-          "files": 23,
-          "icon": "car.fill",
-          "source": "tree"
-        }
-      ]
-    },
-    {
-      "repo": "H4S2O8/ai-quota-widget",
-      "url": "https://github.com/H4S2O8/ai-quota-widget",
-      "stars": 0,
-      "language": "TypeScript",
-      "branch": "main",
-      "category": "小组件",
-      "projects": [
-        {
-          "name": "AI 额度面板",
-          "version": "0.8.0",
-          "description": "桌面与锁屏小组件，汇总各家 AI 服务的剩余额度：Claude 订阅用量窗口、OpenRouter、DeepSeek、硅基流动、Moonshot、OpenAI 兼容中转站，或任意 JSON 接口。可扩展：一个文件一个服务商。",
-          "dir": "scripts-store/H4S2O8/ai-quota-widget/projects/app",
-          "entry": "index.tsx",
-          "files": 26,
-          "icon": "gauge.with.dots.needle.33percent",
-          "source": "tree"
-        },
-        {
-          "name": "住宅代理控制",
-          "version": "0.1.0",
-          "description": "测试版。选择地区并更换住宅代理出口 IP。",
-          "dir": "scripts-store/H4S2O8/ai-quota-widget/projects/scripts_Storm Control",
-          "entry": "index.tsx",
-          "files": 6,
-          "icon": "network.badge.shield.half.filled",
-          "source": "tree"
-        }
-      ]
-    },
-    {
-      "repo": "liugaoxiao/scripting-csg",
-      "url": "https://github.com/liugaoxiao/scripting-csg",
-      "stars": 0,
-      "language": "TypeScript",
-      "branch": "main",
-      "category": "小组件",
-      "projects": [
-        {
-          "name": "南方电网",
-          "version": "1.2.2",
-          "description": "查看南方电网余额、欠费、当月用电与最新日用电信息。",
-          "dir": "scripts-store/liugaoxiao/scripting-csg/projects/scripts_南方电网",
-          "entry": "index.tsx",
-          "files": 20,
-          "icon": "bolt.house.fill",
-          "source": "tree"
-        }
-      ]
-    },
-    {
       "repo": "lzr52o/Scripting-Scripts",
       "url": "https://github.com/lzr52o/Scripting-Scripts",
-      "stars": 0,
+      "stars": 1,
       "language": "TypeScript",
       "branch": "master",
       "category": "小组件",
@@ -1359,6 +1189,176 @@
           "entry": "index.tsx",
           "files": 7,
           "icon": "sparkles.rectangle.stack",
+          "source": "tree"
+        }
+      ]
+    },
+    {
+      "repo": "Timkeltis/ChinaUnicom-Scripting",
+      "url": "https://github.com/Timkeltis/ChinaUnicom-Scripting",
+      "stars": 1,
+      "language": "TypeScript",
+      "branch": "main",
+      "category": "小组件",
+      "projects": [
+        {
+          "name": "中国联通",
+          "version": "1.1.0",
+          "description": "通过代理客户端抓取联通凭据，读取 Zayia BoxJS 变量并查询联通余量。",
+          "dir": "scripts-store/Timkeltis/ChinaUnicom-Scripting/projects/ChinaUnicom-Scripting",
+          "entry": "index.tsx",
+          "files": 40,
+          "icon": "antenna.radiowaves.left.and.right",
+          "source": "tree"
+        }
+      ]
+    },
+    {
+      "repo": "Wangsc1/calendar",
+      "url": "https://github.com/Wangsc1/calendar",
+      "stars": 1,
+      "language": "TypeScript",
+      "branch": "main",
+      "category": "小组件",
+      "projects": [
+        {
+          "name": "日历",
+          "version": "1.8.24",
+          "description": "农历与倒班日历：首页及日、周、月小组件，支持节气、休班、班次排序循环、假日自动刷新与日夜外观",
+          "dir": "scripts-store/Wangsc1/calendar/projects/calendar",
+          "entry": "index.tsx",
+          "files": 22,
+          "icon": "calendar",
+          "source": "tree"
+        }
+      ]
+    },
+    {
+      "repo": "zy5120/WLinker",
+      "url": "https://github.com/zy5120/WLinker",
+      "stars": 1,
+      "language": "TypeScript",
+      "branch": "main",
+      "category": "小组件",
+      "projects": [
+        {
+          "name": "WLinker",
+          "version": "0.1.0",
+          "description": "Wuling vehicle status widget built on the official SGMW open API.",
+          "dir": "scripts-store/zy5120/WLinker/projects/WLinker",
+          "entry": "index.tsx",
+          "files": 13,
+          "icon": "car.side.fill",
+          "source": "tree"
+        }
+      ]
+    },
+    {
+      "repo": "condedby/scripting",
+      "url": "https://github.com/condedby/scripting",
+      "stars": 0,
+      "language": "TypeScript",
+      "branch": "main",
+      "category": "小组件",
+      "projects": [
+        {
+          "name": "华农表",
+          "version": "1.6.4",
+          "description": "华南农业大学课表：登录教务看每周课表；校历放假/调休自动同步（放假不上课、调休按次周上课）；空白课表加课（选周次→点格子→填名字）。支持深色模式、月历校历、学期进度条与主屏小组件",
+          "dir": "scripts-store/condedby/scripting/projects/华农表",
+          "entry": "index.tsx",
+          "files": 28,
+          "icon": "calendar",
+          "source": "tree"
+        }
+      ]
+    },
+    {
+      "repo": "emilylakewa/scripting-car-widgets",
+      "url": "https://github.com/emilylakewa/scripting-car-widgets",
+      "stars": 0,
+      "language": "TypeScript",
+      "branch": "main",
+      "category": "小组件",
+      "projects": [
+        {
+          "name": "小组件奥捷智行",
+          "version": "3.0.2",
+          "description": "小组件奥捷智行 · 每个按钮独立二次确认、按钮图标与文字独立配色",
+          "dir": "scripts-store/emilylakewa/scripting-car-widgets/projects/小组件奥捷智行",
+          "entry": "index.tsx",
+          "files": 13,
+          "icon": "car.fill",
+          "source": "tree"
+        },
+        {
+          "name": "小组件奥智联",
+          "version": "3.0.2",
+          "description": "小组件奥智联 · 每个按钮独立二次确认、按钮图标与文字独立配色",
+          "dir": "scripts-store/emilylakewa/scripting-car-widgets/projects/小组件奥智联",
+          "entry": "index.tsx",
+          "files": 13,
+          "icon": "car.fill",
+          "source": "tree"
+        },
+        {
+          "name": "小组件车联",
+          "version": "3.10.10",
+          "description": "自动识别奥智联与奥捷智行 Token，统一车辆小组件与控车功能",
+          "dir": "scripts-store/emilylakewa/scripting-car-widgets/projects/小组件车联",
+          "entry": "index.tsx",
+          "files": 23,
+          "icon": "car.fill",
+          "source": "tree"
+        }
+      ]
+    },
+    {
+      "repo": "H4S2O8/ai-quota-widget",
+      "url": "https://github.com/H4S2O8/ai-quota-widget",
+      "stars": 0,
+      "language": "TypeScript",
+      "branch": "main",
+      "category": "小组件",
+      "projects": [
+        {
+          "name": "AI 额度面板",
+          "version": "0.8.0",
+          "description": "桌面与锁屏小组件，汇总各家 AI 服务的剩余额度：Claude 订阅用量窗口、OpenRouter、DeepSeek、硅基流动、Moonshot、OpenAI 兼容中转站，或任意 JSON 接口。可扩展：一个文件一个服务商。",
+          "dir": "scripts-store/H4S2O8/ai-quota-widget/projects/app",
+          "entry": "index.tsx",
+          "files": 26,
+          "icon": "gauge.with.dots.needle.33percent",
+          "source": "tree"
+        },
+        {
+          "name": "住宅代理控制",
+          "version": "0.1.0",
+          "description": "测试版。选择地区并更换住宅代理出口 IP。",
+          "dir": "scripts-store/H4S2O8/ai-quota-widget/projects/scripts_Storm Control",
+          "entry": "index.tsx",
+          "files": 6,
+          "icon": "network.badge.shield.half.filled",
+          "source": "tree"
+        }
+      ]
+    },
+    {
+      "repo": "liugaoxiao/scripting-csg",
+      "url": "https://github.com/liugaoxiao/scripting-csg",
+      "stars": 0,
+      "language": "TypeScript",
+      "branch": "main",
+      "category": "小组件",
+      "projects": [
+        {
+          "name": "南方电网",
+          "version": "1.2.2",
+          "description": "查看南方电网余额、欠费、当月用电与最新日用电信息。",
+          "dir": "scripts-store/liugaoxiao/scripting-csg/projects/scripts_南方电网",
+          "entry": "index.tsx",
+          "files": 20,
+          "icon": "bolt.house.fill",
           "source": "tree"
         }
       ]
