@@ -1,7 +1,7 @@
 {
-  "updated_at": "2026-11-27T07:58:43+00:00",
-  "count": 28,
-  "project_count": 164,
+  "updated_at": "2026-11-27T21:00:40+00:00",
+  "count": 26,
+  "project_count": 125,
   "repos": [
     {
       "repo": "StarYunLee/Scripting",
@@ -173,11 +173,11 @@
         },
         {
           "name": "Reloc in Scripting",
-          "version": "1.2.1",
+          "version": "1.3.0",
           "description": "面向 iOS 的外设级定位模拟工具（iAP2 / MFi-v3 / NMEA），支持本地加载 MFi 凭据、本机配对、画中画指引、GCJ-02 纠偏与协议实测日志",
           "dir": "scripts-store/BlackCCCat/Scripting-Scripts/projects/Reloc-in-Scripting",
           "entry": "index.tsx",
-          "files": 47,
+          "files": 49,
           "icon": "mappin.and.ellipse",
           "source": "tree"
         },
@@ -523,11 +523,11 @@
         },
         {
           "name": "MediaHub",
-          "version": "0.3.0",
+          "version": "0.12.3",
           "description": "统一添加源、Safari 登录 Plex、卡片媒体库与首页",
           "dir": "scripts-store/7452323/Scripting/projects/Scripting_MediaHub",
           "entry": "index.tsx",
-          "files": 22,
+          "files": 29,
           "icon": "play.rectangle.on.rectangle.fill",
           "source": "tree"
         },
@@ -756,7 +756,7 @@
     {
       "repo": "your98k/Stash-Panel",
       "url": "https://github.com/your98k/Stash-Panel",
-      "stars": 20,
+      "stars": 21,
       "language": "TypeScript",
       "branch": "main",
       "category": "小组件",
@@ -1004,26 +1004,6 @@
       ]
     },
     {
-      "repo": "b7f2d/CourseSync",
-      "url": "https://github.com/b7f2d/CourseSync",
-      "stars": 1,
-      "language": "TypeScript",
-      "branch": "main",
-      "category": "小组件",
-      "projects": [
-        {
-          "name": "CourseSync",
-          "version": "",
-          "description": "同步课程和考试到 Apple 日历，查询空闲教室，支持快捷指令自动刷新。",
-          "dir": "scripts-store/b7f2d/CourseSync/projects/CourseSync",
-          "entry": "index.tsx",
-          "files": 6,
-          "icon": "calendar",
-          "source": "tree"
-        }
-      ]
-    },
-    {
       "repo": "bmqy/Scripting-Scripts",
       "url": "https://github.com/bmqy/Scripting-Scripts",
       "stars": 1,
@@ -1063,11 +1043,11 @@
       "projects": [
         {
           "name": "LocalDNS",
-          "version": "1.15.22",
-          "description": "本地 DNS 与安全服务系统，v1.15.22 依据 smartdns 审计结果补齐上游回落与节点熔断：主组全失败时按 off/safe/aggressive 三档回落（默认 safe：foreign→foreign_ecs、proxy→foreign→foreign_ecs，永不污染），aggressive 才允许降级国内 DNS 且结果不进境外缓存池、TTL 上限 60 秒、日志与 metrics 全标记；单节点连续失败 2 次冷却 45 秒不参与竞速；新增 /api/v…",
+          "version": "1.15.34",
+          "description": "本地 DNS 与安全服务系统，v1.15.34 解决播放 403 Forbidden 终局问题：1) 抓包实证 01:29:19 videoplayback 失败根因：auto-hd 强行改写媒体流 itag 参数，导致 Google Video 的 HMAC 签名 (sig) 失效，服务端直接拒流返回 HTTP 403 Forbidden（readyState=0 零字节无法播放）；2) 彻底排除破坏签名的 auto-hd 与 init，保留真正负责去广告的 respons…",
           "dir": "scripts-store/ckldy/scripting-scripts/projects/LocalDNS",
           "entry": "index.tsx",
-          "files": 120,
+          "files": 127,
           "icon": "shield.lefthalf.filled",
           "source": "tree"
         },
@@ -1093,7 +1073,7 @@
         },
         {
           "name": "寒霜注入工具",
-          "version": "1.2.8",
+          "version": "1.2.9",
           "description": "本地提示词注入与网关代理工具（Scripting 版）：内置完整 WebUI、人物卡管理、提示词库与寒霜预设模板。",
           "dir": "scripts-store/ckldy/scripting-scripts/projects/寒霜注入工具 2",
           "entry": "index.tsx",
@@ -1149,406 +1129,6 @@
           "entry": "index.tsx",
           "files": 49,
           "icon": "arrow.trianglehead.2.clockwise.rotate.90",
-          "source": "tree"
-        }
-      ]
-    },
-    {
-      "repo": "lzr52o/Scripting-Scripts",
-      "url": "https://github.com/lzr52o/Scripting-Scripts",
-      "stars": 1,
-      "language": "TypeScript",
-      "branch": "master",
-      "category": "小组件",
-      "projects": [
-        {
-          "name": "App Store Region",
-          "version": "1.0.0",
-          "description": "",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_App Store Region",
-          "entry": "index.tsx",
-          "files": 12,
-          "icon": "shuffle",
-          "source": "tree"
-        },
-        {
-          "name": "App多区价格查询",
-          "version": "1.0.0",
-          "description": "",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_App多区价格查询",
-          "entry": "index.tsx",
-          "files": 13,
-          "icon": "text.magnifyingglass",
-          "source": "tree"
-        },
-        {
-          "name": "CF 用量",
-          "version": "1.0.0",
-          "description": "查看 Cloudflare 账号与单个 Worker 的用量，并在接近额度时提醒。",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_CF Usage",
-          "entry": "index.tsx",
-          "files": 25,
-          "icon": "cloud.fill",
-          "source": "tree"
-        },
-        {
-          "name": "Cloudflare Panel",
-          "version": "",
-          "description": "",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Cloudflare Panel",
-          "entry": "index.tsx",
-          "files": 18,
-          "icon": "bolt.fill",
-          "source": "tree"
-        },
-        {
-          "name": "Codex Panel",
-          "version": "",
-          "description": "",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Codex Panel",
-          "entry": "index.tsx",
-          "files": 12,
-          "icon": "bolt.fill",
-          "source": "tree"
-        },
-        {
-          "name": "Colorful Clouds",
-          "version": "",
-          "description": "",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Colorful Clouds",
-          "entry": "index.tsx",
-          "files": 17,
-          "icon": "cloud.sun.fill",
-          "source": "tree"
-        },
-        {
-          "name": "Gist",
-          "version": "1.0.0",
-          "description": "",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Gist",
-          "entry": "index.tsx",
-          "files": 9,
-          "icon": "link",
-          "source": "tree"
-        },
-        {
-          "name": "Gist Editor",
-          "version": "2.0.3",
-          "description": "",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Github Toolkit_gist",
-          "entry": "index.tsx",
-          "files": 16,
-          "icon": "chevron.left.forwardslash.chevron.right",
-          "source": "tree"
-        },
-        {
-          "name": "GitHub Actions 管理",
-          "version": "2.0.2",
-          "description": "管理 GitHub Actions 工作流程：瀏覽倉庫與工作流程、查看執行狀態與歷史、觸發執行，並在桌面小工具上查看自動化狀態與下次執行時間。",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Github Toolkit_action",
-          "entry": "index.tsx",
-          "files": 15,
-          "icon": "square.2.layers.3d.fill",
-          "source": "tree"
-        },
-        {
-          "name": "GitHub Stars",
-          "version": "1.1.1",
-          "description": "浏览与管理 GitHub Stars、自定义列表和本人仓库，支持仓库资料维护、多年度贡献热力图与常用语言分析。",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_GitHub Stars",
-          "entry": "index.tsx",
-          "files": 37,
-          "icon": "star.square.fill",
-          "source": "tree"
-        },
-        {
-          "name": "GitHub 密钥",
-          "version": "1.0.0",
-          "description": "编辑仓库的 Actions 密钥，并一键将同一密钥同步到多个仓库。",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_GitHub Secrets",
-          "entry": "index.tsx",
-          "files": 11,
-          "icon": "staroflife.shield.fill",
-          "source": "tree"
-        },
-        {
-          "name": "GitHub 規則添加",
-          "version": "2.0.0",
-          "description": "直接在已有規則檔案或 Gist 檔案基礎上，新增規則",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_GitHub 規則添加",
-          "entry": "index.tsx",
-          "files": 13,
-          "icon": "list.bullet",
-          "source": "tree"
-        },
-        {
-          "name": "Github Repo",
-          "version": "3.0",
-          "description": "瀏覽、管理、編輯 Github倉庫",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Github Repo",
-          "entry": "index.tsx",
-          "files": 12,
-          "icon": "folder",
-          "source": "tree"
-        },
-        {
-          "name": "Github Repository",
-          "version": "3.0",
-          "description": "瀏覽、管理、編輯 Github倉庫",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Github Toolkit_repo",
-          "entry": "index.tsx",
-          "files": 17,
-          "icon": "folder",
-          "source": "tree"
-        },
-        {
-          "name": "Github Toolkit",
-          "version": "2.0",
-          "description": "GitHub 日常管理工具，整合三大功能： • Repository：浏览与编辑文件、切换分支、查看 Pull Requests。 • Gist：管理代码片段与多文件内容。 • Actions：查看工作流程、执行记录与执行状态。 支持多账号、搜索筛选、精简显示及主题切换。",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Github Toolkit",
-          "entry": "index.tsx",
-          "files": 26,
-          "icon": "wrench.and.screwdriver",
-          "source": "tree"
-        },
-        {
-          "name": "Icon Library",
-          "version": "1.1.2",
-          "description": "管理多个 GitHub 公开图标库，按仓库独立授权、浏览和上传图标。",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Icon Library",
-          "entry": "index.tsx",
-          "files": 50,
-          "icon": "square.grid.2x2.fill",
-          "source": "tree"
-        },
-        {
-          "name": "IconShelf",
-          "version": "0.4.0",
-          "description": "图标集订阅管理 · JSON 订阅、预览与更新",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_IconShelf",
-          "entry": "index.tsx",
-          "files": 12,
-          "icon": "square.grid.2x2.fill",
-          "source": "tree"
-        },
-        {
-          "name": "Iconset Helper",
-          "version": "1.0.0",
-          "description": "",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Iconset Helper",
-          "entry": "index.tsx",
-          "files": 9,
-          "icon": "arrow.down.app.dashed",
-          "source": "tree"
-        },
-        {
-          "name": "Itemory",
-          "version": "1.0.0",
-          "description": "为每件物品记录购入价格、维修支出和转手收入，查看持有天数与日均成本，在时间线和置物架上回顾自己的物品。",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Itemory",
-          "entry": "index.tsx",
-          "files": 107,
-          "icon": "shippingbox.fill",
-          "source": "tree"
-        },
-        {
-          "name": "Loon 面板",
-          "version": "1.0.9",
-          "description": "机场用量趋势和预测、节点延迟与出口体检、Loon 模式和节点切换。",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Loon Panel",
-          "entry": "index.tsx",
-          "files": 23,
-          "icon": "gauge.with.dots.needle.67percent",
-          "source": "tree"
-        },
-        {
-          "name": "RSS",
-          "version": "1.0.0",
-          "description": "",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_RSS",
-          "entry": "index.tsx",
-          "files": 24,
-          "icon": "dot.radiowaves.up.forward",
-          "source": "tree"
-        },
-        {
-          "name": "Scripting Store",
-          "version": "2.0.2",
-          "description": "本站非 Scripting 官方平台。所有组件均收集自互联网，版权归原作者所有。如有侵权，请TG联系 @RoayCallingBot 删除。 仅做适配App，免访问网站，感谢原作者开发",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Scripting Store",
-          "entry": "index.tsx",
-          "files": 37,
-          "icon": "wrench.and.screwdriver",
-          "source": "tree"
-        },
-        {
-          "name": "Storefront",
-          "version": "1.5.0",
-          "description": "管理多区 Apple 账号、余额、订阅、应用收藏与 TestFlight 名额。",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Storefront",
-          "entry": "index.tsx",
-          "files": 62,
-          "icon": "creditcard.circle.fill",
-          "source": "tree"
-        },
-        {
-          "name": "Surge 监控",
-          "version": "1.1.1",
-          "description": "Surge iOS Prometheus 指标小组件：Medium 聚焦累计流量与核心状态，Large 展开网络接口流量。",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Surge Metrics",
-          "entry": "index.tsx",
-          "files": 14,
-          "icon": "speedometer",
-          "source": "tree"
-        },
-        {
-          "name": "qBitHelper",
-          "version": "1.0.6",
-          "description": "远程监控 qBittorrent/Transmission 状态的脚本",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_qBitHelper",
-          "entry": "index.tsx",
-          "files": 18,
-          "icon": "tray.full.fill",
-          "source": "tree"
-        },
-        {
-          "name": "万年历",
-          "version": "1.0.0",
-          "description": "",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_万年历",
-          "entry": "index.tsx",
-          "files": 11,
-          "icon": "calendar",
-          "source": "tree"
-        },
-        {
-          "name": "去除背景",
-          "version": "0.1.0",
-          "description": "基于 @imgly/background-removal 在本地 AI 推理实现图片背景去除。",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Remove Background",
-          "entry": "index.tsx",
-          "files": 6,
-          "icon": "square.2.layers.3d.fill",
-          "source": "tree"
-        },
-        {
-          "name": "启动台",
-          "version": "1.15.2",
-          "description": "可自定义的应用启动器小组件，支持多份小组件配置：每个小组件通过参数选择自己的展示内容。大尺寸可分区展示多个文件夹，每个区域都能独立设置布局与外观；SF Symbol 可视化搜索选择并支持填充等样式，支持单应用、双应用、三/四/六/九宫格与自动网格布局，数据保存在 iCloud 共享数据储存库中。",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Launch",
-          "entry": "index.tsx",
-          "files": 23,
-          "icon": "appclip",
-          "source": "tree"
-        },
-        {
-          "name": "壁纸小工具",
-          "version": "1.2.6",
-          "description": "ACG 二次元壁纸小组件。支持随机或指定 ID 获取图片，可设置自动刷新间隔（1分钟至1小时）。数据来源：ACG 图库。",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_WallpaperWidget",
-          "entry": "index.tsx",
-          "files": 11,
-          "icon": "photo.fill",
-          "source": "tree"
-        },
-        {
-          "name": "寒霜注入工具",
-          "version": "1.2.4",
-          "description": "本地提示词注入与网关代理工具（Scripting 版）：内置完整 WebUI、人物卡管理、提示词库与寒霜预设模板。",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_寒霜注入工具 2",
-          "entry": "index.tsx",
-          "files": 23,
-          "icon": "wand.and.stars",
-          "source": "tree"
-        },
-        {
-          "name": "微博热搜",
-          "version": "1.1.0",
-          "description": "",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Weibo",
-          "entry": "index.tsx",
-          "files": 11,
-          "icon": "doc.text.magnifyingglass",
-          "source": "tree"
-        },
-        {
-          "name": "日历",
-          "version": "1.3.0",
-          "description": "",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Calendar",
-          "entry": "index.tsx",
-          "files": 12,
-          "icon": "7.calendar",
-          "source": "tree"
-        },
-        {
-          "name": "智慧交通",
-          "version": "1.0.0",
-          "description": "实时查看城市交通状况的桌面组件。显示交通拥堵指数（畅通/缓行/拥堵/严重拥堵）和拥堵道路排行，支持全国多城市切换。数据来源：百度交通指数。",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_智慧交通",
-          "entry": "index.tsx",
-          "files": 5,
-          "icon": "car.fill",
-          "source": "tree"
-        },
-        {
-          "name": "活着打卡",
-          "version": "1.0.0",
-          "description": "每天打卡，证明你还活着",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Live In Earnest",
-          "entry": "index.tsx",
-          "files": 17,
-          "icon": "heart.fill",
-          "source": "tree"
-        },
-        {
-          "name": "流媒體解鎖檢測",
-          "version": "1.1.0",
-          "description": "Check the IP, region, and YouTube, Netflix, ChatGPT and Disney+ unlock status.",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_流媒體解鎖檢測",
-          "entry": "index.tsx",
-          "files": 9,
-          "icon": "play.tv.fill",
-          "source": "tree"
-        },
-        {
-          "name": "网上国网",
-          "version": "1.0.1",
-          "description": "网上国网小组件：电费余额、用电量与阶梯进度。",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_SGCC",
-          "entry": "index.tsx",
-          "files": 9,
-          "icon": "bolt.fill",
-          "source": "tree"
-        },
-        {
-          "name": "覆写模块聚合",
-          "version": "1.1.0",
-          "description": "聚合 Surge、Loon、Egern、Stash 与 Shadowrocket 模块，支持多来源管理、搜索筛选、收藏、缓存同步、源码查看与一键导入，并提供 GitHub 限流保护。",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_覆写模块聚合",
-          "entry": "index.tsx",
-          "files": 20,
-          "icon": "square.stack.3d.up",
-          "source": "tree"
-        },
-        {
-          "name": "视频转实况照片",
-          "version": "1.0.0",
-          "description": "选择视频、调整封面和时长，然后直接保存为实况照片。",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Video to Live Photo",
-          "entry": "index.tsx",
-          "files": 3,
-          "icon": "livephoto",
-          "source": "tree"
-        },
-        {
-          "name": "边框流光",
-          "version": "1.0.0",
-          "description": "沿着任意视图边框运行的光束，使用 Canvas 绘制。",
-          "dir": "scripts-store/lzr52o/Scripting-Scripts/projects/scripts_Border Beam",
-          "entry": "index.tsx",
-          "files": 7,
-          "icon": "sparkles.rectangle.stack",
           "source": "tree"
         }
       ]
@@ -1724,6 +1304,36 @@
       ]
     },
     {
+      "repo": "Maqiaogongmin/Scripting",
+      "url": "https://github.com/Maqiaogongmin/Scripting",
+      "stars": 0,
+      "language": "TypeScript",
+      "branch": "main",
+      "category": "其他",
+      "projects": [
+        {
+          "name": "NBA赛程",
+          "version": "0.5.1",
+          "description": "全赛季 NBA 赛程、未来三个比赛日组件及虎扑本场球员评分与评论。",
+          "dir": "scripts-store/Maqiaogongmin/Scripting/projects/scripts_NBA-Glass",
+          "entry": "index.tsx",
+          "files": 13,
+          "icon": "basketball.fill",
+          "source": "tree"
+        },
+        {
+          "name": "豆瓣书影音",
+          "version": "0.3.0",
+          "description": "查豆瓣影视、图书和音乐，浏览评论，把喜欢的海报或封面放上主屏幕。",
+          "dir": "scripts-store/Maqiaogongmin/Scripting/projects/scripts_Douban-Media",
+          "entry": "index.tsx",
+          "files": 6,
+          "icon": "film",
+          "source": "tree"
+        }
+      ]
+    },
+    {
       "repo": "SmallMr/Scripting-Calendar",
       "url": "https://github.com/SmallMr/Scripting-Calendar",
       "stars": 0,
@@ -1819,26 +1429,6 @@
           "entry": "index.tsx",
           "files": 12,
           "icon": "gauge.with.dots.needle.67percent",
-          "source": "tree"
-        }
-      ]
-    },
-    {
-      "repo": "Xykf-ya/activity-to-calendar",
-      "url": "https://github.com/Xykf-ya/activity-to-calendar",
-      "stars": 0,
-      "language": "PowerShell",
-      "branch": "main",
-      "category": "其他",
-      "projects": [
-        {
-          "name": "活动转日历",
-          "version": "0.1.7",
-          "description": "粘贴活动通知，直接识别并添加到 iPhone 日历。缺少开始时间时记为全天。",
-          "dir": "scripts-store/Xykf-ya/activity-to-calendar/projects/src",
-          "entry": "index.tsx",
-          "files": 6,
-          "icon": "calendar.badge.plus",
           "source": "tree"
         }
       ]
