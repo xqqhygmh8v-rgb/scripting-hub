@@ -8,7 +8,6 @@ import {
   Label,
   LiveActivity,
   Navigation,
-  Picker,
   Script,
   Spacer,
   TabView,
@@ -42,7 +41,8 @@ import {
   parsePairingFile,
   savePairing,
 } from "./core/pairing";
-import { RelocLiveActivity, type RelocActivityState } from "./live_activity";
+import { RelocLiveActivity, isIPhoneDuo, type RelocActivityState } from "./live_activity";
+import { liveActivityUpdateKey } from "./utils/liveActivityFormat";
 import type {
   AppSettings,
   ConnectionCheckState,
@@ -61,7 +61,7 @@ import type {
 import { RELOC_COLORS } from "./ui/theme";
 import { ConfigurationView } from "./ui/ConfigurationView";
 import { MapPickerView } from "./ui/MapPickerView";
-import { ProtocolLogsToolbarActions, ProtocolLogsView } from "./ui/ProtocolLogsView";
+import { ProtocolLogsView } from "./ui/ProtocolLogsView";
 import { useMarkdownChangelogSheet } from "./ui/ReleaseNotesSheet";
 import { distanceMeters, formatLatLon, mapCoordToDeviceWgs84, round6 } from "./utils/coords";
 import {
@@ -168,6 +168,8 @@ export function App(props: { shared?: { latitude: number; longitude: number; nam
   const sessionRef = useRef<AccessoryLocationSession | null>(null);
   const liveActivity = useObservable(() => RelocLiveActivity());
   const lastLiveActivityKeyRef = useRef<string>("");
+  const duoLiveActivityTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const latestSnapForLiveActivityRef = useRef<{ snap: SessionSnapshot; wgs84: TargetLocation } | null>(null);
   const liveActivityEnabledRef = useRef<boolean>(settings.liveActivityEnabled);
   liveActivityEnabledRef.current = settings.liveActivityEnabled;
   const sessionStartedAtRef = useRef<number>(Date.now());
@@ -242,9 +244,9 @@ export function App(props: { shared?: { latitude: number; longitude: number; nam
 
   const lastLocLogAtRef = useRef<number>(0);
 
-  async function refreshCurrentTelemetry(verbose = false) {
+  async function refreshCurrentTelemetry(verbose = false, force = true) {
     try {
-      const current = await Location.requestCurrent({ forceRequest: true });
+      const current = await Location.requestCurrent(force ? { forceRequest: true } : undefined);
       if (current) {
         const sample: LiveLocationTelemetry = {
           latitude: current.latitude,
@@ -418,6 +420,13 @@ export function App(props: { shared?: { latitude: number; longitude: number; nam
     restoreTimersRef.current.push(t1, t2, t3, t4);
   }
 
+  function stopDuoLiveActivityTimer() {
+    if (duoLiveActivityTimerRef.current) {
+      clearInterval(duoLiveActivityTimerRef.current);
+      duoLiveActivityTimerRef.current = null;
+    }
+  }
+
   function liveActivityStateFrom(
     snap: SessionSnapshot,
     placeName: string,
@@ -440,6 +449,8 @@ export function App(props: { shared?: { latitude: number; longitude: number; nam
       statusLabel: label,
       packetsAcknowledged: snap.packetsAcknowledged,
       startedAt: sessionStartedAtRef.current,
+      now: Date.now(),
+      isDuo: isIPhoneDuo(),
       isError: Boolean(snap.lastError),
     };
   }
@@ -449,6 +460,8 @@ export function App(props: { shared?: { latitude: number; longitude: number; nam
     wgs84: TargetLocation,
     snap: SessionSnapshot,
   ) {
+    stopDuoLiveActivityTimer();
+    latestSnapForLiveActivityRef.current = { snap, wgs84 };
     if (!liveActivityEnabledRef.current) return;
     try {
       const allowed = await LiveActivity.areActivitiesEnabled();
@@ -461,8 +474,19 @@ export function App(props: { shared?: { latitude: number; longitude: number; nam
       const fresh = RelocLiveActivity();
       liveActivity.setValue(fresh);
       const initial = liveActivityStateFrom(snap, placeName, wgs84);
-      lastLiveActivityKeyRef.current = `${initial.statusLabel}|${initial.latitude.toFixed(5)}|${initial.longitude.toFixed(5)}|0`;
+      lastLiveActivityKeyRef.current = liveActivityUpdateKey({
+        ...initial,
+        duo: Boolean(initial.isDuo),
+      });
       await fresh.start(initial);
+      if (initial.isDuo) {
+        // iPhone Duo 竖向灵动岛使用双行文本展示时长，仅在 Duo 设备上每秒刷新一次状态
+        duoLiveActivityTimerRef.current = setInterval(() => {
+          const latest = latestSnapForLiveActivityRef.current;
+          if (!latest || !sessionRef.current || !liveActivityEnabledRef.current) return;
+          void updateSimulationLiveActivity(latest.snap, latest.wgs84);
+        }, 1000);
+      }
     } catch (error) {
       debugLog("liveactivity", "启动模拟实时活动失败", describeError(error));
       fireToast(`灵动岛启动失败：${describeError(error)}`);
@@ -474,11 +498,14 @@ export function App(props: { shared?: { latitude: number; longitude: number; nam
     wgs84: TargetLocation,
     force = false,
   ) {
+    latestSnapForLiveActivityRef.current = { snap, wgs84 };
     if (!liveActivityEnabledRef.current) return;
     try {
       const next = liveActivityStateFrom(snap, activePlaceNameRef.current, wgs84);
-      const ackBucket = next.packetsAcknowledged === 1 ? 1 : Math.floor(next.packetsAcknowledged / 5);
-      const key = `${next.statusLabel}|${next.latitude.toFixed(5)}|${next.longitude.toFixed(5)}|${ackBucket}`;
+      const key = liveActivityUpdateKey({
+        ...next,
+        duo: Boolean(next.isDuo),
+      });
       if (!force && key === lastLiveActivityKeyRef.current) return;
       lastLiveActivityKeyRef.current = key;
       await liveActivity.value.update(next);
@@ -488,6 +515,8 @@ export function App(props: { shared?: { latitude: number; longitude: number; nam
   }
 
   async function stopAllLiveActivities() {
+    stopDuoLiveActivityTimer();
+    latestSnapForLiveActivityRef.current = null;
     lastLiveActivityKeyRef.current = "";
     await LiveActivity.endAllActivities({ dismissTimeInterval: 0 }).catch(() => undefined);
   }
@@ -517,6 +546,9 @@ export function App(props: { shared?: { latitude: number; longitude: number; nam
         Math.abs(prev.longitude - sample.longitude) < 1e-6 &&
         sample.timestamp - prev.timestamp < 4000;
       latestTelemetryRef.current = sample;
+      if (!prev || distanceMeters(prev, sample) > 50) {
+        debugLog("location", `监听定位更新 lat=${sample.latitude.toFixed(5)}, lon=${sample.longitude.toFixed(5)}`);
+      }
       if (!sessionRef.current && !isRestoringRef.current) {
         lastKnownRealLocationRef.current = {
           latitude: sample.latitude,
@@ -532,8 +564,8 @@ export function App(props: { shared?: { latitude: number; longitude: number; nam
       ) {
         completeRealLocationRecovery(sample);
       }
-      // 仅在实测日志页且坐标/时间窗口确有变化时更新 UI，避免无意义重绘和数字频闪
-      if (isTelemetryTabRef.current && !samePoint) {
+      // 在实测日志页或会话运行期间同步更新 telemetry，确保地图底卡实时显示生效偏差；坐标未明显变化时不触发多余重绘
+      if ((isTelemetryTabRef.current || sessionRef.current !== null) && !samePoint) {
         setTelemetry(sample);
       }
     };
@@ -580,6 +612,8 @@ export function App(props: { shared?: { latitude: number; longitude: number; nam
       tabSelection.unsubscribe(onTabChanged);
       cancelSubscriptionWakeups();
       cancelRealLocationRecovery();
+      stopDuoLiveActivityTimer();
+      latestSnapForLiveActivityRef.current = null;
       if (eventFlushTimerRef.current) {
         clearTimeout(eventFlushTimerRef.current);
         eventFlushTimerRef.current = null;
@@ -878,6 +912,8 @@ export function App(props: { shared?: { latitude: number; longitude: number; nam
             statusLabel: "等待设置输入 PIN",
             packetsAcknowledged: 0,
             startedAt: Date.now(),
+            now: Date.now(),
+            isDuo: isIPhoneDuo(),
             isError: false,
           })
           .catch(() => undefined);
@@ -1026,6 +1062,10 @@ export function App(props: { shared?: { latitude: number; longitude: number; nam
   sceneActiveRef.current = () => {
     refreshPairing();
     void verifyConnectionIfNeeded(false);
+    // 仅使用非强制读取同步已收敛的位置，绝不在后台触发 forceRequest: true 干扰 locationd 外设锁定
+    if (sessionRef.current && lastModeRef.current === "send") {
+      void refreshCurrentTelemetry(false, false);
+    }
   };
 
   // 配置或配对状态变更时自动重新校验设备连接；切回前台时自动补检（对齐原版 Reloc）
@@ -1078,12 +1118,15 @@ export function App(props: { shared?: { latitude: number; longitude: number; nam
     activeMapCoordinate,
     settings,
     snapshot,
+    telemetry,
+    activeWgs84Target,
     mfiStatus,
     pairingStatus,
     connectionState,
     favorites,
     recents,
     interruptedSession,
+    onRefreshTelemetry: () => refreshCurrentTelemetry(true, !sessionRef.current),
     onSelectTarget: (next: PickTarget & { altitude: number }) => {
       setSelectedTarget(next);
       saveLastLocation(next);
@@ -1133,6 +1176,9 @@ export function App(props: { shared?: { latitude: number; longitude: number; nam
     },
     onToast: fireToast,
     onClose: canDismiss ? () => dismiss() : undefined,
+    homeTabSwitcher: isHomeScreen
+      ? { currentTab: homeTab, onSelectTab: (tab: number) => tabSelection.setValue(tab) }
+      : undefined,
   };
 
   const configProps = {
@@ -1158,7 +1204,9 @@ export function App(props: { shared?: { latitude: number; longitude: number; nam
     onToast: fireToast,
     onOpenChangelog: () => void changelog.openManually(),
     onClose: canDismiss ? () => dismiss() : undefined,
-    embedded: isHomeScreen,
+    homeTabSwitcher: isHomeScreen
+      ? { currentTab: homeTab, onSelectTab: (tab: number) => tabSelection.setValue(tab) }
+      : undefined,
   };
 
   const logsProps = {
@@ -1183,7 +1231,9 @@ export function App(props: { shared?: { latitude: number; longitude: number; nam
     },
     onToast: fireToast,
     onClose: canDismiss ? () => dismiss() : undefined,
-    embedded: isHomeScreen,
+    homeTabSwitcher: isHomeScreen
+      ? { currentTab: homeTab, onSelectTab: (tab: number) => tabSelection.setValue(tab) }
+      : undefined,
   };
 
   return (
@@ -1245,37 +1295,7 @@ export function App(props: { shared?: { latitude: number; longitude: number; nam
       </Group>
 
       {isHomeScreen ? (
-        <ZStack
-          frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
-          navigationBarTitleDisplayMode="inline"
-          toolbarTitleDisplayMode="inline"
-          toolbar={{
-            principal: (
-              <Picker
-                title="页面"
-                pickerStyle="segmented"
-                value={homeTab}
-                onChanged={(value: number) => {
-                  HapticFeedback.lightImpact();
-                  tabSelection.setValue(value);
-                }}
-                frame={{ width: 220 }}
-              >
-                <Image tag={0} systemName="location.north.circle.fill" />
-                <Image tag={1} systemName="antenna.radiowaves.left.and.right" />
-                <Image tag={2} systemName="waveform.path.ecg" />
-              </Picker>
-            ),
-            topBarTrailing:
-              homeTab === 2 ? (
-                <ProtocolLogsToolbarActions
-                  events={events}
-                  onClearLogs={logsProps.onClearLogs}
-                  onToast={fireToast}
-                />
-              ) : undefined,
-          }}
-        >
+        <ZStack frame={{ maxWidth: "infinity", maxHeight: "infinity" }}>
           <ZStack
             frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
             opacity={homeTab === 0 ? 1 : 0}

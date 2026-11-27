@@ -12,16 +12,15 @@
     "en": "MediaHub",
     "zh": "MediaHub"
   },
-  "description": "全能媒体播放器：Emby / Plex / 115 / 脚本源 / 本地与直链播放",
+  "description": "全能媒体播放器：Emby / Plex / 115 / 脚本源",
   "runInApp": false,
   "name": "MediaHub",
   "localizedDescriptions": {
-    "en": "Universal media player with Emby, Plex, 115, script sources and native playback",
-    "zh": "全能媒体播放器：Emby / Plex / 115 / 脚本源 / 本地与直链播放"
+    "zh": "统一添加源、Safari 登录 Plex、卡片媒体库与首页"
   },
   "color": "rgba(88, 86, 214, 1)",
   "icon": "play.rectangle.on.rectangle.fill",
   "intentInputTypes": [],
-  "version": "0.2.1",
+  "version": "0.3.0",
   "iconImage": null
 }

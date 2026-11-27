@@ -1,8 +1,8 @@
 # 脚本中心目录
 
-最近同步时间：2026-11-26T21:20:33+00:00
+最近同步时间：2026-11-27T07:58:43+00:00
 
-收录 27 个仓库 / 163 个可导入的 Scripting 项目。
+收录 28 个仓库 / 164 个可导入的 Scripting 项目。
 
 > 只收录包含合法 `script.json` 的 Scripting App 项目；说明文字优先取自脚本自带的 description。
 
@@ -12,7 +12,7 @@
 |---|---|---|---|---|---|
 | 活动转日历 | 0.1.7 | 粘贴活动通知，直接识别并添加到 iPhone 日历。缺少开始时间时记为全天。 | [Xykf-ya/activity-to-calendar](https://github.com/Xykf-ya/activity-to-calendar) | 0 | tree |
 
-### 小组件（162）
+### 小组件（163）
 
 | 脚本 | 版本 | 说明 | 仓库 | Star | 来源 |
 |---|---|---|---|---|---|
@@ -21,33 +21,33 @@
 | Icon Library | 1.1.2 | 管理多个 GitHub 公开图标库，按仓库独立授权、浏览和上传图标。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 92 | tree |
 | Itemory | 1.0.0 | 为每件物品记录购入价格、维修支出和转手收入，查看持有天数与日均成本，在时间线和置物架上回顾自己的物品。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 92 | tree |
 | Surge 监控 | 1.1.1 | Surge iOS Prometheus 指标小组件：Medium 聚焦累计流量与核心状态，Large 展开网络接口流量。 | [StarYunLee/Scripting](https://github.com/StarYunLee/Scripting) | 92 | tree |
-| AI 额度看板 | 2.3.4 | 纯客户端直连查询 78 家 AI 供应商的订阅配额与 API 钱包余额 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| API Manager | — | 管理New API相关的 API 地址与 Key，并检测地址状态和可用模型 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| BiliFavor | 3.0.0 | 登录哔哩哔哩并查看关注 UP 主的视频动态 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| CAIS | 3.2.9 | Clipboard all in Scripting | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| Calendar Pomodoro | 3.0.3 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| FileStore | 3.0.4 | File Store, 文件挂载、预览各种文件类型 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| Fonts Installer | 3.0.1 | 批量导入、验证、预览并通过 iOS 配置描述文件逐个安装 TrueType 与 OpenType 字体。支持私有字体历史，以及从快捷指令或分享表单直接传入单个字体文件。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| PDFHelper | 3.0.5 | 图片转PDF、PDF按页选择合并 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| PhotoSlide | 3.0.4 | 卡片式照片整理工具，支持全部照片、相簿和截图筛选，左右滑切换照片，上下滑待删、收藏标记和移动到相簿。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| Regex Tester | 3.0.2 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| Reloc in Scripting | 1.1.0 | 面向 iOS 的外设级定位模拟工具（iAP2 / MFi-v3 / NMEA），支持本地加载 MFi 凭据、本机配对、画中画指引、GCJ-02 纠偏与协议实测日志 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| Scripting Rime Keyboard | 4.1.2 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| Surge模块管理 | 3.1.3 | Surge 模块管理：管理、分类、下载/更新 Surge .sgmodule 模块，支持递归子文件夹、链接格式识别、本地模块、并发更新和 HTTP 远程开关控制。 快捷指令：可用 Scripting 的“运行脚本”调用本脚本来更新模块。 参数示例： 1. 不传参数，或传 all / 全部：更新全部远程模块。 2. 传分类名，例如 广告拦截：只更新该分类。 3. 传 JSON：{"category":"广告拦截","dir":"子文件夹名称","name":"模块名称"} 4.… | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| TG 贴纸键盘 | 3.0.3 | 导入 Telegram 贴纸包，在自定义键盘中按分组使用。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| Vision OCR | — | 图像文本识别 配合快捷指令使用：https://www.icloud.com/shortcuts/1c7e7ed35e9f42eebb70ea4c0a9d2417 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| WLOC 虚拟定位 | 3.0.0 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| WorkBuddy2API | 2.0.1 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| 万象方案助手 | 3.0.4 | 万象方案下载更新 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| 今日油价 | 3.0.3 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| 媒体下载 | 3.1.0 | 从分享菜单接收抖音、YouTube 或 m3u8 链接，自动选择对应下载器下载媒体，可保存到相册或导出到文件。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| 密码生成器 | 3.0.1 | 支持 App 与自定义键盘的密码生成器 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| 快递小助手 | 3.0.0 | 修改自：https://raw.githubusercontent.com/1085481057/Scripting/refs/heads/main/快递小助手.scripting | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| 时光纪念 | 3.0.0 | 记录重要的人与日子，用尺寸卡片呈现生日、相识、恋爱和更多珍贵时刻。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| 汉典 | 3.0.1 | 汉典 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| 睡眠追踪 | 3.0.0 | 读取健康中的睡眠数据，展示趋势统计和小组件。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| 翻译器 | 3.1.6 | 一个支持系统翻译、Apple Intelligence、Google 网页翻译和可配置 AI 接口的翻译脚本。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
-| 自定义闹钟 | 3.1.0 | 创建和管理单次、每日、每周的自定义闹钟。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 54 | tree |
+| AI 额度看板 | 2.3.4 | 纯客户端直连查询 78 家 AI 供应商的订阅配额与 API 钱包余额 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| API Manager | — | 管理New API相关的 API 地址与 Key，并检测地址状态和可用模型 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| BiliFavor | 3.0.0 | 登录哔哩哔哩并查看关注 UP 主的视频动态 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| CAIS | 3.2.9 | Clipboard all in Scripting | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| Calendar Pomodoro | 3.0.3 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| FileStore | 3.0.4 | File Store, 文件挂载、预览各种文件类型 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| Fonts Installer | 3.0.1 | 批量导入、验证、预览并通过 iOS 配置描述文件逐个安装 TrueType 与 OpenType 字体。支持私有字体历史，以及从快捷指令或分享表单直接传入单个字体文件。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| PDFHelper | 3.0.5 | 图片转PDF、PDF按页选择合并 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| PhotoSlide | 3.0.4 | 卡片式照片整理工具，支持全部照片、相簿和截图筛选，左右滑切换照片，上下滑待删、收藏标记和移动到相簿。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| Regex Tester | 3.0.2 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| Reloc in Scripting | 1.2.1 | 面向 iOS 的外设级定位模拟工具（iAP2 / MFi-v3 / NMEA），支持本地加载 MFi 凭据、本机配对、画中画指引、GCJ-02 纠偏与协议实测日志 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| Scripting Rime Keyboard | 4.1.2 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| Surge模块管理 | 3.1.3 | Surge 模块管理：管理、分类、下载/更新 Surge .sgmodule 模块，支持递归子文件夹、链接格式识别、本地模块、并发更新和 HTTP 远程开关控制。 快捷指令：可用 Scripting 的“运行脚本”调用本脚本来更新模块。 参数示例： 1. 不传参数，或传 all / 全部：更新全部远程模块。 2. 传分类名，例如 广告拦截：只更新该分类。 3. 传 JSON：{"category":"广告拦截","dir":"子文件夹名称","name":"模块名称"} 4.… | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| TG 贴纸键盘 | 3.0.3 | 导入 Telegram 贴纸包，在自定义键盘中按分组使用。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| Vision OCR | — | 图像文本识别 配合快捷指令使用：https://www.icloud.com/shortcuts/1c7e7ed35e9f42eebb70ea4c0a9d2417 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| WLOC 虚拟定位 | 3.0.0 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| WorkBuddy2API | 2.0.1 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| 万象方案助手 | 3.0.4 | 万象方案下载更新 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| 今日油价 | 3.0.3 | — | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| 媒体下载 | 3.1.0 | 从分享菜单接收抖音、YouTube 或 m3u8 链接，自动选择对应下载器下载媒体，可保存到相册或导出到文件。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| 密码生成器 | 3.0.1 | 支持 App 与自定义键盘的密码生成器 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| 快递小助手 | 3.0.0 | 修改自：https://raw.githubusercontent.com/1085481057/Scripting/refs/heads/main/快递小助手.scripting | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| 时光纪念 | 3.0.0 | 记录重要的人与日子，用尺寸卡片呈现生日、相识、恋爱和更多珍贵时刻。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| 汉典 | 3.0.1 | 汉典 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| 睡眠追踪 | 3.0.0 | 读取健康中的睡眠数据，展示趋势统计和小组件。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| 翻译器 | 3.1.6 | 一个支持系统翻译、Apple Intelligence、Google 网页翻译和可配置 AI 接口的翻译脚本。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
+| 自定义闹钟 | 3.1.0 | 创建和管理单次、每日、每周的自定义闹钟。 | [BlackCCCat/Scripting-Scripts](https://github.com/BlackCCCat/Scripting-Scripts) | 55 | tree |
 | DashBoard-Kit | 1.5.0 | 多组件看板套件：同一后台配置管理，支持方案A桌面参数切换多种看板 | [SylvanRoe/Scripting](https://github.com/SylvanRoe/Scripting) | 36 | tree |
 | 今日油价 | 1.5.0 | 实时全国各省市汽柴油价格监控与调价预测桌面小组件，支持系统定位与自定义省份。 | [SylvanRoe/Scripting](https://github.com/SylvanRoe/Scripting) | 36 | tree |
 | 喝水记录 | 2.0.0 | 记录饮水和饮品摄入量，支持交互小组件与前台饮水健康同步 | [SylvanRoe/Scripting](https://github.com/SylvanRoe/Scripting) | 36 | tree |
@@ -64,7 +64,7 @@
 | Hegre | 1.0.0 | — | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
 | Inkling | 0.5.0 | Inkling - 微信读书划线回顾。卡片式重温、封面墙书架、大家都在划、阅读统计，支持跳回微信读书原文。 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
 | Logoly | 1.0.0 | Pornhub / OnlyFans 风格 Logo 生成器：实时预览、自定义配色与字号、导出 PNG / SVG。 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
-| MediaHub | 0.2.1 | 全能媒体播放器：Emby / Plex / 115 / 脚本源 / 本地与直链播放 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
+| MediaHub | 0.3.0 | 统一添加源、Safari 登录 Plex、卡片媒体库与首页 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
 | MoonTVPlua | 1.0.0 | — | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
 | One 每日一言（旧） | 1.0.0 | ONE 每日一言小组件，支持小/中/大尺寸，暗色遮罩自适应，最新内容与手动指定日期模式。 数据来源：v3.wufazhuce.com 致敬韩寒 🫡 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
 | PulseNet | 1.0.0 | 网络测速、设备信息、数据监控与抢票时间工具 | [7452323/Scripting](https://github.com/7452323/Scripting) | 25 | tree |
@@ -110,6 +110,7 @@
 | 联通 | 1.0.7 | — | [Nanako718/Scripting](https://github.com/Nanako718/Scripting) | 13 | tree |
 | 选择选项 | 1.0.0 | 用于在 Assistant 工具里让用户进行单选或多选确认。 | [Nanako718/Scripting](https://github.com/Nanako718/Scripting) | 13 | tree |
 | 金价收益 | 1.0.0 | — | [Nanako718/Scripting](https://github.com/Nanako718/Scripting) | 13 | tree |
+| CourseSync | — | 同步课程和考试到 Apple 日历，查询空闲教室，支持快捷指令自动刷新。 | [b7f2d/CourseSync](https://github.com/b7f2d/CourseSync) | 1 | tree |
 | RSS 阅读 | 1.1.0 | 显示 Google Reader 兼容 RSS 平台的未读数与最新文章，支持 FreshRSS；也可从本地或线上 OPML 读取订阅源，并可在 App、主屏组件与 Scripting 主页默认 UI 中阅读文章。 | [bmqy/Scripting-Scripts](https://github.com/bmqy/Scripting-Scripts) | 1 | tree |
 | 限号 | 1.0.0 | 根据当前位置自动查询所在城市机动车尾号限行信息 | [bmqy/Scripting-Scripts](https://github.com/bmqy/Scripting-Scripts) | 1 | tree |
 | LocalDNS | 1.15.22 | 本地 DNS 与安全服务系统，v1.15.22 依据 smartdns 审计结果补齐上游回落与节点熔断：主组全失败时按 off/safe/aggressive 三档回落（默认 safe：foreign→foreign_ecs、proxy→foreign→foreign_ecs，永不污染），aggressive 才允许降级国内 DNS 且结果不进境外缓存池、TTL 上限 60 秒、日志与 metrics 全标记；单节点连续失败 2 次冷却 45 秒不参与竞速；新增 /api/v… | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
@@ -181,7 +182,4 @@
 
 ## 清理记录
 
-| 时间 | 类型 | 对象 | 原因 |
-|---|---|---|---|
-| 2026-11-26T21:20:33+00:00 | file | scripts-store/Wangsc1/calendar/projects/calendar/shift-date-picker.tsx | 已不在任何有效项目中 |
-| 2026-11-26T21:20:33+00:00 | repo | jokruger/kavun | 未发现合法 script.json 项目 |
+本次没有需要清理的内容。

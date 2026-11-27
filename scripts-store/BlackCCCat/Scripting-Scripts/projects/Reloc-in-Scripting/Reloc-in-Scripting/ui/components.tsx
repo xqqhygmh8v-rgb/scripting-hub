@@ -3,6 +3,7 @@ import {
   Circle,
   HStack,
   Image,
+  Menu,
   ProgressView,
   Text,
   VStack,
@@ -46,11 +47,14 @@ export function MapHUDIconButton(props: {
   systemName: string;
   foregroundColor?: Color;
   activeColor?: Color;
+  loading?: boolean;
   action: () => void;
 }) {
+  const iconTint: Color = props.activeColor ? "white" : (props.foregroundColor ?? "label");
   return (
     <Button
       buttonStyle="plain"
+      disabled={props.loading}
       action={() => {
         HapticFeedback.lightImpact();
         props.action();
@@ -61,12 +65,16 @@ export function MapHUDIconButton(props: {
         contentShape="circle"
         {...topCircleButtonStyle(props.activeColor)}
       >
-        <Image
-          systemName={props.systemName}
-          font="callout"
-          fontWeight="semibold"
-          foregroundStyle={props.activeColor ? "white" : (props.foregroundColor ?? "label")}
-        />
+        {props.loading ? (
+          <ProgressView controlSize="small" tint={iconTint} />
+        ) : (
+          <Image
+            systemName={props.systemName}
+            font="callout"
+            fontWeight="semibold"
+            foregroundStyle={iconTint}
+          />
+        )}
       </ZStack>
     </Button>
   );
@@ -207,4 +215,98 @@ export function StatusDot(props: { color: Color; active: boolean }) {
       <Circle fill={props.color} frame={{ width: 8, height: 8 }} />
     </ZStack>
   );
+}
+
+const HOME_TAB_ITEMS = [
+  { tag: 0, title: "定位", systemImage: "location.north.circle.fill" },
+  { tag: 1, title: "设备连接", systemImage: "antenna.radiowaves.left.and.right" },
+  { tag: 2, title: "实测与日志", systemImage: "waveform.path.ecg" },
+] as const;
+
+/**
+ * Scripting 首页模式下用于三页切换的原生菜单按钮（统一位于页面左上角，使用与底部 Tab 一致的图标）：
+ * - mapCircle：放在定位页左上角搜索栏左侧（42×42 玻璃圆形按钮）
+ * - toolbar：放在设备连接 / 实测与日志页导航栏左上角
+ */
+export function HomePageSwitcherMenu(props: {
+  currentTab: number;
+  onSelectTab: (tab: number) => void;
+  style?: "mapCircle" | "toolbar";
+}) {
+  const mode = props.style ?? "mapCircle";
+  const currentItem = HOME_TAB_ITEMS.find((item) => item.tag === props.currentTab) ?? HOME_TAB_ITEMS[0];
+
+  return (
+    <Menu
+      label={
+        mode === "toolbar" ? (
+          <Image systemName={currentItem.systemImage} />
+        ) : (
+          <ZStack frame={{ width: 42, height: 42 }} contentShape="circle" {...topCircleButtonStyle()}>
+            <Image
+              systemName={currentItem.systemImage}
+              font="callout"
+              fontWeight="semibold"
+              foregroundStyle={RELOC_COLORS.accent}
+            />
+          </ZStack>
+        )
+      }
+    >
+      {HOME_TAB_ITEMS.map((item) => (
+        <Button
+          key={item.tag}
+          action={() => {
+            HapticFeedback.lightImpact();
+            props.onSelectTab(item.tag);
+          }}
+        >
+          <HStack>
+            <Image systemName={props.currentTab === item.tag ? "checkmark" : item.systemImage} />
+            <Text>{item.title}</Text>
+          </HStack>
+        </Button>
+      ))}
+    </Menu>
+  );
+}
+
+/**
+ * 导航栏左上角操作区（兼容主屏幕切换菜单与普通模式退出脚本按钮）。
+ */
+export function ToolbarLeadingActions(props: {
+  homeTabSwitcher?: { currentTab: number; onSelectTab: (tab: number) => void };
+  onClose?: () => void;
+}) {
+  if (props.homeTabSwitcher && props.onClose) {
+    return (
+      <HStack spacing={10}>
+        <HomePageSwitcherMenu
+          currentTab={props.homeTabSwitcher.currentTab}
+          onSelectTab={props.homeTabSwitcher.onSelectTab}
+          style="toolbar"
+        />
+        <Button action={props.onClose}>
+          <Image systemName="xmark" foregroundStyle={RELOC_COLORS.crimson} />
+        </Button>
+      </HStack>
+    );
+  }
+  if (props.onClose) {
+    return (
+      <Button action={props.onClose}>
+        <Image systemName="xmark" foregroundStyle={RELOC_COLORS.crimson} />
+      </Button>
+    );
+  }
+  if (props.homeTabSwitcher) {
+    return (
+      <HomePageSwitcherMenu
+        currentTab={props.homeTabSwitcher.currentTab}
+        onSelectTab={props.homeTabSwitcher.onSelectTab}
+        style="toolbar"
+      />
+    );
+  }
+  return null;
 }

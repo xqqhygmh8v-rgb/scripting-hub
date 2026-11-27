@@ -1,6 +1,5 @@
 import {
   Button,
-  Capsule,
   Divider,
   HStack,
   Image,
@@ -36,16 +35,20 @@ import type {
   ConnectionCheckState,
   FavoriteLocation,
   InterruptedSessionRecord,
+  LiveLocationTelemetry,
   MFiStatus,
   MapDisplayStyle,
   PairingStatus,
   PickTarget,
   RecentLocation,
   SessionSnapshot,
+  TargetLocation,
 } from "../types";
 import {
   coordinateDisplayPair,
   deviceWgs84ToMapCoord,
+  distanceMeters,
+  formatDistanceMeters,
   formatLatLon,
   mapCoordToDeviceWgs84,
   parseAndConvertToMapCoord,
@@ -57,7 +60,7 @@ import {
   searchGlobalPlaces,
   type PlaceSearchResult,
 } from "../utils/searchApi";
-import { MapHUDIconButton, RelocPrimaryButton, SettingsIconBadge, StatusDot } from "./components";
+import { HomePageSwitcherMenu, MapHUDIconButton, RelocPrimaryButton, SettingsIconBadge, StatusDot } from "./components";
 import { launchShortcut } from "../utils/shortcut";
 import {
   RELOC_COLORS,
@@ -73,12 +76,15 @@ interface MapPickerViewProps {
   activeMapCoordinate: PickTarget | null;
   settings: AppSettings;
   snapshot: SessionSnapshot;
+  telemetry: LiveLocationTelemetry | null;
+  activeWgs84Target: TargetLocation | null;
   mfiStatus: MFiStatus;
   pairingStatus: PairingStatus;
   connectionState: ConnectionCheckState;
   favorites: FavoriteLocation[];
   recents: RecentLocation[];
   interruptedSession: InterruptedSessionRecord | null;
+  onRefreshTelemetry: () => Promise<void> | void;
   onSelectTarget: (target: PickTarget & { altitude: number }) => void;
   onStartSpoofing: () => void;
   onUpdateRunningLocation: () => void;
@@ -94,6 +100,7 @@ interface MapPickerViewProps {
   onDismissInterrupted: () => void;
   onToast: (message: string) => void;
   onClose?: () => void;
+  homeTabSwitcher?: { currentTab: number; onSelectTab: (tab: number) => void };
 }
 
 function toMapStyleSpec(style: MapDisplayStyle) {
@@ -143,6 +150,9 @@ export function MapPickerView(props: MapPickerViewProps) {
   const [isSearching, setIsSearching] = useState(false);
   const [resolvingGeocode, setResolvingGeocode] = useState(false);
   const [copiedAddressToast, setCopiedAddressToast] = useState(false);
+  const [locatingCurrent, setLocatingCurrent] = useState(false);
+  const [checkingTelemetry, setCheckingTelemetry] = useState(false);
+  const locateReqIdRef = useRef(0);
 
   function openSheet(kind: Exclude<MapSheetKind, null>) {
     sheetKind.setValue(kind);
@@ -165,22 +175,65 @@ export function MapPickerView(props: MapPickerViewProps) {
     );
   }
 
+  async function focusLocatedCoord(
+    loc: { latitude: number; longitude: number },
+    reqId: number,
+  ): Promise<void> {
+    if (locateReqIdRef.current !== reqId) return;
+    const mapped = deviceWgs84ToMapCoord(
+      loc.latitude,
+      loc.longitude,
+      settings.gcj02CorrectionEnabled,
+    );
+    moveCameraTo(mapped.latitude, mapped.longitude);
+    setLocatingCurrent(false);
+    await pickCoordinateWithGeocode(mapped.latitude, mapped.longitude, undefined, undefined, true);
+  }
+
   async function locateCurrentPosition() {
+    if (locatingCurrent) return;
+    const reqId = ++locateReqIdRef.current;
+    setLocatingCurrent(true);
     try {
-      const current = await Location.requestCurrent({ forceRequest: true });
-      if (!current) {
-        props.onToast("无法获取当前设备定位");
+      const now = Date.now();
+      let initial: { latitude: number; longitude: number; timestamp: number } | null =
+        props.telemetry && now - props.telemetry.timestamp < 60_000
+          ? props.telemetry
+          : null;
+
+      // 先取系统缓存坐标，避免 forceRequest: true 导致室内等待 3~10 秒才动镜头
+      if (!initial) {
+        initial = await Location.requestCurrent().catch(() => null);
+      }
+
+      if (initial) {
+        const geocodeTask = focusLocatedCoord(initial, reqId);
+        // 若缓存已超过 15 秒，后台静默高精度校准一次；位置变化 > 25m 再微调镜头
+        if (Date.now() - initial.timestamp > 15_000) {
+          const refined = await Location.requestCurrent({ forceRequest: true }).catch(() => null);
+          if (refined && locateReqIdRef.current === reqId && distanceMeters(initial, refined) > 25) {
+            await focusLocatedCoord(refined, reqId);
+            return;
+          }
+        }
+        await geocodeTask;
         return;
       }
-      const mapped = deviceWgs84ToMapCoord(
-        current.latitude,
-        current.longitude,
-        settings.gcj02CorrectionEnabled,
-      );
-      moveCameraTo(mapped.latitude, mapped.longitude);
-      await pickCoordinateWithGeocode(mapped.latitude, mapped.longitude);
+
+      const fresh = await Location.requestCurrent({ forceRequest: true });
+      if (!fresh) {
+        if (locateReqIdRef.current === reqId) {
+          props.onToast("无法获取当前设备定位");
+        }
+        return;
+      }
+      await focusLocatedCoord(fresh, reqId);
     } catch (error) {
-      props.onToast(`获取定位失败：${error instanceof Error ? error.message : String(error)}`);
+      if (locateReqIdRef.current === reqId) {
+        props.onToast(`获取定位失败：${error instanceof Error ? error.message : String(error)}`);
+      }
+    } finally {
+      setLocatingCurrent(false);
     }
   }
 
@@ -189,7 +242,11 @@ export function MapPickerView(props: MapPickerViewProps) {
     lon: number,
     presetName?: string,
     presetAddress?: string,
+    fromAutoLocate = false,
   ) {
+    if (!fromAutoLocate) {
+      locateReqIdRef.current += 1;
+    }
     const cleanLat = round6(lat);
     const cleanLon = round6(lon);
     const immediate: PickTarget & { altitude: number } = {
@@ -349,6 +406,80 @@ export function MapPickerView(props: MapPickerViewProps) {
       ? "rgba(23, 184, 122, 0.16)"
       : "rgba(43, 115, 245, 0.16)";
 
+  function renderParameterRow() {
+    const showSpoofStatus = snapshot.isRunning && snapshot.mode === "send" && !hasPendingShift;
+    const spoofOffsetMeters =
+      showSpoofStatus && props.activeWgs84Target && props.telemetry
+        ? distanceMeters(props.telemetry, props.activeWgs84Target)
+        : null;
+    const isSpoofSuccess = spoofOffsetMeters !== null && spoofOffsetMeters <= 50;
+
+    let statusText = "校验定位中";
+    let statusColor: Color = "secondaryLabel";
+    let statusBg: Color = "rgba(142, 142, 147, 0.13)";
+
+    if (checkingTelemetry) {
+      statusText = "复测中…";
+      statusColor = RELOC_COLORS.accent;
+      statusBg = "rgba(43, 115, 245, 0.14)";
+    } else if (snapshot.packetsAcknowledged === 0) {
+      statusText = snapshot.authenticated ? "等待订阅…" : "连接中…";
+    } else if (spoofOffsetMeters !== null) {
+      statusText = isSpoofSuccess
+        ? `✓ 已生效 · ${formatDistanceMeters(spoofOffsetMeters)}`
+        : `未生效 · 偏 ${formatDistanceMeters(spoofOffsetMeters)}`;
+      statusColor = isSpoofSuccess ? RELOC_COLORS.emerald : RELOC_COLORS.amber;
+      statusBg = isSpoofSuccess ? "rgba(23, 184, 122, 0.15)" : "rgba(242, 153, 31, 0.15)";
+    }
+
+    return (
+      <HStack spacing={8} frame={{ maxWidth: "infinity" }}>
+        <Text font="caption2" fontDesign="monospaced" foregroundStyle="secondaryLabel" lineLimit={1}>
+          {readout.needsOffset
+            ? `地图 ${formatLatLon(readout.map.latitude, readout.map.longitude, 5)} · WGS ${formatLatLon(readout.wgs84.latitude, readout.wgs84.longitude, 5)}`
+            : `WGS-84 ${formatLatLon(readout.wgs84.latitude, readout.wgs84.longitude)}`}
+        </Text>
+        <Spacer />
+        {showSpoofStatus ? (
+          <Button
+            buttonStyle="plain"
+            disabled={checkingTelemetry}
+            action={async () => {
+              HapticFeedback.lightImpact();
+              setCheckingTelemetry(true);
+              try {
+                await props.onRefreshTelemetry();
+              } finally {
+                setCheckingTelemetry(false);
+              }
+            }}
+          >
+            <HStack
+              spacing={4}
+              padding={{ horizontal: 8, vertical: 3 }}
+              background={{ style: statusBg, shape: "capsule" }}
+              contentShape="capsule"
+            >
+              <Text
+                font="caption2"
+                fontWeight="semibold"
+                monospacedDigit
+                foregroundStyle={statusColor}
+                lineLimit={1}
+              >
+                {statusText}
+              </Text>
+            </HStack>
+          </Button>
+        ) : (
+          <Text font="caption2" foregroundStyle="tertiaryLabel">
+            {`${selectedTarget.altitude.toFixed(0)}m${settings.microJitterEnabled ? " · ±0.6m" : ""}`}
+          </Text>
+        )}
+      </HStack>
+    );
+  }
+
   function buildSheetContent(kind: MapSheetKind) {
     if (kind === "library") {
       return (
@@ -356,6 +487,7 @@ export function MapPickerView(props: MapPickerViewProps) {
           favorites={props.favorites}
           recents={props.recents}
           onSelect={(item) => {
+            locateReqIdRef.current += 1;
             closeSheet();
             moveCameraTo(item.latitude, item.longitude);
             props.onSelectTarget({
@@ -497,8 +629,16 @@ export function MapPickerView(props: MapPickerViewProps) {
         spacing={10}
         padding={{ horizontal: 12, top: 8, bottom: 10 }}
       >
-        {/* Top Row: 可选退出按钮 + 搜索胶囊 */}
+        {/* Top Row: 左上角页面切换菜单/可选退出按钮 + 搜索胶囊 */}
         <HStack spacing={8}>
+          {props.homeTabSwitcher ? (
+            <HomePageSwitcherMenu
+              currentTab={props.homeTabSwitcher.currentTab}
+              onSelectTab={props.homeTabSwitcher.onSelectTab}
+              style="mapCircle"
+            />
+          ) : null}
+
           {props.onClose ? (
             <MapHUDIconButton
               systemName="xmark"
@@ -705,7 +845,7 @@ export function MapPickerView(props: MapPickerViewProps) {
           <VStack spacing={10}>
             {settings.shortcutButtonEnabled ? (
               <MapHUDIconButton
-                systemName="gearshape.fill"
+                systemName="bolt.fill"
                 foregroundColor={settings.shortcutName.trim() ? RELOC_COLORS.accent : "label"}
                 action={() => {
                   if (!settings.shortcutName.trim()) {
@@ -759,6 +899,7 @@ export function MapPickerView(props: MapPickerViewProps) {
 
             <MapHUDIconButton
               systemName={snapshot.isRunning ? "scope" : "location.fill"}
+              loading={!snapshot.isRunning && locatingCurrent}
               action={() => {
                 if (snapshot.isRunning && activeMapCoordinate) {
                   moveCameraTo(activeMapCoordinate.latitude, activeMapCoordinate.longitude);
@@ -778,13 +919,6 @@ export function MapPickerView(props: MapPickerViewProps) {
           frame={{ maxWidth: "infinity" }}
           {...floatingCardStyle(24)}
         >
-          {/* 顶部抓手 */}
-          <HStack frame={{ maxWidth: "infinity" }}>
-            <Spacer />
-            <Capsule fill="rgba(142, 142, 147, 0.30)" frame={{ width: 36, height: 4 }} />
-            <Spacer />
-          </HStack>
-
           {/* 地点信息主行 */}
           <HStack spacing={11}>
             <ZStack frame={{ width: 42, height: 42 }} background={{ style: cardBadgeBg, shape: iconBadgeShape }}>
@@ -881,18 +1015,8 @@ export function MapPickerView(props: MapPickerViewProps) {
             ) : null}
           </HStack>
 
-          {/* 坐标与海拔参数栏 */}
-          <HStack spacing={8} frame={{ maxWidth: "infinity" }}>
-            <Text font="caption2" fontDesign="monospaced" foregroundStyle="secondaryLabel" lineLimit={1}>
-              {readout.needsOffset
-                ? `地图 ${formatLatLon(readout.map.latitude, readout.map.longitude, 5)} · WGS ${formatLatLon(readout.wgs84.latitude, readout.wgs84.longitude, 5)}`
-                : `WGS-84 ${formatLatLon(readout.wgs84.latitude, readout.wgs84.longitude)}`}
-            </Text>
-            <Spacer />
-            <Text font="caption2" foregroundStyle="tertiaryLabel">
-              {`${selectedTarget.altitude.toFixed(0)}m${settings.microJitterEnabled ? " · ±0.6m" : ""}`}
-            </Text>
-          </HStack>
+          {/* 坐标与海拔 / 模拟实测结果参数栏 */}
+          {renderParameterRow()}
 
           {/* 静态上下文提示横幅（会话运行中不再增删多行提示，避免开关定位后卡片高度跳动闪烁） */}
           {!canStartSession ? (

@@ -7,6 +7,7 @@ import {
   List,
   Menu,
   NavigationStack,
+  Rectangle,
   RoundedRectangle,
   Spacer,
   Text,
@@ -22,9 +23,14 @@ import type {
   SessionSnapshot,
   TargetLocation,
 } from "../types";
-import { distanceMeters, formatLatLon } from "../utils/coords";
+import { distanceMeters, formatDistanceMeters, formatLatLon } from "../utils/coords";
 import { exportDiagnosticLogs, formatProtocolLogReport } from "../utils/logExport";
-import { MetricTile, RelocPrimaryButton, SettingsIconBadge } from "./components";
+import {
+  MetricTile,
+  RelocPrimaryButton,
+  SettingsIconBadge,
+  ToolbarLeadingActions,
+} from "./components";
 import { RELOC_COLORS, sessionPhaseText } from "./theme";
 
 type LogFilter = "all" | "nmea" | "errors";
@@ -42,14 +48,13 @@ interface ProtocolLogsViewProps {
   onClearLogs: () => void;
   onToast: (message: string) => void;
   onClose?: () => void;
-  embedded?: boolean;
+  homeTabSwitcher?: { currentTab: number; onSelectTab: (tab: number) => void };
 }
 
-export function ProtocolLogsToolbarActions(props: {
+function ProtocolLogsToolbarActions(props: {
   events: ProtocolEvent[];
   onClearLogs: () => void;
   onToast: (message: string) => void;
-  onClose?: () => void;
 }) {
   const [copiedBanner, setCopiedBanner] = useState(false);
 
@@ -97,14 +102,6 @@ export function ProtocolLogsToolbarActions(props: {
             <Text>清空日志</Text>
           </HStack>
         </Button>
-        {props.onClose ? (
-          <Button action={props.onClose}>
-            <HStack>
-              <Image systemName="xmark.circle" />
-              <Text>关闭</Text>
-            </HStack>
-          </Button>
-        ) : null}
       </Menu>
     </HStack>
   );
@@ -196,33 +193,41 @@ export function ProtocolLogsView(props: ProtocolLogsViewProps) {
   const detailShape = { type: "rect" as const, cornerRadius: 8, style: "continuous" as const };
   const isSessionConnected = snapshot.isRunning && snapshot.authenticated;
 
-  const logsBody = (
-    <VStack
-      spacing={0}
-      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
-      background="systemGroupedBackground"
-      navigationTitle={props.embedded ? undefined : "定位实测与日志"}
-      navigationBarTitleDisplayMode="inline"
-      searchable={{
-        value: searchQuery,
-        onChanged: setSearchQuery,
-        prompt: "筛选事件（如 FFFA / acknowledged）",
-      }}
-      toolbar={
-        props.embedded
-          ? undefined
-          : {
-              topBarTrailing: (
-                <ProtocolLogsToolbarActions
-                  events={events}
-                  onClearLogs={props.onClearLogs}
-                  onToast={props.onToast}
-                  onClose={props.onClose}
-                />
-              ),
-            }
-      }
-    >
+  return (
+    <NavigationStack ignoresSafeArea={{ regions: "container", edges: "vertical" }}>
+      <VStack
+        spacing={0}
+        frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+        background={
+          <Rectangle
+            fill="systemGroupedBackground"
+            ignoresSafeArea={{ regions: "all", edges: "vertical" }}
+          />
+        }
+        navigationTitle="定位实测与日志"
+        navigationBarTitleDisplayMode="inline"
+        searchable={{
+          value: searchQuery,
+          onChanged: setSearchQuery,
+          prompt: "筛选事件（如 FFFA / acknowledged）",
+        }}
+        toolbar={{
+          topBarLeading:
+            props.homeTabSwitcher || props.onClose ? (
+              <ToolbarLeadingActions
+                homeTabSwitcher={props.homeTabSwitcher}
+                onClose={props.onClose}
+              />
+            ) : undefined,
+          topBarTrailing: (
+            <ProtocolLogsToolbarActions
+              events={events}
+              onClearLogs={props.onClearLogs}
+              onToast={props.onToast}
+            />
+          ),
+        }}
+      >
         {/* 顶部实测与协议链路仪表盘卡片 */}
         <VStack padding={{ horizontal: 14, top: 10, bottom: 10 }}>
           <VStack
@@ -288,9 +293,7 @@ export function ProtocolLogsView(props: ProtocolLogsViewProps) {
                 title={offsetMeters !== null ? "与目标偏差" : "最近更新"}
                 value={
                   offsetMeters !== null
-                    ? offsetMeters < 1000
-                      ? `${offsetMeters.toFixed(1)} m`
-                      : `${(offsetMeters / 1000).toFixed(2)} km`
+                    ? formatDistanceMeters(offsetMeters)
                     : telemetry
                       ? new Date(telemetry.timestamp).toLocaleTimeString()
                       : "--:--:--"
@@ -441,7 +444,10 @@ export function ProtocolLogsView(props: ProtocolLogsViewProps) {
             <Spacer />
           </VStack>
         ) : (
-          <List listStyle="plain">
+          <List
+            listStyle="plain"
+            ignoresSafeArea={{ regions: "container", edges: "bottom" }}
+          >
             {filteredEvents.map((event) => (
               <VStack
                 key={event.id}
@@ -487,7 +493,6 @@ export function ProtocolLogsView(props: ProtocolLogsViewProps) {
           </List>
         )}
       </VStack>
+    </NavigationStack>
   );
-
-  return props.embedded ? logsBody : <NavigationStack>{logsBody}</NavigationStack>;
 }

@@ -1,7 +1,7 @@
 {
-  "updated_at": "2026-11-26T21:20:33+00:00",
-  "count": 27,
-  "project_count": 163,
+  "updated_at": "2026-11-27T07:58:43+00:00",
+  "count": 28,
+  "project_count": 164,
   "repos": [
     {
       "repo": "StarYunLee/Scripting",
@@ -66,7 +66,7 @@
     {
       "repo": "BlackCCCat/Scripting-Scripts",
       "url": "https://github.com/BlackCCCat/Scripting-Scripts",
-      "stars": 54,
+      "stars": 55,
       "language": "TypeScript",
       "branch": "main",
       "category": "小组件",
@@ -173,11 +173,11 @@
         },
         {
           "name": "Reloc in Scripting",
-          "version": "1.1.0",
+          "version": "1.2.1",
           "description": "面向 iOS 的外设级定位模拟工具（iAP2 / MFi-v3 / NMEA），支持本地加载 MFi 凭据、本机配对、画中画指引、GCJ-02 纠偏与协议实测日志",
           "dir": "scripts-store/BlackCCCat/Scripting-Scripts/projects/Reloc-in-Scripting",
           "entry": "index.tsx",
-          "files": 46,
+          "files": 47,
           "icon": "mappin.and.ellipse",
           "source": "tree"
         },
@@ -523,11 +523,11 @@
         },
         {
           "name": "MediaHub",
-          "version": "0.2.1",
-          "description": "全能媒体播放器：Emby / Plex / 115 / 脚本源 / 本地与直链播放",
+          "version": "0.3.0",
+          "description": "统一添加源、Safari 登录 Plex、卡片媒体库与首页",
           "dir": "scripts-store/7452323/Scripting/projects/Scripting_MediaHub",
           "entry": "index.tsx",
-          "files": 21,
+          "files": 22,
           "icon": "play.rectangle.on.rectangle.fill",
           "source": "tree"
         },
@@ -999,6 +999,26 @@
           "entry": "index.tsx",
           "files": 7,
           "icon": "chart.line.uptrend.xyaxis",
+          "source": "tree"
+        }
+      ]
+    },
+    {
+      "repo": "b7f2d/CourseSync",
+      "url": "https://github.com/b7f2d/CourseSync",
+      "stars": 1,
+      "language": "TypeScript",
+      "branch": "main",
+      "category": "小组件",
+      "projects": [
+        {
+          "name": "CourseSync",
+          "version": "",
+          "description": "同步课程和考试到 Apple 日历，查询空闲教室，支持快捷指令自动刷新。",
+          "dir": "scripts-store/b7f2d/CourseSync/projects/CourseSync",
+          "entry": "index.tsx",
+          "files": 6,
+          "icon": "calendar",
           "source": "tree"
         }
       ]

@@ -53,7 +53,12 @@ import {
   scanLocalMFiDirectory,
   testMFiSignerRoundTrip,
 } from "../utils/storage";
-import { MetricTile, SettingsIconBadge, StepSectionHeader } from "./components";
+import {
+  MetricTile,
+  SettingsIconBadge,
+  StepSectionHeader,
+  ToolbarLeadingActions,
+} from "./components";
 import { RELOC_COLORS } from "./theme";
 import { launchShortcut } from "../utils/shortcut";
 
@@ -77,7 +82,7 @@ interface ConfigurationViewProps {
   onOpenChangelog?: () => void;
   onToast: (message: string) => void;
   onClose?: () => void;
-  embedded?: boolean;
+  homeTabSwitcher?: { currentTab: number; onSelectTab: (tab: number) => void };
 }
 
 export function ConfigurationView(props: ConfigurationViewProps) {
@@ -305,17 +310,25 @@ export function ConfigurationView(props: ConfigurationViewProps) {
     );
   }
 
-  const listContent = (
-    <List
-      navigationTitle={props.embedded ? undefined : "设备配对与连接"}
-      navigationBarTitleDisplayMode="inline"
-      listStyle="insetGroup"
-      toolbar={
-        !props.embedded && props.onClose
-          ? { topBarTrailing: <Button title="关闭" action={props.onClose} /> }
-          : undefined
-      }
-    >
+  return (
+    <NavigationStack>
+      <List
+        navigationTitle="设备配对与连接"
+        navigationBarTitleDisplayMode="inline"
+        listStyle="insetGroup"
+        toolbar={
+          props.homeTabSwitcher || props.onClose
+            ? {
+                topBarLeading: (
+                  <ToolbarLeadingActions
+                    homeTabSwitcher={props.homeTabSwitcher}
+                    onClose={props.onClose}
+                  />
+                ),
+              }
+            : undefined
+        }
+      >
         {/* 顶部 Hero 状态概览卡片（对应 heroHeaderCard，overlay RoundedRectangle 确保四角描边与圆角完全贴合） */}
         <Section>
           <VStack
@@ -958,7 +971,7 @@ export function ConfigurationView(props: ConfigurationViewProps) {
             onChanged={(v) => updateSetting("shortcutButtonEnabled", v)}
           >
             <HStack spacing={10}>
-              <SettingsIconBadge systemName="gearshape.fill" color={RELOC_COLORS.accent} />
+              <SettingsIconBadge systemName="bolt.fill" color={RELOC_COLORS.accent} />
               <Text>首页显示快捷指令按钮</Text>
             </HStack>
           </Toggle>
@@ -1047,7 +1060,6 @@ export function ConfigurationView(props: ConfigurationViewProps) {
           ) : null}
         </Section>
       </List>
+    </NavigationStack>
   );
-
-  return props.embedded ? listContent : <NavigationStack>{listContent}</NavigationStack>;
 }
