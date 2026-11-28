@@ -1,28 +1,23 @@
-/**
- * 阿里云小组件交互意图 (iOS 17+ 交互式组件操作)
- * 必须置于 app_intents.tsx 中，由 AppIntentManager 注册
- */
+/** 交互式小组件刷新只执行读取，不会关停或重启 ECS。 */
 import { AppIntentManager, AppIntentProtocol, Widget } from "scripting"
+import { AliyunService } from "./aliyun"
+import { loadConfig } from "./config"
 
-/** 意图 1：静默刷新小组件数据 */
 export const RefreshTrafficIntent = AppIntentManager.register({
   name: "RefreshTrafficIntent",
   protocol: AppIntentProtocol.AppIntent,
   perform: async () => {
     try {
-      if (typeof Widget !== "undefined") {
-        const widget = Widget as unknown as {
-          reloadAll?: () => unknown
-          reloadAllTimelines?: () => unknown
-        }
-        if (typeof widget.reloadAll === "function") {
-          await widget.reloadAll()
-        } else if (typeof widget.reloadAllTimelines === "function") {
-          await widget.reloadAllTimelines()
-        }
+      const config = loadConfig()
+      if (!config.accessKeyId || !config.accessKeySecret || !config.ecsInstanceId) return
+      const service = new AliyunService(config)
+      await Promise.all([service.getCDTTraffic(), service.getECSStatus()])
+    } catch (error) {
+      console.error("RefreshTrafficIntent 失败:", error)
+    } finally {
+      if (typeof Widget !== "undefined" && Widget.reloadAllTimelines) {
+        Widget.reloadAllTimelines()
       }
-    } catch (e) {
-      console.error("RefreshTrafficIntent 失败:", e)
     }
   }
 })

@@ -1,12 +1,12 @@
 /**
  * ============================================================================
- * 阿里云 CDT 流量与 ECS 状态只读控制台 (iOS Scripting Console)
+ * 阿里云 CDT 流量与 ECS 实例智控控制台 (iOS Scripting Console)
  * 文件名: index.tsx
  * ============================================================================
  * 通用版特性：
  * 1. 零硬编码：完全通过 UI 设置面板录入，自动持久化至本地 Storage
- * 2. 交互式控制台：实时 CDT 流量环/进度条与 ECS 只读状态
- * 3. 完整设置界面：随时修改 AK/SK、地域、ECS 实例 ID 与流量参考线
+ * 2. 交互式控制台：实时 CDT 流量环/进度条、ECS 运行状态、一键开机/关机
+ * 3. 完整设置界面：随时修改 AK/SK、地域、ECS 实例 ID、阈值及自动关机开关
  * 4. 控制台实时运行日志记录
  */
 
@@ -14,8 +14,11 @@ import {
   Navigation,
   Script,
   NavigationStack,
-  List,
-  Section,
+  TabView,
+  Tab,
+  Chart,
+  LineChart,
+  useObservable,
   ScrollView,
   VStack,
   HStack,
@@ -27,37 +30,22 @@ import {
   Button,
   Spacer,
   Divider,
+  TextField,
+  SecureField,
+  Toggle,
+  Toolbar,
+  ToolbarItem,
   useState,
   useEffect,
   useCallback
 } from "scripting"
-import {
-  aliyunHttpError,
-  assertSampleBillingMonth,
-  chinaMonthKey,
-  chinaMonthProgress,
-  createRefreshGate,
-  createSnapshot,
-  normalizeEcsStatus,
-  readSnapshot,
-  recordTrafficSample,
-  usagePercentage,
-  withRequestTimeout,
-  accountDisplayName,
-  bssEndpoint,
-  loadAccountProfiles,
-  newAccountId,
-  removeAccountProfile,
-  saveAccountProfiles,
-  scopedStorageKey,
-  siteLabel,
-  upsertAccountProfile
-} from "./monitor_runtime"
-import { isBillQueryAvailable, queryAccountBillPages, recentBillingDates } from "./bill_queries"
+import { normalizeConfig, saveConfig, validateConfig } from "./config"
+import { configScope, type DailyUsagePoint } from "./traffic_history"
+import { fetchCoreSnapshot, fetchFinancialSnapshot, loadCachedSnapshot, type DashboardSnapshot, type MonitorSnapshot } from "./monitor"
 
 // ==================== 1. 本地存储配置管理 ====================
 
-const APP_VERSION = "1.6.5"
+const APP_VERSION = "1.7.0"
 
 interface AppConfig {
   accessKeyId: string
@@ -67,10 +55,6 @@ interface AppConfig {
   trafficThresholdGB: number
   vpsCutoffReferenceGB: number
   resetDayOfMonth: number
-  /** 多账号：本机账号标识、显示名称、站点（cn=中国站，intl=国际站） */
-  id?: string
-  name?: string
-  site?: string
 }
 
 const STORAGE_KEY = "aliyun_cdt_monitor_config"
@@ -91,11 +75,7 @@ function loadSavedConfig(): AppConfig {
       const saved = Storage.get(STORAGE_KEY)
       if (saved) {
         const parsed = typeof saved === "string" ? JSON.parse(saved) : saved
-        const cfg: AppConfig = { ...DEFAULT_CONFIG, ...parsed }
-        // 旧版单账号配置没有 id，与 loadAccountProfiles 的迁移规则保持一致。
-        if (!cfg.id) cfg.id = "default"
-        cfg.site = cfg.site === "intl" ? "intl" : "cn"
-        return cfg
+        return { ...DEFAULT_CONFIG, ...parsed }
       }
     }
   } catch (e) {
@@ -107,8 +87,6 @@ function loadSavedConfig(): AppConfig {
 function saveConfigToStorage(cfg: AppConfig): void {
   try {
     if (typeof Storage !== "undefined" && Storage?.set) {
-      // 先读出旧列表（含尚未迁移的旧版单账号），再写入当前账号，避免添加新账号时丢掉旧账号。
-      if (cfg.id) saveAccountProfiles(upsertAccountProfile(loadAccountProfiles<AppConfig>(DEFAULT_CONFIG), cfg))
       Storage.set(STORAGE_KEY, JSON.stringify(cfg))
     }
   } catch (e) {
@@ -272,18 +250,18 @@ async function aliyunRequest<T = any>(
   const requestUrl = `https://${domain}/`
   const bodyString = `${canonicalizedQueryString}&Signature=${percentEncode(signature)}`
 
-  return withRequestTimeout(async signal => {
-    const response = await fetch(requestUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: bodyString,
-      ...(signal ? { signal } : {})
-    })
-    if (!response.ok) {
-      throw aliyunHttpError(action, response.status, await response.text())
-    }
-    return (await response.json()) as T
-  }, action)
+  const response = await fetch(requestUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: bodyString
+  })
+
+  if (!response.ok) {
+    const err = await response.text()
+    throw new Error(`Aliyun [${action}] 错误 (${response.status}): ${err}`)
+  }
+
+  return (await response.json()) as T
 }
 
 // ==================== 3. 业务数据模型 ====================
@@ -300,15 +278,11 @@ export interface DailyExpenseItem {
   amount: string
   isToday?: boolean
   settled?: boolean
-  available?: boolean
 }
 
 export interface MonthlyBillInfo {
   billingCycle: string
   paymentAmount: string
-  hasRecords?: boolean
-  // Optional so snapshots saved before this metadata was introduced still render safely.
-  paymentScope?: "monitoredProducts" | "allProducts"
   outstandingAmount: string
   currency: string
   ecsAmount: string
@@ -318,138 +292,9 @@ export interface MonthlyBillInfo {
   eipDailyList: DailyExpenseItem[]
 }
 
-interface MonthlyBillHistoryItem {
-  billingCycle: string
-  paymentAmount: string
-  currency: string
-  available: boolean
-  hasRecords?: boolean
-  paymentScope?: "monitoredProducts" | "allProducts"
-}
-
-function getMonthlyBillPresentation(bill?: MonthlyBillInfo | null): { label: string; detail: string } {
-  if (bill?.paymentScope === "allProducts") {
-    return {
-      label: "本月全部产品费用",
-      detail: "当前全部产品账单查询结果（可能延迟）"
-    }
-  }
-
-  if (bill?.paymentScope === "monitoredProducts") {
-    return {
-      label: "本月监控产品费用",
-      detail: "仅含已识别的监控产品，不含其他阿里云产品（可能延迟）"
-    }
-  }
-
-  return {
-    label: "本月监控产品费用",
-    detail: "费用范围未标记，按监控产品费用显示；可能不含其他阿里云产品（请刷新确认）"
-  }
-}
-
-function currencySymbol(currency?: string): string {
-  if (currency === "USD") return "$"
-  if (currency === "CNY" || !currency) return "¥"
-  return `${currency} `
-}
-
-async function queryBillItemsForCycle(
-  config: AppConfig,
-  billingCycle: string
-): Promise<{ available: boolean; items: Array<any> }> {
-  const overviewRes = await aliyunRequest<{
-    Data?: {
-      Items?: {
-        Item?: Array<any>
-      }
-    }
-    Success?: boolean
-    Code?: string
-  }>(bssEndpoint(config), "QueryBillOverview", "2017-12-14", config, {
-    BillingCycle: billingCycle
-  }).catch(() => null)
-
-  if (isBillQueryAvailable(overviewRes) && overviewRes!.Data!.Items!.Item!.length > 0) {
-    return { available: true, items: overviewRes!.Data!.Items!.Item! }
-  }
-
-  return queryAccountBillPages(
-    params => aliyunRequest(bssEndpoint(config), "QueryAccountBill", "2017-12-14", config, params),
-    { BillingCycle: billingCycle, IsGroupByProduct: true }
-  )
-}
-
-interface BillSummary {
-  paymentAmount: number
-  outstandingAmount: number
-  currency: string
-  ecsAmount: number
-  eipAmount: number
-  cdtAmount: number
-  paymentScope: "monitoredProducts" | "allProducts"
-}
-
-function summarizeBillItems(items: Array<any>, includeAllProducts = false): BillSummary {
-  let allProductsEffective = 0
-  let ecsTotal = 0
-  let eipTotal = 0
-  let cdtTotal = 0
-  let hasInfrastructureItems = false
-  let outstanding = 0
-  let currency = "CNY"
-
-  for (const item of items) {
-    const code = String(item?.PipCode || item?.ProductCode || "").toLowerCase()
-    const name = String(item?.ProductName || "")
-    const gross = Number(item?.PretaxGrossAmount || 0)
-    const effective =
-      item?.PretaxAmount !== undefined && item?.PretaxAmount !== null && item?.PretaxAmount !== ""
-        ? Number(item.PretaxAmount) || 0
-        : item?.PaymentAmount !== undefined && item?.PaymentAmount !== null && item?.PaymentAmount !== ""
-          ? Number(item.PaymentAmount) || 0
-          : gross
-
-    allProductsEffective += effective
-    outstanding += Number(item?.OutstandingAmount || 0)
-    if (item?.Currency) currency = String(item.Currency)
-
-    const isEcs = code === "ecs" || code.includes("ecs") || name.includes("云服务器") || name.includes("ECS")
-    const isEip =
-      code === "eip" ||
-      code === "cbwp" ||
-      code.includes("eip") ||
-      code.includes("cbwp") ||
-      name.includes("弹性公网") ||
-      name.includes("EIP") ||
-      name.includes("公网IP") ||
-      name.includes("共享带宽")
-    const isCdt = code === "cdt" || code.includes("cdt") || name.includes("云数据传输") || name.includes("CDT")
-
-    if (isEcs || isEip || isCdt) hasInfrastructureItems = true
-    if (isEcs) ecsTotal += effective
-    else if (isEip) eipTotal += effective
-    else if (isCdt) cdtTotal += effective
-  }
-
-  return {
-    paymentAmount: includeAllProducts || !hasInfrastructureItems
-      ? allProductsEffective
-      : ecsTotal + eipTotal + cdtTotal,
-    outstandingAmount: outstanding,
-    currency,
-    ecsAmount: ecsTotal,
-    eipAmount: eipTotal,
-    cdtAmount: cdtTotal,
-    paymentScope: includeAllProducts || !hasInfrastructureItems ? "allProducts" : "monitoredProducts"
-  }
-}
-
 interface ConsoleData {
   totalGB: number
   thresholdGB: number
-  vpsCutoffReferenceGB: number
-  cutoffRemainingGB: number
   remainingGB: number
   percentage: number
   daysRemaining: number
@@ -459,126 +304,8 @@ interface ConsoleData {
   publicIp?: string
   color: string
   updatedAt?: string | Date
-  isCached?: boolean
   financialBalance?: AccountBalanceInfo | null
   financialBill?: MonthlyBillInfo | null
-  financialBillStatus: "available" | "unavailable"
-  previousFinancialBill?: MonthlyBillInfo | null
-  previousFinancialBillStatus: "available" | "unavailable"
-  financialBillHistory: MonthlyBillHistoryItem[]
-  trafficDiagnostics?: CDTTrafficDiagnostics
-}
-
-interface CDTTrafficDetail {
-  Traffic?: number | string
-  Product?: string
-  BusinessRegionId?: string
-  ISPType?: string
-  ProductTrafficDetails?: unknown
-  TrafficTierDetails?: unknown
-}
-
-type CDTTrafficBucket = "mainland" | "nonMainland" | "unknown"
-
-interface CDTTrafficGroup {
-  bucket: CDTTrafficBucket
-  businessRegionId?: string
-  ispType?: string
-  totalBytes: number
-  totalGB: number
-  itemCount: number
-}
-
-interface CDTTrafficBucketSummary {
-  bucket: CDTTrafficBucket
-  totalBytes: number
-  totalGB: number
-  itemCount: number
-}
-
-interface CDTTrafficDiagnostics {
-  buckets: Record<CDTTrafficBucket, CDTTrafficBucketSummary>
-  groups: CDTTrafficGroup[]
-}
-
-function trafficBytes(value: unknown): number {
-  const parsed = typeof value === "number" ? value : Number(value)
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
-}
-
-function diagnosticField(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : undefined
-}
-
-// Keep this an explicit allowlist. A `cn-*` prefix is insufficient because
-// `cn-hongkong` is non-mainland for CDT quota accounting.
-const CDT_MAINLAND_BUSINESS_REGION_IDS = new Set([
-  "cn-beijing",
-  "cn-changsha",
-  "cn-chengdu",
-  "cn-dalian",
-  "cn-fuzhou",
-  "cn-guangzhou",
-  "cn-hangzhou",
-  "cn-heyuan",
-  "cn-huhehaote",
-  "cn-jinan",
-  "cn-nanjing",
-  "cn-qingdao",
-  "cn-shanghai",
-  "cn-shenzhen",
-  "cn-wuhan",
-  "cn-wulanchabu",
-  "cn-xian",
-  "cn-zhangjiakou",
-  "cn-zhengzhou"
-])
-const CDT_NON_MAINLAND_BUSINESS_REGION_IDS = new Set(["cn-hongkong"])
-
-function classifyCDTTrafficBucket(value: unknown): CDTTrafficBucket {
-  const normalized = diagnosticField(value)?.toLowerCase()
-  if (!normalized) return "unknown"
-  if (CDT_MAINLAND_BUSINESS_REGION_IDS.has(normalized)) return "mainland"
-  if (CDT_NON_MAINLAND_BUSINESS_REGION_IDS.has(normalized)) return "nonMainland"
-  return "unknown"
-}
-
-function buildCDTTrafficDiagnostics(details: CDTTrafficDetail[]): CDTTrafficDiagnostics {
-  const buckets: Record<CDTTrafficBucket, CDTTrafficBucketSummary> = {
-    mainland: { bucket: "mainland", totalBytes: 0, totalGB: 0, itemCount: 0 },
-    nonMainland: { bucket: "nonMainland", totalBytes: 0, totalGB: 0, itemCount: 0 },
-    unknown: { bucket: "unknown", totalBytes: 0, totalGB: 0, itemCount: 0 }
-  }
-  const grouped = new Map<string, CDTTrafficGroup>()
-
-  for (const detail of details) {
-    const totalBytes = trafficBytes(detail?.Traffic)
-    const businessRegionId = diagnosticField(detail?.BusinessRegionId)
-    const ispType = diagnosticField(detail?.ISPType)
-    const bucket = classifyCDTTrafficBucket(businessRegionId)
-    const summary = buckets[bucket]
-    summary.totalBytes += totalBytes
-    summary.itemCount += 1
-    const key = `${bucket}\u0000${businessRegionId || ""}\u0000${ispType || ""}`
-    const existing = grouped.get(key)
-    if (existing) {
-      existing.totalBytes += totalBytes
-      existing.itemCount += 1
-    } else {
-      grouped.set(key, { bucket, businessRegionId, ispType, totalBytes, totalGB: 0, itemCount: 1 })
-    }
-  }
-
-  for (const summary of Object.values(buckets)) {
-    summary.totalGB = Number((summary.totalBytes / 1024 ** 3).toFixed(2))
-  }
-  const groups = Array.from(grouped.values()).map(group => ({
-    ...group,
-    totalGB: Number((group.totalBytes / 1024 ** 3).toFixed(2))
-  }))
-  return { buckets, groups }
 }
 
 const SNAPSHOT_STORAGE_KEY = "aliyun_cdt_dashboard_cache"
@@ -620,212 +347,291 @@ function getInstancePublicIp(instance?: ECSInstanceRecord): string | undefined {
 }
 
 async function fetchConsoleData(config: AppConfig): Promise<ConsoleData> {
-  const trafficSampledAt = new Date()
-  // 1. 查询 CDT 流量（必须成功，其余查询都依赖它确认凭据可用）
+  // 1. 查询 CDT 流量
   const cdtData = await aliyunRequest<{
-    TrafficDetails?: CDTTrafficDetail[]
+    TrafficDetails?: Array<{ Traffic?: number }>
   }>("cdt.aliyuncs.com", "ListCdtInternetTraffic", "2021-08-13", config)
-  assertSampleBillingMonth(trafficSampledAt)
 
   const details = cdtData.TrafficDetails || []
-  const trafficDiagnostics = buildCDTTrafficDiagnostics(details)
-  const totalBytes = details.reduce((sum, item) => sum + trafficBytes(item.Traffic), 0)
+  const totalBytes = details.reduce((sum, item) => sum + (item.Traffic || 0), 0)
   const totalGB = Number((totalBytes / 1024 ** 3).toFixed(2))
-  const thresholdGB = config.trafficThresholdGB > 0 ? config.trafficThresholdGB : DEFAULT_CONFIG.trafficThresholdGB
-  const vpsCutoffReferenceGB = config.vpsCutoffReferenceGB > 0 ? config.vpsCutoffReferenceGB : DEFAULT_CONFIG.vpsCutoffReferenceGB
-  const cutoffRemainingGB = Math.max(0, Number((vpsCutoffReferenceGB - totalGB).toFixed(2)))
+  const thresholdGB = config.trafficThresholdGB
   const remainingGB = Math.max(0, Number((thresholdGB - totalGB).toFixed(2)))
-  const percentage = usagePercentage(totalGB, thresholdGB)
+  const percentage = Math.min(100, Number(((totalGB / thresholdGB) * 100).toFixed(1)))
 
-  // 2. 重置日与时间进度推算（按阿里云账期所用的北京时间）
-  const now = trafficSampledAt
-  const { daysRemaining, monthTimeProgress } = chinaMonthProgress(now)
-  const dailyBudgetGB = (remainingGB / daysRemaining).toFixed(2)
-  const cycle = chinaMonthKey(now)
-  const previousCycle = chinaMonthKey(now, -1)
-
-  // 3. 其余查询互不依赖，并行发出；任何一项失败都不影响流量展示。
-  const ecsTask = aliyunRequest<{
+  // 2. 查询 ECS 状态
+  const ecsData = await aliyunRequest<{
     Instances?: {
       Instance?: ECSInstanceRecord[]
     }
   }>(`ecs.${config.regionId}.aliyuncs.com`, "DescribeInstances", "2014-05-26", config, {
     InstanceIds: JSON.stringify([config.ecsInstanceId.trim()]),
     RegionId: config.regionId.trim()
-  }).catch(() => null)
-
-  const balanceTask = aliyunRequest<{
-    Data?: {
-      AvailableAmount?: string
-      AvailableCashAmount?: string
-      CreditAmount?: string
-      Currency?: string
-    }
-  }>(bssEndpoint(config), "QueryAccountBalance", "2017-12-14", config).catch(() => null)
-
-  const cycleTask = (billingCycle: string) => queryBillItemsForCycle(config, billingCycle).catch(() => null)
-  const currentTask = cycleTask(cycle)
-  const previousTask = cycleTask(previousCycle)
-  const olderCycles = [chinaMonthKey(now, -2), chinaMonthKey(now, -3)]
-  const olderTasks = olderCycles.map(cycleTask)
-
-  const formatDaily = (amt: number): string => {
-    if (amt <= 0) return "0.00"
-    if (amt < 0.01) return amt.toFixed(3)
-    return amt.toFixed(2)
-  }
-
-  // 仅在账单总览或回退接口已确认可用后，才查询每日产品账单分类。
-  const dailyTask = currentTask.then(async monthResult => {
-    const dateQueries = recentBillingDates(now)
-    if (!monthResult?.available) return null
-    return Promise.all(dateQueries.map(async q => {
-      try {
-        const dayResult = await queryAccountBillPages(
-          params => aliyunRequest(bssEndpoint(config), "QueryAccountBill", "2017-12-14", config, params),
-          {
-            BillingCycle: q.billingCycle,
-            Granularity: "DAILY",
-            BillingDate: q.dateStr,
-            IsGroupByProduct: true
-          }
-        )
-        const summary = summarizeBillItems(dayResult.items)
-        return {
-          date: q.displayDate,
-          isToday: q.isToday,
-          ecsAmount: formatDaily(summary.ecsAmount),
-          eipAmount: formatDaily(summary.eipAmount),
-          settled: dayResult.items.length > 0,
-          available: dayResult.available
-        }
-      } catch {
-        return { date: q.displayDate, isToday: q.isToday, ecsAmount: "0.00", eipAmount: "0.00", settled: false, available: false }
-      }
-    }))
   })
 
-  const [ecsData, balRes, monthResult, previousResult, dailyResults, ...olderResults] = await Promise.all([
-    ecsTask,
-    balanceTask,
-    currentTask,
-    previousTask,
-    dailyTask.catch(() => null),
-    ...olderTasks
-  ])
-
-  const instance = ecsData?.Instances?.Instance?.[0]
-  const ecsStatus: ConsoleData["ecsStatus"] = normalizeEcsStatus(instance?.Status)
+  const instance = ecsData.Instances?.Instance?.[0]
+  let ecsStatus = (instance?.Status as any) || "Unknown"
   const publicIp = getInstancePublicIp(instance)
 
+  // 3. 纯统计模式：控制台仅只读拉取用量与账单，关机熔断由 VPS 独立守护
+
+  // 4. 重置日与时间进度推算
+  const now = new Date()
+  const currentDay = now.getDate()
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  const daysRemaining = Math.max(1, lastDay - currentDay + 1)
+  const dailyBudgetGB = (remainingGB / daysRemaining).toFixed(1)
+  const monthTimeProgress = Math.min(100, Math.max(1, Number(((currentDay / lastDay) * 100).toFixed(1))))
+
+  // 5. 资产与消费查询 (优雅降级，未授权时不中断主流程)
   let financialBalance: AccountBalanceInfo | null = null
-  if (balRes?.Data) {
-    const cash = parseFloat(balRes.Data.AvailableCashAmount || "0")
-    const availableAmount = parseFloat(balRes.Data.AvailableAmount || "")
-    let status: "sufficient" | "low" | "arrears" = "sufficient"
-    if (Number.isFinite(availableAmount) && availableAmount < 0) {
-      status = "arrears"
-    } else if (cash < 10) {
-      status = "low"
-    }
-    financialBalance = {
-      availableAmount: balRes.Data.AvailableAmount || "0.00",
-      availableCashAmount: balRes.Data.AvailableCashAmount || "0.00",
-      currency: balRes.Data.Currency || "CNY",
-      status
-    }
-  }
-
-  // 所有账期统一按同一口径（监控产品；未识别到监控产品时为全部产品）汇总，便于逐月对比。
-  const financialBillStatus: "available" | "unavailable" = monthResult?.available ? "available" : "unavailable"
   let financialBill: MonthlyBillInfo | null = null
-  if (monthResult?.available) {
-    const currentSummary = summarizeBillItems(monthResult.items)
-    const ecsDailyList: DailyExpenseItem[] = []
-    const eipDailyList: DailyExpenseItem[] = []
-    const rows = dailyResults || recentBillingDates(now).map(q => ({
-      date: q.displayDate, isToday: q.isToday, ecsAmount: "0.00", eipAmount: "0.00", settled: false, available: false
-    }))
-    for (const r of rows) {
-      ecsDailyList.push({ date: r.date, amount: r.ecsAmount, isToday: r.isToday, settled: r.settled, available: r.available })
-      eipDailyList.push({ date: r.date, amount: r.eipAmount, isToday: r.isToday, settled: r.settled, available: r.available })
-    }
-    financialBill = {
-      billingCycle: cycle,
-      paymentAmount: currentSummary.paymentAmount.toFixed(2),
-      hasRecords: monthResult.items.length > 0,
-      paymentScope: currentSummary.paymentScope,
-      outstandingAmount: currentSummary.outstandingAmount.toFixed(2),
-      currency: currentSummary.currency,
-      ecsAmount: currentSummary.ecsAmount.toFixed(2),
-      eipAmount: currentSummary.eipAmount.toFixed(2),
-      cdtAmount: currentSummary.cdtAmount.toFixed(2),
-      ecsDailyList,
-      eipDailyList
-    }
-  }
 
-  // 账期已结束的上月金额单独查询。余额接口不会返回扣费历史，不能用余额变化代替账单。
-  const previousFinancialBillStatus: "available" | "unavailable" = previousResult?.available ? "available" : "unavailable"
-  let previousFinancialBill: MonthlyBillInfo | null = null
-  if (previousResult?.available && previousResult.items.length > 0) {
-    const summary = summarizeBillItems(previousResult.items)
-    previousFinancialBill = {
-      billingCycle: previousCycle,
-      paymentAmount: summary.paymentAmount.toFixed(2),
-      paymentScope: summary.paymentScope,
-      outstandingAmount: summary.outstandingAmount.toFixed(2),
-      currency: summary.currency,
-      ecsAmount: summary.ecsAmount.toFixed(2),
-      eipAmount: summary.eipAmount.toFixed(2),
-      cdtAmount: summary.cdtAmount.toFixed(2),
-      ecsDailyList: [],
-      eipDailyList: []
-    }
-  }
-
-  const financialBillHistory: MonthlyBillHistoryItem[] = [
-    {
-      billingCycle: cycle,
-      paymentAmount: financialBill?.paymentAmount || "0.00",
-      currency: financialBill?.currency || financialBalance?.currency || "CNY",
-      available: financialBillStatus === "available",
-      hasRecords: Boolean(financialBill) && financialBill?.hasRecords !== false,
-      paymentScope: financialBill?.paymentScope
-    },
-    {
-      billingCycle: previousCycle,
-      paymentAmount: previousFinancialBill?.paymentAmount || "0.00",
-      currency: previousFinancialBill?.currency || financialBalance?.currency || "CNY",
-      available: previousFinancialBillStatus === "available",
-      hasRecords: Boolean(previousFinancialBill),
-      paymentScope: previousFinancialBill?.paymentScope
-    },
-    ...olderCycles.map((billingCycle, index) => {
-      const result = olderResults[index]
-      const summary = result && result.items.length > 0 ? summarizeBillItems(result.items) : null
-      return {
-        billingCycle,
-        paymentAmount: summary ? summary.paymentAmount.toFixed(2) : "0.00",
-        currency: summary?.currency || financialBalance?.currency || "CNY",
-        available: Boolean(result?.available),
-        hasRecords: Boolean(result && result.items.length > 0),
-        paymentScope: summary?.paymentScope
+  try {
+    const balRes = await aliyunRequest<{
+      Data?: {
+        AvailableAmount?: string
+        AvailableCashAmount?: string
+        CreditAmount?: string
+        Currency?: string
       }
-    })
-  ]
+    }>("business.aliyuncs.com", "QueryAccountBalance", "2017-12-14", config).catch(() => null)
 
-  const color = totalGB >= vpsCutoffReferenceGB
-    ? "systemRed"
-    : totalGB >= vpsCutoffReferenceGB - 15
-      ? "systemOrange"
-      : "systemGreen"
+    if (balRes?.Data) {
+      const cash = parseFloat(balRes.Data.AvailableCashAmount || "0")
+      let status: "sufficient" | "low" | "arrears" = "sufficient"
+      if (cash <= 0) {
+        status = "arrears"
+      } else if (cash < 10) {
+        status = "low"
+      }
+      financialBalance = {
+        availableAmount: balRes.Data.AvailableAmount || "0.00",
+        availableCashAmount: balRes.Data.AvailableCashAmount || "0.00",
+        currency: balRes.Data.Currency || "CNY",
+        status
+      }
+    }
+  } catch {}
+
+  try {
+    const cycle = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+
+    // 1. 优先调用 QueryBillOverview（对齐阿里云控制台账单总览，直接按产品汇算）
+    let billItems: Array<{
+      PipCode?: string
+      ProductCode?: string
+      ProductName?: string
+      PaymentAmount?: number
+      PretaxGrossAmount?: number
+      PretaxAmount?: number
+      OutstandingAmount?: number
+      Currency?: string
+    }> = []
+
+    const overviewRes = await aliyunRequest<{
+      Data?: {
+        Items?: {
+          Item?: Array<any>
+        }
+      }
+    }>("business.aliyuncs.com", "QueryBillOverview", "2017-12-14", config, {
+      BillingCycle: cycle
+    }).catch(() => null)
+
+    if (overviewRes?.Data?.Items?.Item && overviewRes.Data.Items.Item.length > 0) {
+      billItems = overviewRes.Data.Items.Item
+    } else {
+      // 2. 回退调用 QueryAccountBill（带 IsGroupByProduct: true 才能返回产品维度分类）
+      const billRes = await aliyunRequest<{
+        Data?: {
+          Items?: {
+            Item?: Array<any>
+          }
+        }
+      }>("business.aliyuncs.com", "QueryAccountBill", "2017-12-14", config, {
+        BillingCycle: cycle,
+        IsGroupByProduct: true
+      }).catch(() => null)
+
+      if (billRes?.Data?.Items?.Item && billRes.Data.Items.Item.length > 0) {
+        billItems = billRes.Data.Items.Item
+      }
+    }
+
+    if (billItems.length > 0) {
+      let totalPayment = 0
+      let totalGross = 0
+      let allProductsEffective = 0
+      let ecsTotal = 0
+      let eipTotal = 0
+      let cdtTotal = 0
+      let outstanding = 0
+      let currency = "CNY"
+
+      for (const it of billItems) {
+        const code = String(it.PipCode || it.ProductCode || "").toLowerCase()
+        const name = String(it.ProductName || "")
+        const pay = Number(it.PaymentAmount || 0)
+        const gross = Number(it.PretaxGrossAmount || 0)
+        // 关键：必须优先取 PretaxAmount（实际应付金额：已扣减抢占式竞价折扣、优惠券，如抢占式单日 ¥0.13，月度 ¥0.40）
+        let effective = 0
+        if (it.PretaxAmount != null) {
+          effective = Number(it.PretaxAmount) || 0
+        } else if (pay > 0) {
+          effective = pay
+        } else {
+          effective = gross
+        }
+
+        totalPayment += pay
+        totalGross += gross
+        allProductsEffective += effective
+        outstanding += Number(it.OutstandingAmount || 0)
+        if (it.Currency) currency = it.Currency
+
+        const isEcs = code === "ecs" || code.includes("ecs") || name.includes("云服务器") || name.includes("ECS")
+        const isEip = code === "eip" || code === "cbwp" || code.includes("eip") || code.includes("cbwp") || name.includes("弹性公网") || name.includes("EIP") || name.includes("公网IP") || name.includes("共享带宽")
+        const isCdt = code === "cdt" || code.includes("cdt") || name.includes("云数据传输") || name.includes("CDT")
+
+        if (isEcs) {
+          ecsTotal += effective
+        } else if (isEip) {
+          eipTotal += effective
+        } else if (isCdt) {
+          cdtTotal += effective
+        }
+      }
+
+      // 当月消费严格对齐阿里云控制台账单中心：优先采用各项产品实际累计（如 ECS ¥0.40 + EIP ¥0.04 = ¥0.44）
+      const infrastructureTotal = ecsTotal + eipTotal + cdtTotal
+      const finalPayment = infrastructureTotal > 0
+        ? infrastructureTotal
+        : (allProductsEffective > 0 ? allProductsEffective : (totalPayment > 0 ? totalPayment : totalGross))
+
+      const formatDaily = (amt: number): string => {
+        if (amt <= 0) return "0.00"
+        if (amt < 0.01) return amt.toFixed(3)
+        return amt.toFixed(2)
+      }
+
+      // 真实读取最近各日期的官方实际账单（QueryAccountBill + DAILY，真实 API 读取，绝非推算）
+      const ecsDailyList: DailyExpenseItem[] = []
+      const eipDailyList: DailyExpenseItem[] = []
+      const daysCount = Math.min(7, currentDay)
+
+      const dateQueries: Array<{ dateStr: string; displayDate: string; isToday: boolean }> = []
+      for (let i = 0; i < daysCount; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth(), currentDay - i)
+        const yyyy = d.getFullYear()
+        const mm = String(d.getMonth() + 1).padStart(2, "0")
+        const dd = String(d.getDate()).padStart(2, "0")
+        dateQueries.push({
+          dateStr: `${yyyy}-${mm}-${dd}`,
+          displayDate: `${mm}-${dd}`,
+          isToday: i === 0
+        })
+      }
+
+      try {
+        const dailyResults = await Promise.all(
+          dateQueries.map(async q => {
+            try {
+              const dayRes = await aliyunRequest<{
+                Data?: {
+                  Items?: {
+                    Item?: Array<any>
+                  }
+                }
+              }>("business.aliyuncs.com", "QueryAccountBill", "2017-12-14", config, {
+                BillingCycle: cycle,
+                Granularity: "DAILY",
+                BillingDate: q.dateStr,
+                IsGroupByProduct: true
+              }).catch(() => null)
+
+              const dayItems = dayRes?.Data?.Items?.Item || []
+              let dEcs = 0
+              let dEip = 0
+              for (const it of dayItems) {
+                const c = String(it.PipCode || it.ProductCode || "").toLowerCase()
+                const n = String(it.ProductName || "")
+                const p = Number(it.PaymentAmount || 0)
+                const g = Number(it.PretaxGrossAmount || 0)
+                // 优先取 PretaxAmount（抢占式实例实际折后金额）
+                let eff = 0
+                if (it.PretaxAmount != null) {
+                  eff = Number(it.PretaxAmount) || 0
+                } else if (p > 0) {
+                  eff = p
+                } else {
+                  eff = g
+                }
+
+                if (c === "ecs" || c.includes("ecs") || n.includes("云服务器") || n.includes("ECS")) {
+                  dEcs += eff
+                } else if (
+                  c === "eip" ||
+                  c === "cbwp" ||
+                  c.includes("eip") ||
+                  c.includes("cbwp") ||
+                  n.includes("弹性公网") ||
+                  n.includes("EIP") ||
+                  n.includes("公网IP") ||
+                  n.includes("共享带宽")
+                ) {
+                  dEip += eff
+                }
+              }
+              return {
+                date: q.displayDate,
+                isToday: q.isToday,
+                ecsAmount: formatDaily(dEcs),
+                eipAmount: formatDaily(dEip),
+                settled: dayItems.length > 0
+              }
+            } catch {
+              return {
+                date: q.displayDate,
+                isToday: q.isToday,
+                ecsAmount: "0.00",
+                eipAmount: "0.00",
+                settled: false
+              }
+            }
+          })
+        )
+
+        for (const r of dailyResults) {
+          ecsDailyList.push({ date: r.date, amount: r.ecsAmount, isToday: r.isToday, settled: r.settled })
+          eipDailyList.push({ date: r.date, amount: r.eipAmount, isToday: r.isToday, settled: r.settled })
+        }
+      } catch {
+        for (const q of dateQueries) {
+          ecsDailyList.push({ date: q.displayDate, amount: "0.00", isToday: q.isToday, settled: false })
+          eipDailyList.push({ date: q.displayDate, amount: "0.00", isToday: q.isToday, settled: false })
+        }
+      }
+
+      financialBill = {
+        billingCycle: cycle,
+        paymentAmount: finalPayment.toFixed(2),
+        outstandingAmount: outstanding.toFixed(2),
+        currency,
+        ecsAmount: ecsTotal.toFixed(2),
+        eipAmount: eipTotal.toFixed(2),
+        cdtAmount: cdtTotal.toFixed(2),
+        ecsDailyList,
+        eipDailyList
+      }
+    }
+  } catch {}
+
+  const color = percentage >= 90 ? "systemRed" : percentage >= 70 ? "systemOrange" : "systemGreen"
 
   return {
     totalGB,
     thresholdGB,
-    vpsCutoffReferenceGB,
-    cutoffRemainingGB,
     remainingGB,
     percentage,
     daysRemaining,
@@ -836,49 +642,22 @@ async function fetchConsoleData(config: AppConfig): Promise<ConsoleData> {
     color,
     updatedAt: now.toISOString(),
     financialBalance,
-    financialBill,
-    financialBillStatus,
-    previousFinancialBill,
-    previousFinancialBillStatus,
-    financialBillHistory,
-    trafficDiagnostics
+    financialBill
   }
 }
 
-function getTrafficHealthMeta(totalGB: number, cutoffReferenceGB: number, percentage: number, monthTimeProgress: number): {
+function getTrafficHealthMeta(percentage: number, monthTimeProgress: number): {
   label: string
   color: string
   icon: string
 } {
-  if (totalGB >= cutoffReferenceGB) {
-    return { label: `已达到 VPS 熔断参考线 ${cutoffReferenceGB} GB（仅展示）`, color: "systemRed", icon: "exclamationmark.octagon.fill" }
-  }
-  if (totalGB >= cutoffReferenceGB - 15) {
-    return {
-      label: `接近 VPS 熔断参考线 ${cutoffReferenceGB} GB，余 ${Math.max(0, cutoffReferenceGB - totalGB).toFixed(1)} GB（仅展示）`,
-      color: "systemOrange",
-      icon: "exclamationmark.circle.fill"
-    }
+  if (percentage >= 90) {
+    return { label: "严重超标 · 存在熔断风险", color: "systemRed", icon: "exclamationmark.octagon.fill" }
   }
   if (percentage > monthTimeProgress + 15) {
-    return { label: "用量进度快于本月时间进度", color: "systemOrange", icon: "exclamationmark.circle.fill" }
+    return { label: "消耗偏快 · 超前时间进度", color: "systemOrange", icon: "exclamationmark.circle.fill" }
   }
-  return { label: "用量进度正常", color: "systemGreen", icon: "checkmark.circle.fill" }
-}
-
-function formatCompactUsage(value: number): string {
-  if (!Number.isFinite(value)) return "—"
-  const absoluteValue = Math.abs(value)
-  if (absoluteValue >= 100000000) {
-    return `${(value / 100000000).toFixed(1)}亿`
-  }
-  if (absoluteValue >= 10000) {
-    return `${(value / 10000).toFixed(1)}万`
-  }
-  if (absoluteValue >= 1000) {
-    return value.toFixed(0)
-  }
-  return value.toFixed(1)
+  return { label: "用量健康 · 处于安全预算内", color: "systemGreen", icon: "checkmark.circle.fill" }
 }
 
 function humanizeAliyunError(rawMessage: string): string {
@@ -893,7 +672,7 @@ function humanizeAliyunError(rawMessage: string): string {
     return "找不到指定的 ECS 实例，请核对实例 ID 与所在地域 (Region)。"
   }
   if (rawMessage.includes("Forbidden.RAM") || rawMessage.includes("NoPermission") || rawMessage.includes("Unauthorized")) {
-    return "RAM 权限不足：请授予所需只读权限 ecs:DescribeInstances、cdt:ListCdtInternetTraffic；账单功能另需对应 BSS 查询权限。"
+    return "RAM 权限不足：请在阿里云访问控制为该 Key 授予 AliyunECSFullAccess 和 CDT 读权限。"
   }
   if (rawMessage.includes("IncorrectInstanceStatus")) {
     return "实例当前状态无法执行此操作，请稍候重试。"
@@ -903,6 +682,11 @@ function humanizeAliyunError(rawMessage: string): string {
   }
   return rawMessage
 }
+
+async function executeECSAction(_action: "start" | "stop" | "reboot", _config: AppConfig): Promise<never> {
+  throw new Error("ECS 控制操作已从手机端移除。")
+}
+
 
 function splitLogLine(log: string): { time: string; message: string } {
   const match = log.match(/^(\[[^\]]+\])\s*(.*)$/)
@@ -915,227 +699,75 @@ function logMessageColor(log: string): string {
   return "label"
 }
 
-// ==================== 4. 原生分组卡片样式 ====================
+// ==================== 4. Apple iOS 26 Liquid Glass 材质与动效系统 ====================
 
-// Native inset-grouped card: solid white (light) / elevated gray (dark), like Settings.
-const CARD_FILL = { light: "#FFFFFF", dark: "#1C1C1E" } as any
-
-function dashboardSurface(cornerRadius: number = 18) {
-  return {
-    background: CARD_FILL,
-    clipShape: { type: "rect" as const, cornerRadius, style: "continuous" as const }
+declare const UIGlass: {
+  clear: () => {
+    interactive: (val: boolean) => any
   }
+} | undefined
+
+/**
+ * 液态玻璃控件专用 GlassEffect 注入
+ * 严格遵循 HIG 分层法则：仅功能操作控件（按钮、胶囊、开关）应用液态玻璃材质，内容卡片保持纯白不透明
+ */
+function liquidGlass(interactive: boolean = true) {
+  try {
+    if (typeof UIGlass !== "undefined" && typeof UIGlass.clear === "function") {
+      return {
+        glassEffect: {
+          glass: interactive ? UIGlass.clear().interactive(true) : UIGlass.clear().interactive(false),
+          shape: "capsule" as const
+        },
+        glassEffectTransition: "materialize" as const
+      }
+    }
+  } catch {
+    // fallback
+  }
+  return {}
 }
 
-/** Settings-style rounded icon tile: solid system colour with a white glyph. */
-function IconTile({ systemName, color, size = 30 }: { systemName: string; color: string; size?: number }) {
-  return (
-    <ZStack
-      frame={{ width: size, height: size }}
-      background={color}
-      clipShape={{ type: "rect", cornerRadius: size * 0.26, style: "continuous" }}
-    >
-      <Image systemName={systemName} font={size * 0.5} fontWeight="semibold" foregroundStyle="#FFFFFF" />
-    </ZStack>
-  )
-}
+// ==================== 5. 设置配置面板视图 (Apple Liquid Glass Controls) ====================
 
-function SectionFootnote({ children }: { children: any }) {
-  return (
-    <Text font="footnote" foregroundStyle="secondaryLabel" padding={{ horizontal: 16 }} frame={{ maxWidth: Infinity, alignment: "leading" }}>
-      {children}
-    </Text>
-  )
-}
-
-function DashboardSectionHeader({
-  title,
-  detail,
-  trailing
-}: {
-  title: string
-  detail?: string
-  trailing?: any
-}) {
-  return (
-    <HStack padding={{ horizontal: 16, top: 14 }} alignment="center">
-      <Text font="footnote" foregroundStyle="secondaryLabel">
-        {title}
-      </Text>
-      <Spacer />
-      {trailing ?? (detail ? (
-        <Text font="footnote" foregroundStyle="secondaryLabel" lineLimit={1}>
-          {detail}
-        </Text>
-      ) : null)}
-    </HStack>
-  )
-}
-
-function MonthlyTrafficOverview({
-  data,
-  thresholdGB,
-  lastUpdated,
-  loading
-}: {
-  data: ConsoleData | null
-  thresholdGB: number
-  lastUpdated: Date | null
-  loading: boolean
-}) {
-  const mainland = data?.trafficDiagnostics?.buckets.mainland
-  const nonMainland = data?.trafficDiagnostics?.buckets.nonMainland
-  const unknown = data?.trafficDiagnostics?.buckets.unknown
-  const updated = lastUpdated
-    ? `${String(lastUpdated.getHours()).padStart(2, "0")}:${String(lastUpdated.getMinutes()).padStart(2, "0")}`
-    : null
-
-  return (
-    <VStack alignment="leading" spacing={12} frame={{ maxWidth: Infinity }}>
-      <HStack alignment="center">
-        <Text font="subheadline" fontWeight="semibold" foregroundStyle="label">本月出网流量</Text>
-        <Spacer />
-        <Text font="footnote" monospacedDigit foregroundStyle="secondaryLabel">
-          {loading ? "正在更新…" : updated ? `${data?.isCached ? "缓存 · " : ""}${updated} 更新` : "等待同步"}
-        </Text>
-      </HStack>
-      <HStack alignment="lastTextBaseline" spacing={4}>
-        <Text font={44} fontWeight="bold" monospacedDigit foregroundStyle="label" lineLimit={1} minScaleFactor={0.6}>
-          {data ? data.totalGB.toFixed(2) : "--"}
-        </Text>
-        <Text font="title3" fontWeight="semibold" foregroundStyle="secondaryLabel">GB</Text>
-        <Spacer />
-        <Text font="subheadline" monospacedDigit foregroundStyle="secondaryLabel">/ {thresholdGB} GB</Text>
-      </HStack>
-      <ProgressView
-        progressViewStyle="linear"
-        value={data ? Math.min(1, Math.max(0, data.percentage / 100)) : 0}
-        total={1}
-        tint={data && data.totalGB >= thresholdGB ? "systemOrange" : "systemBlue"}
-        frame={{ maxWidth: Infinity }}
-      />
-      <Divider />
-      <HStack alignment="top" spacing={0} frame={{ maxWidth: Infinity }}>
-        <VStack alignment="leading" spacing={2} frame={{ maxWidth: Infinity, alignment: "leading" }}>
-          <Text font="caption1" foregroundStyle="secondaryLabel">内地 · 参考 20 GB</Text>
-          <Text font="headline" monospacedDigit foregroundStyle="label">
-            {mainland ? mainland.totalGB.toFixed(2) : "--"} GB
-          </Text>
-        </VStack>
-        <VStack alignment="leading" spacing={2} frame={{ maxWidth: Infinity, alignment: "leading" }}>
-          <Text font="caption1" foregroundStyle="secondaryLabel">非内地 · 参考 200 GB</Text>
-          <Text font="headline" monospacedDigit foregroundStyle="label">
-            {nonMainland ? nonMainland.totalGB.toFixed(2) : "--"} GB
-          </Text>
-        </VStack>
-      </HStack>
-      {unknown && unknown.totalBytes > 0 ? (
-        <Text font="caption1" foregroundStyle="systemOrange">
-          另有 {unknown.totalGB.toFixed(2)} GB 地域未识别，未计入上述分项
-        </Text>
-      ) : null}
-    </VStack>
-  )
-}
-
-// ==================== 5. 设置配置面板视图 ====================
-
-function maskAccessKeyId(value: string): string {
-  const trimmed = value.trim()
-  if (!trimmed) return ""
-
-  const suffixLength = Math.min(4, Math.max(0, trimmed.length - 1))
-  const suffix = suffixLength > 0 ? trimmed.slice(-suffixLength) : ""
-  return `••••${suffix}`
-}
-
-/** Native Settings-style row: the whole row is tappable, value sits on the trailing edge. */
-function SettingsRow({
-  icon,
-  iconColor,
-  title,
-  detail,
-  detailColor = "secondaryLabel",
+function SettingsActionButton({
+  label,
   action,
   accessibilityLabel
 }: {
-  icon: string
-  iconColor: string
-  title: string
-  detail: string
-  detailColor?: string
+  label: string
   action: () => void
   accessibilityLabel: string
 }) {
   return (
-    <Button action={action} buttonStyle="plain" accessibilityLabel={accessibilityLabel} frame={{ maxWidth: Infinity }}>
-      <HStack alignment="center" spacing={12} padding={{ vertical: 2 }} frame={{ maxWidth: Infinity }}>
-        <IconTile systemName={icon} color={iconColor} size={29} />
-        <Text font="body" foregroundStyle="label" lineLimit={1}>{title}</Text>
-        <Spacer />
-        <Text font="body" foregroundStyle={detailColor} lineLimit={1} minScaleFactor={0.75}>{detail}</Text>
-        <Image systemName="chevron.right" font={13} fontWeight="semibold" foregroundStyle="tertiaryLabel" />
+    <Button action={action} buttonStyle="plain" accessibilityLabel={accessibilityLabel}>
+      <HStack spacing={3} padding={{ horizontal: 8, vertical: 6 }} alignment="center">
+        <Text font="caption1" bold foregroundStyle="systemBlue">
+          {label}
+        </Text>
+        <Image systemName="chevron.right" font={10} foregroundStyle="systemBlue" />
       </HStack>
     </Button>
-  )
-}
-
-/** Fallback grouped card for Scripting builds without List. */
-function SettingsCard({ children }: { children: any }) {
-  return (
-    <VStack spacing={0} frame={{ maxWidth: Infinity, alignment: "leading" }} {...dashboardSurface(12)}>
-      {children}
-    </VStack>
-  )
-}
-
-function SettingsCardRow({ children }: { children: any }) {
-  return <VStack padding={{ horizontal: 16, vertical: 9 }}>{children}</VStack>
-}
-
-function SettingsNotice({ kind, text }: { kind: "error" | "success"; text: string }) {
-  const color = kind === "error" ? "systemRed" : "systemGreen"
-  return (
-    <HStack alignment="top" spacing={8} padding={{ vertical: 2 }}>
-      <Image
-        systemName={kind === "error" ? "exclamationmark.triangle.fill" : "checkmark.circle.fill"}
-        font="subheadline"
-        foregroundStyle={color}
-      />
-      <Text font="subheadline" foregroundStyle="label" lineLimit={4} frame={{ maxWidth: Infinity, alignment: "leading" }}>
-        {text}
-      </Text>
-    </HStack>
   )
 }
 
 function SettingsView({
   currentConfig,
   onSave,
-  onCancel,
-  onDelete,
-  cancelable
+  onCancel
 }: {
   currentConfig: AppConfig
   onSave: (newConfig: AppConfig) => void
   onCancel: () => void
-  onDelete?: (id: string) => void
-  cancelable?: boolean
 }) {
   const [ak, setAk] = useState(currentConfig.accessKeyId || "")
   const [sk, setSk] = useState(currentConfig.accessKeySecret || "")
   const [region, setRegion] = useState(currentConfig.regionId || "cn-hongkong")
   const [ecsId, setEcsId] = useState(currentConfig.ecsInstanceId || "")
   const [threshold, setThreshold] = useState(String(currentConfig.trafficThresholdGB || 200))
-  const [cutoffReference, setCutoffReference] = useState(
-    String(currentConfig.vpsCutoffReferenceGB || DEFAULT_CONFIG.vpsCutoffReferenceGB)
-  )
+  const [cutoffReference, setCutoffReference] = useState(String(currentConfig.vpsCutoffReferenceGB || 195))
   const [errorNotice, setErrorNotice] = useState<string | null>(null)
   const [successNotice, setSuccessNotice] = useState<string | null>(null)
-  const [accountName, setAccountName] = useState(currentConfig.name || "")
-  const [site, setSite] = useState(currentConfig.site === "intl" ? "intl" : "cn")
-  const [accountId, setAccountId] = useState(currentConfig.id || "")
-  const [siteDrafts, setSiteDrafts] = useState<Record<string, any>>({})
 
   // 智能剪贴板识别与导入
   const handleSmartPaste = async () => {
@@ -1193,21 +825,15 @@ function SettingsView({
 
       if (count > 0) {
         setErrorNotice(null)
-        setSuccessNotice(`已从剪贴板识别并填入 ${count} 项配置`)
-        // 凭据已读入，立即清空剪贴板，避免 Secret 留在系统剪贴板被其他 App 读取。
-        try {
-          if (typeof Pasteboard !== "undefined" && (Pasteboard as any)?.setString) {
-            await (Pasteboard as any).setString("")
-          }
-        } catch {}
+        setSuccessNotice(`🎉 成功智能识别并填入 ${count} 项配置！`)
         if (typeof Dialog !== "undefined" && Dialog.alert) {
           await Dialog.alert({
             title: "识别成功",
-            message: `已填入 ${count} 项阿里云信息，剪贴板已清空。确认无误后点击保存。`
+            message: `已自动解析并填入 ${count} 项阿里云信息，确认无误后点击下方保存即可！`
           })
         }
       } else {
-        setErrorNotice("未能从剪贴板识别出阿里云凭据格式，请逐项点击下方条目手动填写。")
+        setErrorNotice("未能从剪贴板识别出阿里云凭据格式，请点击各输入项右侧按钮录入。")
       }
     } catch (err: any) {
       setErrorNotice("读取剪贴板失败: " + (err?.message || String(err)))
@@ -1220,37 +846,32 @@ function SettingsView({
     message: string,
     currentVal: string,
     placeholder: string,
-    onConfirm: (val: string) => void,
-    secret = false
+    onConfirm: (val: string) => void
   ) => {
     if (typeof Dialog !== "undefined" && Dialog.prompt) {
-      // Secrets are never echoed back; leaving the masked field empty keeps the saved value.
       const res = await Dialog.prompt({
         title,
         message,
-        defaultValue: secret ? "" : currentVal,
+        defaultValue: currentVal,
         placeholder,
-        obscureText: secret,
         confirmLabel: "确定",
         cancelLabel: "取消"
-      } as any)
-      if (res !== null && res !== undefined) {
-        const value = res.trim()
-        if (secret && !value) return
-        onConfirm(value)
+      })
+      if (res !== null) {
+        onConfirm(res.trim())
       }
     }
   }
 
   const REGION_PRESETS = [
-    { id: "cn-hongkong", label: "中国香港 (cn-hongkong)" },
-    { id: "cn-hangzhou", label: "华东1 杭州 (cn-hangzhou)" },
-    { id: "cn-shanghai", label: "华东2 上海 (cn-shanghai)" },
-    { id: "cn-beijing", label: "华北2 北京 (cn-beijing)" },
-    { id: "cn-shenzhen", label: "华南1 深圳 (cn-shenzhen)" },
-    { id: "ap-southeast-1", label: "新加坡 (ap-southeast-1)" },
-    { id: "ap-northeast-1", label: "日本东京 (ap-northeast-1)" },
-    { id: "us-west-1", label: "美国硅谷 (us-west-1)" }
+    { id: "cn-hongkong", label: "🇭🇰 中国香港 (cn-hongkong)" },
+    { id: "cn-hangzhou", label: "🇨🇳 华东1 杭州 (cn-hangzhou)" },
+    { id: "cn-shanghai", label: "🇨🇳 华东2 上海 (cn-shanghai)" },
+    { id: "cn-beijing", label: "🇨🇳 华北2 北京 (cn-beijing)" },
+    { id: "cn-shenzhen", label: "🇨🇳 华南1 深圳 (cn-shenzhen)" },
+    { id: "ap-southeast-1", label: "🇸🇬 新加坡 (ap-southeast-1)" },
+    { id: "ap-northeast-1", label: "🇯🇵 日本东京 (ap-northeast-1)" },
+    { id: "us-west-1", label: "🇺🇸 美国硅谷 (us-west-1)" }
   ]
 
   const handleSelectRegion = async () => {
@@ -1258,7 +879,7 @@ function SettingsView({
       const actions = REGION_PRESETS.map(item => ({
         label: `${item.label}${region === item.id ? " ✓" : ""}`
       }))
-      actions.push({ label: "其他地域…" })
+      actions.push({ label: "🌐 自定义输入其他地域..." })
 
       const idx = await Dialog.actionSheet({
         title: "选择 ECS 所在地域",
@@ -1279,86 +900,6 @@ function SettingsView({
     }
   }
 
-  // 切换站点 = 切换到另一个账号：当前表单存为草稿，载入目标站点已保存（或之前输入）的内容，
-  // 目标站点还没有账号时清空，让用户重新输入；切回来时原内容原样还原。
-  const applySite = (next: string) => {
-    if (next === site) return
-    const drafts = {
-      ...siteDrafts,
-      [site]: { ak, sk, region, ecsId, threshold, cutoffReference, accountName, accountId }
-    }
-    setSiteDrafts(drafts)
-    let target = drafts[next]
-    if (!target) {
-      const saved = loadAccountProfiles<AppConfig>(DEFAULT_CONFIG).find(item => (item.site === "intl" ? "intl" : "cn") === next)
-      target = saved
-        ? {
-            ak: saved.accessKeyId || "",
-            sk: saved.accessKeySecret || "",
-            region: saved.regionId || "cn-hongkong",
-            ecsId: saved.ecsInstanceId || "",
-            threshold: String(saved.trafficThresholdGB || DEFAULT_CONFIG.trafficThresholdGB),
-            cutoffReference: String(saved.vpsCutoffReferenceGB || DEFAULT_CONFIG.vpsCutoffReferenceGB),
-            accountName: saved.name || "",
-            accountId: saved.id || ""
-          }
-        : {
-            ak: "",
-            sk: "",
-            region: DEFAULT_CONFIG.regionId,
-            ecsId: "",
-            threshold: String(DEFAULT_CONFIG.trafficThresholdGB),
-            cutoffReference: String(DEFAULT_CONFIG.vpsCutoffReferenceGB),
-            accountName: "",
-            accountId: ""
-          }
-    }
-    setAk(target.ak)
-    setSk(target.sk)
-    setRegion(target.region)
-    setEcsId(target.ecsId)
-    setThreshold(target.threshold)
-    setCutoffReference(target.cutoffReference)
-    setAccountName(target.accountName)
-    setAccountId(target.accountId)
-    setSite(next)
-    setErrorNotice(null)
-    setSuccessNotice(null)
-  }
-
-  const handleSelectSite = async () => {
-    if (typeof Dialog === "undefined" || !Dialog.actionSheet) {
-      applySite(site === "intl" ? "cn" : "intl")
-      return
-    }
-    const idx = await Dialog.actionSheet({
-      title: "账号所属站点",
-      message: "国际站账号的账单接口走新加坡入口，选错会导致余额和账单查询失败。",
-      cancelButton: true,
-      actions: [
-        { label: `中国站 aliyun.com${site === "cn" ? " ✓" : ""}` },
-        { label: `国际站 alibabacloud.com${site === "intl" ? " ✓" : ""}` }
-      ]
-    })
-    if (idx === 0) applySite("cn")
-    else if (idx === 1) applySite("intl")
-  }
-
-  const handleDelete = async () => {
-    if (!onDelete || !accountId) return
-    const label = accountDisplayName({ name: accountName, site })
-    let confirmed = true
-    if (typeof Dialog !== "undefined" && Dialog.confirm) {
-      confirmed = await Dialog.confirm({
-        title: `删除账号「${label}」？`,
-        message: "只删除本机保存的凭据和设置，不影响阿里云账号本身。",
-        cancelLabel: "取消",
-        confirmLabel: "删除"
-      } as any)
-    }
-    if (confirmed) onDelete(accountId)
-  }
-
   const handleSave = () => {
     if (!ak.trim() || !sk.trim() || !ecsId.trim()) {
       setErrorNotice("请填写完整的 AccessKey ID、Secret 与 ECS 实例 ID！")
@@ -1366,12 +907,12 @@ function SettingsView({
     }
     const numThreshold = Number(threshold)
     if (!Number.isFinite(numThreshold) || numThreshold <= 0) {
-      setErrorNotice("月用量参考值必须是大于 0 的数字。")
+      setErrorNotice("流量阈值必须是大于 0 的数字。")
       return
     }
-    const numCutoffReference = Number(cutoffReference)
-    if (!Number.isFinite(numCutoffReference) || numCutoffReference <= 0) {
-      setErrorNotice("VPS 熔断参考线必须是大于 0 的数字。")
+    const numCutoff = Number(cutoffReference)
+    if (!Number.isFinite(numCutoff) || numCutoff <= 0 || numCutoff > numThreshold) {
+      setErrorNotice("VPS 参考线必须大于 0，且不能高于月流量额度。")
       return
     }
     const newCfg: AppConfig = {
@@ -1380,343 +921,374 @@ function SettingsView({
       regionId: region.trim() || "cn-hongkong",
       ecsInstanceId: ecsId.trim(),
       trafficThresholdGB: numThreshold,
-      vpsCutoffReferenceGB: numCutoffReference,
-      resetDayOfMonth: 1,
-      id: accountId || newAccountId(),
-      name: accountName.trim(),
-      site
+      vpsCutoffReferenceGB: numCutoff,
+      resetDayOfMonth: 1
     }
     saveConfigToStorage(newCfg)
     onSave(newCfg)
   }
 
-  const akRow = (
-    <SettingsRow
-      icon="key.fill"
-      iconColor="systemOrange"
-      title="AccessKey ID"
-      detail={ak ? maskAccessKeyId(ak) : "未设置"}
-      detailColor={ak ? "secondaryLabel" : "systemBlue"}
-      accessibilityLabel="设置 AccessKey ID"
-      action={() => promptField("设置 AccessKey ID", "请输入阿里云 AccessKey ID (LTAI 开头)", ak, "LTAI...", setAk)}
-    />
-  )
-  const skRow = (
-    <SettingsRow
-      icon="lock.fill"
-      iconColor="systemRed"
-      title="AccessKey Secret"
-      detail={sk ? "已设置" : "未设置"}
-      detailColor={sk ? "secondaryLabel" : "systemBlue"}
-      accessibilityLabel="设置 AccessKey Secret"
-      action={() => promptField("设置 AccessKey Secret", sk ? "已保存 Secret。输入新值将替换，留空则保持不变。" : "请输入阿里云 AccessKey Secret", sk, sk ? "留空保持不变" : "AccessKey Secret", setSk, true)}
-    />
-  )
-  const ecsRow = (
-    <SettingsRow
-      icon="server.rack"
-      iconColor="systemGreen"
-      title="实例 ID"
-      detail={ecsId || "未设置"}
-      detailColor={ecsId ? "secondaryLabel" : "systemBlue"}
-      accessibilityLabel="设置 ECS 实例 ID"
-      action={() => promptField("设置 ECS 实例 ID", "请输入要监控状态的 ECS 实例 ID", ecsId, "i-xxxxxxxxxxxx", setEcsId)}
-    />
-  )
-  const regionRow = (
-    <SettingsRow
-      icon="globe.asia.australia.fill"
-      iconColor="systemIndigo"
-      title="地域"
-      detail={region || "cn-hongkong"}
-      accessibilityLabel="设置 ECS 地域"
-      action={handleSelectRegion}
-    />
-  )
-  const thresholdRow = (
-    <SettingsRow
-      icon="speedometer"
-      iconColor="systemPurple"
-      title="月用量参考值"
-      detail={`${threshold || "200"} GB`}
-      accessibilityLabel="设置本地月用量参考值"
-      action={() => promptField("本地月用量参考值 (GB)", "仅作本地用量参考，不代表阿里云账号完整免费额度余额，也不会触发 ECS 操作", threshold, "200", setThreshold)}
-    />
-  )
-  const cutoffRow = (
-    <SettingsRow
-      icon="shield.lefthalf.filled"
-      iconColor="systemTeal"
-      title="VPS 熔断参考线"
-      detail={`${cutoffReference} GB`}
-      accessibilityLabel="设置 VPS 熔断参考线"
-      action={() => promptField("VPS 熔断参考线 (GB)", "按 VPS 脚本阈值手动填写；此值只用于手机告警，不会同步或关机", cutoffReference, cutoffReference, setCutoffReference)}
-    />
-  )
-  const nameRow = (
-    <SettingsRow
-      icon="person.crop.circle.fill"
-      iconColor="systemBlue"
-      title="账号名称"
-      detail={accountName || accountDisplayName({ site })}
-      detailColor={accountName ? "secondaryLabel" : "tertiaryLabel"}
-      accessibilityLabel="设置账号名称"
-      action={() => promptField("账号名称", "用于切换账号和小组件 Parameter，例如：国内、国外", accountName, site === "intl" ? "国外" : "国内", setAccountName)}
-    />
-  )
-  const siteRow = (
-    <SettingsRow
-      icon="building.columns.fill"
-      iconColor="systemTeal"
-      title="站点"
-      detail={siteLabel(site)}
-      accessibilityLabel="设置账号站点"
-      action={handleSelectSite}
-    />
-  )
-  const deleteRow = onDelete && accountId && loadAccountProfiles<AppConfig>(DEFAULT_CONFIG).some(item => item.id === accountId) ? (
-    <Button action={handleDelete} buttonStyle="plain" accessibilityLabel="删除此账号" frame={{ maxWidth: Infinity }}>
-      <Text font="body" foregroundStyle="systemRed" padding={{ vertical: 2 }} frame={{ maxWidth: Infinity, alignment: "center" }}>
-        删除此账号
-      </Text>
-    </Button>
-  ) : null
-  const pasteRow = (
-    <Button action={handleSmartPaste} buttonStyle="plain" accessibilityLabel="一键识别剪贴板" frame={{ maxWidth: Infinity }}>
-      <HStack alignment="center" spacing={12} padding={{ vertical: 2 }} frame={{ maxWidth: Infinity }}>
-        <IconTile systemName="doc.on.clipboard.fill" color="systemBlue" size={29} />
-        <Text font="body" foregroundStyle="systemBlue" frame={{ maxWidth: Infinity, alignment: "leading" }}>
-          从剪贴板识别凭据
-        </Text>
-      </HStack>
-    </Button>
-  )
-  const saveRow = (
-    <Button action={handleSave} buttonStyle="plain" accessibilityLabel="保存配置并返回控制台" frame={{ maxWidth: Infinity }}>
-      <Text font="body" fontWeight="semibold" foregroundStyle="systemBlue" padding={{ vertical: 2 }} frame={{ maxWidth: Infinity, alignment: "center" }}>
-        保存并返回
-      </Text>
-    </Button>
-  )
-  const versionFooter = (
-    <VStack alignment="center" spacing={2} frame={{ maxWidth: Infinity }}>
-      <Text font="footnote" foregroundStyle="secondaryLabel">阿里云 CDT 监控 v{APP_VERSION}</Text>
-      <Text font="caption1" foregroundStyle="tertiaryLabel">BSS 账单查询 · Build 2026.10.03</Text>
-    </VStack>
-  )
-  const footnote = (text: string) => <Text font="footnote" foregroundStyle="secondaryLabel">{text}</Text>
-  const toolbar = {
-    topBarLeading: cancelable ?? isConfigReady(currentConfig)
-      ? [
-          <Button key="settings-back" action={onCancel} accessibilityLabel="返回">
-            <Image systemName="chevron.backward" foregroundStyle="label" />
-          </Button>,
-        ]
-      : undefined,
-    topBarTrailing: [
-      <Button key="settings-save" action={handleSave} accessibilityLabel="保存配置">
-        <Text font="body" fontWeight="semibold" foregroundStyle="systemBlue">保存</Text>
-      </Button>,
-    ],
-  }
-
-  // Native grouped settings layout. The fallback below keeps the script
-  // usable on older Scripting builds that do not expose List.
-  if (typeof List !== "undefined") {
-    return (
-      <List
-        navigationTitle="参数配置"
-        navigationBarTitleDisplayMode="inline"
-        toolbar={toolbar}
+  return (
+    <ScrollView background="systemGray6" showsIndicators={false}>
+      <VStack
+        alignment="leading"
+        spacing={12}
+        padding={{ horizontal: 16, top: 12, bottom: 40 }}
       >
+        {/* 顶部导航标题栏 */}
+        <HStack alignment="center" padding={{ horizontal: 4, bottom: 4 }}>
+          {isConfigReady(currentConfig) ? (
+            <Button action={onCancel} buttonStyle="plain">
+              <HStack
+                spacing={5}
+                padding={{ horizontal: 12, vertical: 6 }}
+                background="rgba(142, 142, 147, 0.12)"
+                border={{ style: "rgba(142, 142, 147, 0.20)", width: 0.75 }}
+                clipShape={{ type: "capsule" }}
+                alignment="center"
+                {...liquidGlass(true)}
+              >
+                <Image systemName="chevron.backward" font={13} fontWeight="bold" foregroundStyle="systemBlue" />
+                <Text font="caption1" bold foregroundStyle="systemBlue">返回</Text>
+              </HStack>
+            </Button>
+          ) : (
+            <Spacer frame={{ width: 60 }} />
+          )}
+          <Spacer />
+          <Text font="headline" bold foregroundStyle="label">
+            参数配置
+          </Text>
+          <Spacer />
+          <Button action={handleSave} buttonStyle="plain">
+            <HStack
+              spacing={4}
+              padding={{ horizontal: 14, vertical: 6 }}
+              background="rgba(0, 122, 255, 0.12)"
+              border={{ style: "rgba(0, 122, 255, 0.28)", width: 0.75 }}
+              clipShape={{ type: "capsule" }}
+              alignment="center"
+              {...liquidGlass(true)}
+            >
+              <Text font="caption1" bold foregroundStyle="systemBlue">保存</Text>
+            </HStack>
+          </Button>
+        </HStack>
+
+        {/* 提示横幅 (统一使用 Apple 原生 SF Symbols 矢量图标) */}
         {errorNotice && (
-          <Section>
-            <SettingsNotice kind="error" text={errorNotice} />
-          </Section>
+          <HStack
+            alignment="top"
+            spacing={8}
+            padding={{ horizontal: 16, vertical: 12 }}
+            background="rgba(255, 59, 48, 0.10)"
+            border={{ style: "rgba(255, 59, 48, 0.25)", width: 0.75 }}
+            clipShape={{ type: "rect", cornerRadius: 16, style: "continuous" }}
+          >
+            <Image systemName="exclamationmark.triangle.fill" font={13} foregroundStyle="systemRed" />
+            <Text font="caption1" bold foregroundStyle="systemRed" lineLimit={3} frame={{ maxWidth: Infinity, alignment: "leading" }}>
+              {errorNotice}
+            </Text>
+          </HStack>
         )}
         {successNotice && (
-          <Section>
-            <SettingsNotice kind="success" text={successNotice} />
-          </Section>
+          <HStack
+            alignment="top"
+            spacing={8}
+            padding={{ horizontal: 16, vertical: 12 }}
+            background="rgba(52, 199, 89, 0.10)"
+            border={{ style: "rgba(52, 199, 89, 0.25)", width: 0.75 }}
+            clipShape={{ type: "rect", cornerRadius: 16, style: "continuous" }}
+          >
+            <Image systemName="checkmark.circle.fill" font={13} foregroundStyle="systemGreen" />
+            <Text font="caption1" bold foregroundStyle="systemGreen" lineLimit={3} frame={{ maxWidth: Infinity, alignment: "leading" }}>
+              {successNotice}
+            </Text>
+          </HStack>
         )}
 
-        <Section
-          header={<Text>账号</Text>}
-          footer={footnote("名称会显示在切换菜单和小组件上。编辑小组件时在 Parameter 填名称可固定显示该账号，填「全部」显示所有账号。")}
+        {/* Section 1: 快捷导入 */}
+        <HStack padding={{ leading: 8, bottom: 2 }} alignment="center">
+          <Text font={13} fontWeight="semibold" foregroundStyle="secondaryLabel">
+            快捷导入
+          </Text>
+        </HStack>
+        <VStack
+          background="systemBackground"
+          clipShape={{ type: "rect", cornerRadius: 20, style: "continuous" }}
+          shadow={{ color: "rgba(0, 0, 0, 0.04)", radius: 12, x: 0, y: 3 }}
+          spacing={0}
         >
-          {nameRow}
-          {siteRow}
-        </Section>
-
-        <Section footer={footnote("复制包含阿里云凭据的文本后轻点，自动填入可识别的 AK、SK、实例 ID 与地域。")}>
-          {pasteRow}
-        </Section>
-
-        <Section
-          header={<Text>阿里云访问凭据</Text>}
-          footer={footnote("凭据保存在 Scripting 本机 Storage，未做应用层加密，请使用最小权限 RAM 凭据。")}
-        >
-          {akRow}
-          {skRow}
-        </Section>
-
-        <Section
-          header={<Text>目标 ECS 实例</Text>}
-          footer={footnote("Region ID 必须与 ECS 实例所在的物理地域一致。")}
-        >
-          {ecsRow}
-          {regionRow}
-        </Section>
-
-        <Section
-          header={<Text>流量参考值</Text>}
-          footer={footnote("参考线仅用于本机展示和提醒，不代表阿里云账号完整免费额度，也不会控制 ECS。VPS 独立负责保活与熔断。")}
-        >
-          {thresholdRow}
-          {cutoffRow}
-        </Section>
-
-        {deleteRow && <Section>{deleteRow}</Section>}
-
-        <Section footer={versionFooter}>
-          {saveRow}
-        </Section>
-      </List>
-    )
-  }
-
-  return (
-    <ScrollView
-      background="systemGroupedBackground"
-      showsIndicators={false}
-      navigationTitle="参数配置"
-      navigationBarTitleDisplayMode="inline"
-      toolbar={toolbar}
-    >
-      <VStack alignment="leading" spacing={8} padding={{ horizontal: 16, top: 12, bottom: 40 }}>
-        {(errorNotice || successNotice) && (
-          <SettingsCard>
-            {errorNotice && <SettingsCardRow><SettingsNotice kind="error" text={errorNotice} /></SettingsCardRow>}
-            {successNotice && <SettingsCardRow><SettingsNotice kind="success" text={successNotice} /></SettingsCardRow>}
-          </SettingsCard>
-        )}
-
-        <DashboardSectionHeader title="账号" />
-        <SettingsCard>
-          <SettingsCardRow>{nameRow}</SettingsCardRow>
-          <Divider padding={{ leading: 57 }} />
-          <SettingsCardRow>{siteRow}</SettingsCardRow>
-        </SettingsCard>
-        <SectionFootnote>编辑小组件时在 Parameter 填账号名称可固定显示该账号，填「全部」显示所有账号。</SectionFootnote>
-
-        <SettingsCard>
-          <SettingsCardRow>{pasteRow}</SettingsCardRow>
-        </SettingsCard>
-        <SectionFootnote>复制包含阿里云凭据的文本后轻点，自动填入可识别的 AK、SK、实例 ID 与地域。</SectionFootnote>
-
-        <DashboardSectionHeader title="阿里云访问凭据" />
-        <SettingsCard>
-          <SettingsCardRow>{akRow}</SettingsCardRow>
-          <Divider padding={{ leading: 57 }} />
-          <SettingsCardRow>{skRow}</SettingsCardRow>
-        </SettingsCard>
-        <SectionFootnote>凭据保存在 Scripting 本机 Storage，未做应用层加密，请使用最小权限 RAM 凭据。</SectionFootnote>
-
-        <DashboardSectionHeader title="目标 ECS 实例" />
-        <SettingsCard>
-          <SettingsCardRow>{ecsRow}</SettingsCardRow>
-          <Divider padding={{ leading: 57 }} />
-          <SettingsCardRow>{regionRow}</SettingsCardRow>
-        </SettingsCard>
-        <SectionFootnote>Region ID 必须与 ECS 实例所在的物理地域一致。</SectionFootnote>
-
-        <DashboardSectionHeader title="流量参考值" />
-        <SettingsCard>
-          <SettingsCardRow>{thresholdRow}</SettingsCardRow>
-          <Divider padding={{ leading: 57 }} />
-          <SettingsCardRow>{cutoffRow}</SettingsCardRow>
-        </SettingsCard>
-        <SectionFootnote>参考线仅用于本机展示和提醒，不代表阿里云账号完整免费额度，也不会控制 ECS。VPS 独立负责保活与熔断。</SectionFootnote>
-
-        <VStack padding={{ top: 20 }} spacing={16}>
-          {deleteRow && (
-            <SettingsCard>
-              <SettingsCardRow>{deleteRow}</SettingsCardRow>
-            </SettingsCard>
-          )}
-          <SettingsCard>
-            <SettingsCardRow>{saveRow}</SettingsCardRow>
-          </SettingsCard>
+          <HStack padding={{ horizontal: 16, vertical: 12 }} alignment="center" spacing={12}>
+            <ZStack
+              frame={{ width: 36, height: 36 }}
+              background="rgba(0, 122, 255, 0.10)"
+              clipShape={{ type: "rect", cornerRadius: 9, style: "continuous" }}
+            >
+              <Image systemName="doc.on.clipboard" font={16} foregroundStyle="systemBlue" />
+            </ZStack>
+            <VStack alignment="leading" spacing={3} frame={{ maxWidth: Infinity, alignment: "leading" }}>
+              <Text font="subheadline" bold foregroundStyle="label">
+                智能剪贴板识别
+              </Text>
+              <Text font="caption2" foregroundStyle="secondaryLabel">
+                自动提取复制文本中的 AK、SK 与实例 ID
+              </Text>
+            </VStack>
+            <Button action={handleSmartPaste} buttonStyle="plain">
+              <HStack
+                padding={{ horizontal: 12, vertical: 6 }}
+                background="rgba(0, 122, 255, 0.10)"
+                border={{ style: "rgba(0, 122, 255, 0.25)", width: 0.75 }}
+                clipShape={{ type: "capsule" }}
+                spacing={5}
+                alignment="center"
+                {...liquidGlass(true)}
+              >
+                <Image systemName="sparkles" font={12} foregroundStyle="systemBlue" />
+                <Text font="caption1" bold foregroundStyle="systemBlue">一键识别</Text>
+              </HStack>
+            </Button>
+          </HStack>
         </VStack>
-        <VStack padding={{ top: 8 }}>{versionFooter}</VStack>
+        <Text font={12} foregroundStyle="secondaryLabel" padding={{ leading: 8, bottom: 4 }}>
+          复制包含阿里云凭据的文本后轻点此处，自动提取填入下方所有字段。
+        </Text>
+
+        {/* Section 2: 访问凭据 */}
+        <HStack padding={{ leading: 8, bottom: 2 }} alignment="center">
+          <Text font={13} fontWeight="semibold" foregroundStyle="secondaryLabel">
+            阿里云访问凭据
+          </Text>
+        </HStack>
+        <VStack
+          background="systemBackground"
+          clipShape={{ type: "rect", cornerRadius: 20, style: "continuous" }}
+          shadow={{ color: "rgba(0, 0, 0, 0.04)", radius: 12, x: 0, y: 3 }}
+          spacing={0}
+        >
+          {/* AccessKey ID */}
+          <HStack padding={{ horizontal: 16, vertical: 12 }} alignment="center" spacing={12}>
+            <ZStack
+              frame={{ width: 36, height: 36 }}
+              background="rgba(255, 149, 0, 0.10)"
+              clipShape={{ type: "rect", cornerRadius: 9, style: "continuous" }}
+            >
+              <Image systemName="key" font={16} foregroundStyle="systemOrange" />
+            </ZStack>
+            <VStack alignment="leading" spacing={3} frame={{ maxWidth: Infinity, alignment: "leading" }}>
+              <Text font="subheadline" bold foregroundStyle="label">
+                AccessKey ID
+              </Text>
+              <Text font="caption2" foregroundStyle={ak ? "secondaryLabel" : "systemBlue"} lineLimit={1}>
+                {ak ? ak : "轻点右侧设置 >"}
+              </Text>
+            </VStack>
+            <SettingsActionButton
+              label={ak ? "修改" : "设置"}
+              accessibilityLabel="设置 AccessKey ID"
+              action={() =>
+                promptField("设置 AccessKey ID", "请输入阿里云 AccessKey ID (LTAI 开头)", ak, "LTAI5xxxxxxxxxxx", setAk)
+              }
+            />
+          </HStack>
+
+          <Divider padding={{ leading: 64 }} />
+
+          {/* AccessKey Secret */}
+          <HStack padding={{ horizontal: 16, vertical: 12 }} alignment="center" spacing={12}>
+            <ZStack
+              frame={{ width: 36, height: 36 }}
+              background="rgba(255, 59, 48, 0.10)"
+              clipShape={{ type: "rect", cornerRadius: 9, style: "continuous" }}
+            >
+              <Image systemName="lock" font={16} foregroundStyle="systemRed" />
+            </ZStack>
+            <VStack alignment="leading" spacing={3} frame={{ maxWidth: Infinity, alignment: "leading" }}>
+              <Text font="subheadline" bold foregroundStyle="label">
+                AccessKey Secret
+              </Text>
+              <Text font="caption2" foregroundStyle={sk ? "systemGreen" : "systemBlue"} lineLimit={1}>
+                {sk ? "已设置" : "轻点右侧设置"}
+              </Text>
+            </VStack>
+            <SettingsActionButton
+              label={sk ? "修改" : "设置"}
+              accessibilityLabel="设置 AccessKey Secret"
+              action={() =>
+                promptField("设置 AccessKey Secret", "请输入阿里云 AccessKey Secret", sk, "您的 Secret Key", setSk)
+              }
+            />
+          </HStack>
+        </VStack>
+        <Text font={12} foregroundStyle="secondaryLabel" padding={{ leading: 8, bottom: 4 }}>
+          凭据仅加密存储于您 iPhone 本机的隔离沙盒内，绝不上云或外泄。
+        </Text>
+
+        {/* Section 3: 目标实例与地域 */}
+        <HStack padding={{ leading: 8, bottom: 2 }} alignment="center">
+          <Text font={13} fontWeight="semibold" foregroundStyle="secondaryLabel">
+            目标 ECS 实例
+          </Text>
+        </HStack>
+        <VStack
+          background="systemBackground"
+          clipShape={{ type: "rect", cornerRadius: 20, style: "continuous" }}
+          shadow={{ color: "rgba(0, 0, 0, 0.04)", radius: 12, x: 0, y: 3 }}
+          spacing={0}
+        >
+          {/* ECS 实例 ID */}
+          <HStack padding={{ horizontal: 16, vertical: 12 }} alignment="center" spacing={12}>
+            <ZStack
+              frame={{ width: 36, height: 36 }}
+              background="rgba(52, 199, 89, 0.10)"
+              clipShape={{ type: "rect", cornerRadius: 9, style: "continuous" }}
+            >
+              <Image systemName="server.rack" font={16} foregroundStyle="systemGreen" />
+            </ZStack>
+            <VStack alignment="leading" spacing={3} frame={{ maxWidth: Infinity, alignment: "leading" }}>
+              <Text font="subheadline" bold foregroundStyle="label">
+                ECS 实例 ID
+              </Text>
+              <Text font="caption2" foregroundStyle={ecsId ? "secondaryLabel" : "systemBlue"} lineLimit={1}>
+                {ecsId ? ecsId : "未设置 (如 i-j6c...)"}
+              </Text>
+            </VStack>
+            <SettingsActionButton
+              label={ecsId ? "修改" : "设置"}
+              accessibilityLabel="设置 ECS 实例 ID"
+              action={() =>
+                promptField("设置 ECS 实例 ID", "请输入您要控制的 ECS 实例 ID", ecsId, "i-xxxxxxxxxxxx", setEcsId)
+              }
+            />
+          </HStack>
+
+          <Divider padding={{ leading: 64 }} />
+
+          {/* ECS 地域 */}
+          <HStack padding={{ horizontal: 16, vertical: 12 }} alignment="center" spacing={12}>
+            <ZStack
+              frame={{ width: 36, height: 36 }}
+              background="rgba(88, 86, 214, 0.10)"
+              clipShape={{ type: "rect", cornerRadius: 9, style: "continuous" }}
+            >
+              <Image systemName="globe.asia.australia" font={16} foregroundStyle="systemIndigo" />
+            </ZStack>
+            <VStack alignment="leading" spacing={3} frame={{ maxWidth: Infinity, alignment: "leading" }}>
+              <Text font="subheadline" bold foregroundStyle="label">
+                ECS 所在地域
+              </Text>
+              <Text font="caption2" foregroundStyle="secondaryLabel">
+                {region || "cn-hongkong"}
+              </Text>
+            </VStack>
+            <SettingsActionButton
+              label="选择"
+              accessibilityLabel="设置 ECS 地域"
+              action={handleSelectRegion}
+            />
+          </HStack>
+        </VStack>
+        <Text font={12} foregroundStyle="secondaryLabel" padding={{ leading: 8, bottom: 4 }}>
+          确保 Region ID 与 ECS 实例所在的物理地域一致。
+        </Text>
+
+        {/* Section 4: 只读流量参考值 */}
+        <HStack padding={{ leading: 8, bottom: 2 }} alignment="center">
+          <Text font={13} fontWeight="semibold" foregroundStyle="secondaryLabel">
+            流量参考值
+          </Text>
+        </HStack>
+        <VStack
+          background="systemBackground"
+          clipShape={{ type: "rect", cornerRadius: 20, style: "continuous" }}
+          shadow={{ color: "rgba(0, 0, 0, 0.04)", radius: 12, x: 0, y: 3 }}
+          spacing={0}
+        >
+          <HStack padding={{ horizontal: 16, vertical: 12 }} alignment="center" spacing={12}>
+            <ZStack frame={{ width: 36, height: 36 }} background="rgba(175, 82, 222, 0.10)" clipShape={{ type: "rect", cornerRadius: 9, style: "continuous" }}>
+              <Image systemName="speedometer" font={16} foregroundStyle="systemPurple" />
+            </ZStack>
+            <VStack alignment="leading" spacing={3} frame={{ maxWidth: Infinity, alignment: "leading" }}>
+              <Text font="subheadline" bold foregroundStyle="label">月流量额度</Text>
+              <Text font="caption2" foregroundStyle="secondaryLabel">{threshold || "200"} GB / 月</Text>
+            </VStack>
+            <SettingsActionButton
+              label="修改"
+              accessibilityLabel="设置月流量额度"
+              action={() => promptField("月流量额度 (GB)", "用于显示月度用量和剩余流量", threshold, "200", setThreshold)}
+            />
+          </HStack>
+          <Divider padding={{ leading: 64 }} />
+          <HStack padding={{ horizontal: 16, vertical: 12 }} alignment="center" spacing={12}>
+            <ZStack frame={{ width: 36, height: 36 }} background="rgba(0, 199, 190, 0.10)" clipShape={{ type: "rect", cornerRadius: 9, style: "continuous" }}>
+              <Image systemName="shield.lefthalf.filled" font={16} foregroundStyle="systemTeal" />
+            </ZStack>
+            <VStack alignment="leading" spacing={3} frame={{ maxWidth: Infinity, alignment: "leading" }}>
+              <Text font="subheadline" bold foregroundStyle="label">VPS 参考线</Text>
+              <Text font="caption2" foregroundStyle="secondaryLabel">{cutoffReference || "195"} GB · 手机只读</Text>
+            </VStack>
+            <SettingsActionButton
+              label="修改"
+              accessibilityLabel="设置 VPS 参考线"
+              action={() => promptField("VPS 参考线 (GB)", "仅用于手机显示，不会控制或关闭 ECS", cutoffReference, "195", setCutoffReference)}
+            />
+          </HStack>
+        </VStack>
+        <Text font={12} foregroundStyle="secondaryLabel" padding={{ leading: 8, bottom: 16 }}>
+          VPS 独立负责熔断。手机端只读监控，参考线不会同步到 VPS。
+        </Text>
+
+        {/* 底部保存按钮 (Apple iOS 26 Liquid Glass Capsule) */}
+        <Button
+          action={handleSave}
+          buttonStyle="plain"
+          accessibilityLabel="保存配置并返回控制台"
+          frame={{ maxWidth: Infinity, height: 50 }}
+        >
+          <HStack
+            frame={{ maxWidth: Infinity, height: 50 }}
+            background="systemBlue"
+            border={{ style: "rgba(255, 255, 255, 0.35)", width: 1 }}
+            clipShape={{ type: "capsule" }}
+            shadow={{ color: "rgba(0, 122, 255, 0.32)", radius: 10, x: 0, y: 3 }}
+            alignment="center"
+            spacing={8}
+            {...liquidGlass(true)}
+          >
+            <Image systemName="checkmark.circle.fill" font={17} foregroundStyle="#FFFFFF" />
+            <Text font="headline" bold foregroundStyle="#FFFFFF">
+              保存并返回
+            </Text>
+          </HStack>
+        </Button>
+
+        {/* 版本号与构建信息 */}
+        <VStack alignment="center" spacing={4} padding={{ top: 16, bottom: 24 }}>
+          <HStack spacing={6} alignment="center">
+            <Image systemName="checkmark.shield.fill" font={12} foregroundStyle="systemGreen" />
+            <Text font={13} bold foregroundStyle="secondaryLabel">
+              阿里云 CDT 监控 v{APP_VERSION}
+            </Text>
+          </HStack>
+          <Text font={11} foregroundStyle="tertiaryLabel">
+            BSS 官方实时账单 · Build 2026.09.22
+          </Text>
+        </VStack>
       </VStack>
     </ScrollView>
   )
 }
 
-// ==================== 6. 控制台仪表盘主视图 ====================
+// ==================== 6. 控制台仪表盘主视图 (Apple iOS 26 Liquid Glass System) ====================
 
-function getCachedConsoleSnapshot(config: AppConfig): { data: ConsoleData | null; lastUpdated: Date | null } {
+function getCachedConsoleSnapshot(): { data: ConsoleData | null; lastUpdated: Date | null } {
   try {
     if (typeof Storage !== "undefined" && Storage?.get) {
-      // 先读本账号快照；旧版未分账号的键仍可兜底，readSnapshot 会校验账号指纹。
-      const scoped = Storage.get(scopedStorageKey(SNAPSHOT_STORAGE_KEY, config))
-      const raw = readSnapshot(scoped, config) ? scoped : Storage.get(SNAPSHOT_STORAGE_KEY)
+      const raw = Storage.get(SNAPSHOT_STORAGE_KEY)
       if (raw) {
-        const parsed = readSnapshot<ConsoleData>(raw, config)
-        if (!parsed) return { data: null, lastUpdated: null }
-        const now = new Date()
-        parsed.isCached = true
-        parsed.thresholdGB = config.trafficThresholdGB > 0 ? config.trafficThresholdGB : DEFAULT_CONFIG.trafficThresholdGB
-        parsed.vpsCutoffReferenceGB = config.vpsCutoffReferenceGB > 0 ? config.vpsCutoffReferenceGB : DEFAULT_CONFIG.vpsCutoffReferenceGB
-        parsed.cutoffRemainingGB = Math.max(0, Number((parsed.vpsCutoffReferenceGB - parsed.totalGB).toFixed(2)))
-        parsed.remainingGB = Math.max(0, Number((parsed.thresholdGB - parsed.totalGB).toFixed(2)))
-        parsed.percentage = usagePercentage(parsed.totalGB, parsed.thresholdGB)
-        const progress = chinaMonthProgress(now)
-        parsed.daysRemaining = progress.daysRemaining
-        parsed.monthTimeProgress = progress.monthTimeProgress
-        parsed.dailyBudgetGB = (parsed.remainingGB / parsed.daysRemaining).toFixed(2)
-        if (parsed.financialBillStatus !== "available") {
-          parsed.financialBillStatus = "unavailable"
-        }
-        if (parsed.previousFinancialBillStatus !== "available") {
-          parsed.previousFinancialBillStatus = "unavailable"
-        }
-        if (!Array.isArray(parsed.financialBillHistory)) {
-          parsed.financialBillHistory = []
-          if (parsed.financialBill?.billingCycle) {
-            parsed.financialBillHistory.push({
-              billingCycle: parsed.financialBill.billingCycle,
-              paymentAmount: parsed.financialBill.paymentAmount || "0.00",
-              currency: parsed.financialBill.currency || "CNY",
-              available: parsed.financialBillStatus === "available",
-              hasRecords: true,
-              paymentScope: parsed.financialBill.paymentScope
-            })
-          }
-          if (parsed.previousFinancialBill?.billingCycle) {
-            parsed.financialBillHistory.push({
-              billingCycle: parsed.previousFinancialBill.billingCycle,
-              paymentAmount: parsed.previousFinancialBill.paymentAmount || "0.00",
-              currency: parsed.previousFinancialBill.currency || "CNY",
-              available: parsed.previousFinancialBillStatus === "available",
-              hasRecords: true,
-              paymentScope: parsed.previousFinancialBill.paymentScope
-            })
-          }
-        } else {
-          parsed.financialBillHistory = parsed.financialBillHistory.map(item => ({
-            ...item,
-            available: item.available !== false,
-            hasRecords: item.hasRecords !== false
-          }))
-        }
-        for (const list of [parsed.financialBill?.ecsDailyList, parsed.financialBill?.eipDailyList]) {
-          for (const item of list || []) {
-            if (typeof item.available !== "boolean") item.available = false
-          }
-        }
-        const ts = parsed.updatedAt instanceof Date ? parsed.updatedAt : parsed.updatedAt ? new Date(parsed.updatedAt) : null
+        const parsed: ConsoleData = typeof raw === "string" ? JSON.parse(raw) : raw
+        const ts = parsed.updatedAt ? new Date(parsed.updatedAt) : null
         return { data: parsed, lastUpdated: ts }
       }
     }
@@ -1727,14 +1299,13 @@ function getCachedConsoleSnapshot(config: AppConfig): { data: ConsoleData | null
 function ConsoleView() {
   const [config, setConfig] = useState<AppConfig>(loadSavedConfig())
   const [showSettings, setShowSettings] = useState(!isConfigReady(config))
-  const [refreshGate] = useState(() => createRefreshGate())
-  const initialCache = getCachedConsoleSnapshot(config)
+  const initialCache = getCachedConsoleSnapshot()
   const [data, setData] = useState<ConsoleData | null>(initialCache.data)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(initialCache.lastUpdated)
   const [loading, setLoading] = useState(false)
+  const [actionLoading, setActionLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [logs, setLogs] = useState<Array<{ line: string; financial: boolean }>>([])
-  const financialBillPresentation = getMonthlyBillPresentation(data?.financialBill)
+  const [logs, setLogs] = useState<string[]>([])
   const [isPrivacy, setIsPrivacy] = useState<boolean>(() => {
     try {
       return typeof Storage !== "undefined" && Storage.get(PRIVACY_STORAGE_KEY) === "true"
@@ -1743,12 +1314,10 @@ function ConsoleView() {
     }
   })
   const [isCopied, setIsCopied] = useState(false)
-  const [accounts, setAccounts] = useState<AppConfig[]>(() => loadAccountProfiles<AppConfig>(DEFAULT_CONFIG))
-  const [editingNew, setEditingNew] = useState<AppConfig | null>(null)
 
-  const appendLog = (msg: string, financial: boolean = false) => {
+  const appendLog = (msg: string) => {
     const time = new Date().toLocaleTimeString()
-    setLogs(prev => [{ line: `[${time}] ${msg}`, financial }, ...prev.slice(0, 7)])
+    setLogs(prev => [`[${time}] ${msg}`, ...prev.slice(0, 7)])
   }
 
   const togglePrivacy = () => {
@@ -1779,51 +1348,6 @@ function ConsoleView() {
     } catch {}
   }
 
-  const handleShowBillHistory = async () => {
-    try {
-      if (typeof Haptic !== "undefined" && (Haptic as any)?.impact) {
-        ;(Haptic as any).impact("light")
-      }
-    } catch {}
-
-    const history = data?.financialBillHistory || []
-    const currentDate = new Date()
-    const currentCycle = chinaMonthKey(currentDate)
-    const previousCycle = chinaMonthKey(currentDate, -1)
-    const lines = history.map(item => {
-      const amount = !item.available
-        ? "查询不可用"
-        : item.hasRecords === false
-          ? "暂无记录"
-          : isPrivacy
-            ? "****"
-            : `${currencySymbol(item.currency)}${item.paymentAmount}`
-      const label = item.billingCycle === currentCycle
-        ? "本月累计"
-        : item.billingCycle === previousCycle
-          ? "上月账期"
-          : "历史账期"
-      const scope = item.available && item.hasRecords !== false
-        ? item.paymentScope === "allProducts"
-          ? " · 全部产品"
-          : item.paymentScope === "monitoredProducts"
-            ? " · 监控产品"
-            : " · 费用范围未标记"
-        : ""
-      return `${item.billingCycle}  ${label}：${amount}${scope}`
-    })
-
-    const message = [
-      lines.length > 0 ? lines.join("\n") : "暂无近期账单快照，请刷新后重试。",
-      "",
-      "金额来自阿里云 BSS 账期账单，不是银行卡或余额的实际扣款流水。本月数据可能延迟；已结束月份也可能尚未完成出账，以阿里云账单中心为准。"
-    ].join("\n")
-
-    if (typeof Dialog !== "undefined" && Dialog.alert) {
-      await Dialog.alert({ title: "近期账单", message })
-    }
-  }
-
   const handleShowEcsDaily = async () => {
     try {
       if (typeof Haptic !== "undefined" && (Haptic as any)?.impact) {
@@ -1832,45 +1356,33 @@ function ConsoleView() {
     } catch {}
 
     const list = data?.financialBill?.ecsDailyList || []
-    const total = data?.financialBillStatus === "unavailable"
-      ? "暂不可用"
-      : !data?.financialBill
-        ? "暂无记录"
-      : isPrivacy
-        ? "****"
-        : `${currencySymbol(data.financialBill.currency)}${data.financialBill.ecsAmount}`
+    const total = isPrivacy ? "****" : `¥${data?.financialBill?.ecsAmount || "0.00"}`
     const lines = list.map(item => {
-      const amt = item.available === false
-        ? "—"
-        : isPrivacy
-          ? "****"
-          : `${currencySymbol(data?.financialBill?.currency)}${item.amount}`
+      const amt = isPrivacy ? "****" : `¥${item.amount}`
       let tag = ""
-      if (item.available === false) {
-        tag = " (查询失败)"
-      } else if (item.isToday) {
-        tag = parseFloat(item.amount) > 0 ? " (今日查询结果)" : " (当前查询为0，非最终账单)"
+      if (item.isToday) {
+        tag = parseFloat(item.amount) > 0 ? " (今日计费中)" : " (今日计费中，次日出账)"
+      } else if (item.settled) {
+        tag = " (官方已出账)"
       } else {
-        tag = parseFloat(item.amount) > 0 ? " (查询到的费用)" : " (当前查询为0，非最终账单)"
+        tag = " (无费用)"
       }
-      return `${item.date}  ${amt}${tag}`
+      return `📅 ${item.date}: ${amt}${tag}`
     })
 
     const msg = [
-      `本月 ECS 产品账单查询结果: ${total}`,
-      "说明：按账号维度汇总 ECS 产品费用，非当前配置的单台实例费用。",
+      `ECS 实例 ID: ${config.ecsInstanceId}`,
+      `本月官方累计账单: ${total}`,
       "",
-      "【最近每日产品账单查询结果（可能延迟）】",
-      lines.length > 0 ? lines.join("\n") : "暂无每日产品账单数据",
+      "【官方每日实际账单】",
+      lines.length > 0 ? lines.join("\n") : "暂无每日明细数据",
       "",
-      data?.financialBillStatus === "unavailable"
-        ? "账单接口暂不可用，请检查 BSS 权限或稍后刷新。"
-        : "账单按产品分类汇总，不能归因到当前 ECS 实例；月内数据有延迟且仅供参考，最终金额以阿里云账单中心出账结果为准。"
+      "注：数据直接读取自阿里云账单中心（BSS OpenAPI），无任何人工估算。"
     ].join("\n")
 
     if (typeof Dialog !== "undefined" && Dialog.alert) {
       await Dialog.alert({
-        title: "ECS 费用明细",
+        title: "🖥️ ECS 实例每日费用明细",
         message: msg
       })
     }
@@ -1884,45 +1396,33 @@ function ConsoleView() {
     } catch {}
 
     const list = data?.financialBill?.eipDailyList || []
-    const total = data?.financialBillStatus === "unavailable"
-      ? "暂不可用"
-      : !data?.financialBill
-        ? "暂无记录"
-      : isPrivacy
-        ? "****"
-        : `${currencySymbol(data.financialBill.currency)}${data.financialBill.eipAmount}`
+    const total = isPrivacy ? "****" : `¥${data?.financialBill?.eipAmount || "0.00"}`
     const lines = list.map(item => {
-      const amt = item.available === false
-        ? "—"
-        : isPrivacy
-          ? "****"
-          : `${currencySymbol(data?.financialBill?.currency)}${item.amount}`
+      const amt = isPrivacy ? "****" : `¥${item.amount}`
       let tag = ""
-      if (item.available === false) {
-        tag = " (查询失败)"
-      } else if (item.isToday) {
-        tag = parseFloat(item.amount) > 0 ? " (今日查询结果)" : " (当前查询为0，非最终账单)"
+      if (item.isToday) {
+        tag = parseFloat(item.amount) > 0 ? " (今日计费中)" : " (今日计费中，次日出账)"
+      } else if (item.settled) {
+        tag = " (官方已出账)"
       } else {
-        tag = parseFloat(item.amount) > 0 ? " (查询到的费用)" : " (当前查询为0，非最终账单)"
+        tag = " (无费用)"
       }
-      return `${item.date}  ${amt}${tag}`
+      return `📅 ${item.date}: ${amt}${tag}`
     })
 
     const msg = [
-      `本月公网网络产品账单查询结果: ${total}`,
-      "说明：按账号维度汇总公网网络产品费用，非当前配置公网 IP 的单独费用。",
+      `公网 IP: ${data?.publicIp || "弹性公网 IP"}`,
+      `本月官方累计费用: ${total}`,
       "",
-      "【最近每日产品账单查询结果（可能延迟）】",
-      lines.length > 0 ? lines.join("\n") : "暂无每日产品账单数据",
+      "【官方每日实际账单】",
+      lines.length > 0 ? lines.join("\n") : "暂无每日明细数据",
       "",
-      data?.financialBillStatus === "unavailable"
-        ? "账单接口暂不可用，请检查 BSS 权限或稍后刷新。"
-        : "账单按产品分类汇总，不能归因到当前公网 IP；月内数据有延迟且仅供参考，最终金额以阿里云账单中心出账结果为准。"
+      "注：数据直接读取自阿里云账单中心（BSS OpenAPI），无任何人工估算。"
     ].join("\n")
 
     if (typeof Dialog !== "undefined" && Dialog.alert) {
       await Dialog.alert({
-        title: "公网网络费用明细",
+        title: "🌐 弹性 IP 每日费用明细",
         message: msg
       })
     }
@@ -1930,10 +1430,8 @@ function ConsoleView() {
 
   const loadData = useCallback(
     async (cfg: AppConfig = config) => {
-      const generation = refreshGate.start()
       if (!isConfigReady(cfg)) {
         setShowSettings(true)
-        setLoading(false)
         return
       }
       setLoading(true)
@@ -1941,151 +1439,136 @@ function ConsoleView() {
       try {
         appendLog("正在连接阿里云 OpenAPI...")
         const res = await fetchConsoleData(cfg)
-        if (!refreshGate.isCurrent(generation)) return
-        const sampledAt = res.updatedAt instanceof Date ? res.updatedAt : new Date(res.updatedAt || "")
-        assertSampleBillingMonth(sampledAt)
-        recordTrafficSample(cfg, res.totalGB, sampledAt)
-        res.isCached = false
         setData(res)
-        setLastUpdated(sampledAt)
+        const now = new Date()
+        setLastUpdated(now)
         try {
           if (typeof Storage !== "undefined" && Storage?.set) {
-Storage.set(scopedStorageKey(SNAPSHOT_STORAGE_KEY, cfg), JSON.stringify(createSnapshot(cfg, res)))
-            Storage.set(SNAPSHOT_STORAGE_KEY, JSON.stringify(createSnapshot(cfg, res)))
+            Storage.set(SNAPSHOT_STORAGE_KEY, JSON.stringify(res))
           }
         } catch {}
         appendLog(`CDT流量: ${res.totalGB} GB (${res.percentage}%)`)
         appendLog(`ECS 实例: ${res.ecsStatus} ${res.publicIp ? `(${res.publicIp})` : ""}`)
         if (res.financialBalance) {
-          appendLog(`账户余额: ${currencySymbol(res.financialBalance.currency)}${res.financialBalance.availableCashAmount}`, true)
+          appendLog(`账户余额: ¥${res.financialBalance.availableCashAmount}`)
         }
       } catch (err: any) {
-        if (!refreshGate.isCurrent(generation)) return
         const msg = humanizeAliyunError(err?.message || "网络请求失败，请检查配置")
         setErrorMessage(msg)
-        const cached = getCachedConsoleSnapshot(cfg)
-        setData(cached.data)
-        setLastUpdated(cached.lastUpdated)
         appendLog(`错误: ${msg}`)
       } finally {
-        if (refreshGate.isCurrent(generation)) setLoading(false)
+        setLoading(false)
       }
     },
-    [config, refreshGate]
+    [config]
   )
 
   useEffect(() => {
     if (isConfigReady(config)) {
       loadData(config)
     }
-    return () => refreshGate.invalidate()
   }, [])
 
+  const handleAction = async (type: "start" | "stop" | "reboot") => {
+    setActionLoading(true)
+    const actionName = type === "start" ? "开机启动" : type === "stop" ? "停止关机" : "重启实例"
+    appendLog(`正在下发 ${actionName} 指令...`)
+
+    // 乐观立即反馈：先在界面上把状态置为过渡态
+    const interimStatus = type === "stop" ? "Stopping" : "Starting"
+    setData(prev => (prev ? { ...prev, ecsStatus: interimStatus } : null))
+
+    try {
+      if (typeof Haptic !== "undefined" && (Haptic as any)?.impact) {
+        ;(Haptic as any).impact("medium")
+      }
+      await executeECSAction(type, config)
+      appendLog(`${actionName} 请求已受理，等待 ECS 状态机响应...`)
+
+      // 延迟 2.5 秒执行平滑二次同步，确保捕获状态机翻转
+      setTimeout(async () => {
+        try {
+          await loadData(config)
+        } catch {}
+      }, 2500)
+    } catch (err: any) {
+      if (typeof Haptic !== "undefined" && (Haptic as any)?.notification) {
+        ;(Haptic as any).notification("error")
+      }
+      const msg = humanizeAliyunError(err?.message || "操作失败")
+      setErrorMessage(msg)
+      appendLog(`${actionName} 失败: ${msg}`)
+      await loadData(config)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  // 二次确认关机弹窗防误触！
+  const confirmStop = async () => {
+    if (typeof Dialog !== "undefined" && Dialog.actionSheet) {
+      const selectedIndex = await Dialog.actionSheet({
+        title: "⚠️ 确认停止 ECS 实例？",
+        message: `实例 ID: ${config.ecsInstanceId}\n\n停止后服务器将立即断网下线，所有正在运行的网站与服务将暂停访问。确定关机吗？`,
+        cancelButton: true,
+        actions: [
+          {
+            label: "确认停止实例 (关机)",
+            destructive: true
+          }
+        ]
+      })
+      if (selectedIndex === 0) {
+        await handleAction("stop")
+      }
+    } else {
+      await handleAction("stop")
+    }
+  }
+
+  // 二次确认重启弹窗防误触！
+  const confirmReboot = async () => {
+    if (typeof Dialog !== "undefined" && Dialog.actionSheet) {
+      const selectedIndex = await Dialog.actionSheet({
+        title: "⚠️ 确认重启 ECS 实例？",
+        message: `实例 ID: ${config.ecsInstanceId}\n\n重启期间云服务器将短暂断开连接并在数十秒后自动恢复就绪。确定要立即重启吗？`,
+        cancelButton: true,
+        actions: [
+          {
+            label: "确认重启实例",
+            destructive: true
+          }
+        ]
+      })
+      if (selectedIndex === 0) {
+        await handleAction("reboot")
+      }
+    } else {
+      await handleAction("reboot")
+    }
+  }
+
   // 1. 如果正在打开设置页
-  const switchAccount = (next: AppConfig) => {
-    refreshGate.invalidate()
-    try {
-      if (typeof Storage !== "undefined" && Storage?.set) Storage.set(STORAGE_KEY, JSON.stringify(next))
-    } catch {}
-    const cached = getCachedConsoleSnapshot(next)
-    setEditingNew(null)
-    setConfig(next)
-    setData(cached.data)
-    setLastUpdated(cached.lastUpdated)
-    setErrorMessage(null)
-    setLogs([])
-    setIsCopied(false)
-    setShowSettings(false)
-    loadData(next)
-  }
-
-  const deleteAccount = (id: string) => {
-    const remaining = removeAccountProfile(loadAccountProfiles<AppConfig>(DEFAULT_CONFIG), id)
-    saveAccountProfiles(remaining)
-    setAccounts(remaining)
-    if (remaining.length > 0) {
-      switchAccount(remaining[0])
-      return
-    }
-    refreshGate.invalidate()
-    try {
-      if (typeof Storage !== "undefined" && Storage?.set) Storage.set(STORAGE_KEY, "")
-    } catch {}
-    setConfig({ ...DEFAULT_CONFIG })
-    setData(null)
-    setLastUpdated(null)
-    setErrorMessage(null)
-    setLogs([])
-    setEditingNew(null)
-    setShowSettings(true)
-  }
-
-  const startAddAccount = () => {
-    setEditingNew({ ...DEFAULT_CONFIG, id: newAccountId(), site: accounts.some(item => item.site === "intl") ? "cn" : "intl" })
-    setShowSettings(true)
-  }
-
-  // 账号切换：列出已保存账号，末尾提供「添加账号」。
-  const handleSwitchAccount = async () => {
-    const list = loadAccountProfiles<AppConfig>(DEFAULT_CONFIG)
-    setAccounts(list)
-    if (typeof Dialog === "undefined" || !Dialog.actionSheet) {
-      startAddAccount()
-      return
-    }
-    const actions = list.map((item, index) => ({
-      label: `${accountDisplayName(item, index)} · ${siteLabel(item.site)}${item.id === config.id ? " ✓" : ""}`
-    }))
-    actions.push({ label: "添加账号…" })
-    const idx = await Dialog.actionSheet({
-      title: "切换阿里云账号",
-      message: "小组件可在「编辑小组件 → Parameter」填账号名称固定显示，填「全部」同时显示所有账号。",
-      cancelButton: true,
-      actions
-    })
-    if (idx === null || idx === undefined || idx < 0) return
-    if (idx === list.length) {
-      startAddAccount()
-    } else if (list[idx] && list[idx].id !== config.id) {
-      switchAccount(list[idx])
-    }
-  }
-
   if (showSettings) {
     return (
       <NavigationStack>
         <SettingsView
-          key={(editingNew || config).id || "default"}
-          currentConfig={editingNew || config}
-          cancelable={editingNew ? isConfigReady(config) : undefined}
+          currentConfig={config}
           onSave={newCfg => {
-            refreshGate.invalidate()
-            const cached = getCachedConsoleSnapshot(newCfg)
-            setAccounts(loadAccountProfiles<AppConfig>(DEFAULT_CONFIG))
-            setEditingNew(null)
             setConfig(newCfg)
-            setData(cached.data)
-            setLastUpdated(cached.lastUpdated)
-            setErrorMessage(null)
-            setLogs([])
-            setIsCopied(false)
             setShowSettings(false)
             loadData(newCfg)
           }}
-          onDelete={editingNew || accounts.length === 0 ? undefined : deleteAccount}
-          onCancel={() => {
-            setEditingNew(null)
-            setShowSettings(!isConfigReady(config))
-          }}
+          onCancel={() => setShowSettings(false)}
         />
       </NavigationStack>
     )
   }
 
+  const isRunning = data?.ecsStatus === "Running"
   const isStarting = data?.ecsStatus === "Starting"
   const isStopping = data?.ecsStatus === "Stopping"
   const isTransitional = isStarting || isStopping
-  const isRunning = data?.ecsStatus === "Running"
   const isStopped = data?.ecsStatus === "Stopped"
 
   const statusColor = isRunning
@@ -2093,17 +1576,33 @@ Storage.set(scopedStorageKey(SNAPSHOT_STORAGE_KEY, cfg), JSON.stringify(createSn
     : isTransitional
       ? "systemOrange"
       : isStopped
-        ? "secondaryLabel"
+        ? "systemIndigo"
         : errorMessage && !data
           ? "systemRed"
           : "secondaryLabel"
 
-  const observedStatusLabel = loading && !data
+  const haloColor = isRunning
+    ? "rgba(52, 199, 89, 0.28)"
+    : isTransitional
+      ? "rgba(255, 159, 10, 0.30)"
+      : isStopped
+        ? "rgba(88, 86, 214, 0.30)"
+        : "rgba(142, 142, 147, 0.25)"
+
+  const capsuleBg = isRunning
+    ? "rgba(52, 199, 89, 0.10)"
+    : isTransitional
+      ? "rgba(255, 159, 10, 0.12)"
+      : isStopped
+        ? "rgba(88, 86, 214, 0.12)"
+        : "rgba(142, 142, 147, 0.12)"
+
+  const statusLabel = loading && !data
     ? "同步中"
     : data?.ecsStatus === "Running"
       ? "运行中"
       : data?.ecsStatus === "Stopped"
-        ? "已停止"
+        ? "节省停机中"
         : data?.ecsStatus === "Starting"
           ? "启动中"
           : data?.ecsStatus === "Stopping"
@@ -2113,7 +1612,6 @@ Storage.set(scopedStorageKey(SNAPSHOT_STORAGE_KEY, cfg), JSON.stringify(createSn
               : errorMessage
                 ? "同步失败"
                 : "等待同步"
-  const statusLabel = data?.isCached ? `${observedStatusLabel}（缓存）` : observedStatusLabel
   const publicIpLabel = loading
     ? "获取中..."
     : errorMessage && !data
@@ -2125,78 +1623,111 @@ Storage.set(scopedStorageKey(SNAPSHOT_STORAGE_KEY, cfg), JSON.stringify(createSn
   const logViewportHeight = Math.max(48, logCardHeight - 24)
 
   const now = new Date()
-  const monthTimeProgress = data?.monthTimeProgress ?? chinaMonthProgress(now).monthTimeProgress
-  const cutoffReferenceGB =
-    data?.vpsCutoffReferenceGB || config.vpsCutoffReferenceGB || DEFAULT_CONFIG.vpsCutoffReferenceGB
-  const cutoffRemainingGB = data?.cutoffRemainingGB ?? Math.max(0, cutoffReferenceGB - (data?.totalGB || 0))
-  const healthMeta = data
-    ? getTrafficHealthMeta(data.totalGB, cutoffReferenceGB, data.percentage, monthTimeProgress)
-    : null
+  const currentDay = now.getDate()
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  const monthTimeProgress = data?.monthTimeProgress ?? Math.min(100, Math.max(1, Number(((currentDay / lastDay) * 100).toFixed(1))))
+  const healthMeta = data ? getTrafficHealthMeta(data.percentage, monthTimeProgress) : null
 
-  // 2. 主控制台展示
+  // 2. 主控制台展示 (Apple iOS 26 Liquid Glass Architecture)
   return (
     <NavigationStack>
-      <ZStack
-        frame={{ maxWidth: Infinity, maxHeight: Infinity }}
-        navigationTitle={accounts.length > 1
-          ? accountDisplayName(config, Math.max(0, accounts.findIndex(item => item.id === config.id)))
-          : "阿里云 CDT"}
-        navigationBarTitleDisplayMode="large"
-        toolbarBackground="clear"
-        toolbarBackgroundVisibility={{ visibility: "hidden", bars: ["navigationBar"] }}
-        scrollEdgeEffectStyle={{ style: "soft", edges: "top" }}
-        toolbar={{
-          topBarLeading: [
-            <Button key="dashboard-accounts" action={handleSwitchAccount} accessibilityLabel="切换账号">
-              <Image systemName={accounts.length > 1 ? "person.2" : "person.crop.circle.badge.plus"} foregroundStyle="label" />
-            </Button>,
-          ],
-          topBarTrailing: [
-            <Button
-              key="dashboard-refresh"
-              action={() => loadData(config)}
-              disabled={loading}
-              accessibilityLabel="刷新数据"
-            >
-              <Image systemName="arrow.clockwise" foregroundStyle="label" />
-            </Button>,
-            <Button
-              key="dashboard-settings"
-              action={() => setShowSettings(true)}
-              accessibilityLabel="设置"
-            >
-              <Image systemName="gearshape" foregroundStyle="label" />
-            </Button>,
-          ],
-        }}
+      <ScrollView
+        background="systemGray6"
+        showsIndicators={false}
+        safeAreaPadding={{ bottom: true }}
       >
-        <ScrollView
-          background="systemGroupedBackground"
-          showsIndicators={false}
-          safeAreaPadding={{ bottom: true }}
+        <VStack
+          alignment="leading"
+          spacing={14}
+          padding={{ horizontal: 16, top: 12, bottom: 20 }}
         >
-          <VStack
-            alignment="leading"
-            spacing={8}
-            padding={{ horizontal: 16, top: 8, bottom: 20 }}
-          >
+          {/* 顶部标题与设置/刷新入口 */}
+          <HStack alignment="center" padding={{ horizontal: 4, bottom: 2 }}>
+            <HStack spacing={8} alignment="center">
+              <ZStack
+                frame={{ width: 34, height: 34 }}
+                background="rgba(0, 122, 255, 0.10)"
+                clipShape={{ type: "capsule" }}
+              >
+                <Image systemName="cloud.fill" font={16} foregroundStyle="systemBlue" />
+              </ZStack>
+              <VStack alignment="leading" spacing={1}>
+                <Text font="headline" bold foregroundStyle="label">
+                  阿里云 CDT 智控台
+                </Text>
+                <Text font={10} foregroundStyle="secondaryLabel">
+                  {loading
+                    ? "正在同步..."
+                    : lastUpdated
+                      ? `${String(lastUpdated.getHours()).padStart(2, "0")}:${String(lastUpdated.getMinutes()).padStart(2, "0")} 已同步`
+                      : "等待同步"}
+                </Text>
+              </VStack>
+            </HStack>
+            <Spacer />
+            <HStack spacing={8} alignment="center">
+              {/* 全局刷新按钮 */}
+              <Button
+                action={() => loadData(config)}
+                disabled={loading || actionLoading}
+                buttonStyle="plain"
+                accessibilityLabel="刷新数据"
+              >
+                <HStack
+                  spacing={4}
+                  padding={{ horizontal: 10, vertical: 6 }}
+                  background="rgba(0, 122, 255, 0.10)"
+                  border={{ style: "rgba(0, 122, 255, 0.25)", width: 0.75 }}
+                  clipShape={{ type: "capsule" }}
+                  alignment="center"
+                  {...liquidGlass(true)}
+                >
+                  <Image systemName="arrow.clockwise" font={12} foregroundStyle="systemBlue" />
+                  <Text font="caption1" bold foregroundStyle="systemBlue">
+                    {loading ? "同步中" : "刷新"}
+                  </Text>
+                </HStack>
+              </Button>
+              {/* 设置入口 */}
+              <Button
+                action={() => setShowSettings(true)}
+                buttonStyle="plain"
+                accessibilityLabel="设置"
+              >
+                <HStack
+                  spacing={4}
+                  padding={{ horizontal: 10, vertical: 6 }}
+                  background="rgba(0, 122, 255, 0.10)"
+                  border={{ style: "rgba(0, 122, 255, 0.25)", width: 0.75 }}
+                  clipShape={{ type: "capsule" }}
+                  alignment="center"
+                  {...liquidGlass(true)}
+                >
+                  <Image systemName="gearshape.fill" font={12} foregroundStyle="systemBlue" />
+                  <Text font="caption1" bold foregroundStyle="systemBlue">设置</Text>
+                </HStack>
+              </Button>
+            </HStack>
+          </HStack>
 
           {errorMessage && (
             <HStack
               alignment="top"
-              spacing={10}
+              spacing={8}
               padding={{ horizontal: 16, vertical: 12 }}
-              frame={{ maxWidth: Infinity, alignment: "leading" }}
-              {...dashboardSurface(16)}
+              background="rgba(255, 59, 48, 0.10)"
+              border={{ style: "rgba(255, 59, 48, 0.25)", width: 0.75 }}
+              clipShape={{ type: "rect", cornerRadius: 16, style: "continuous" }}
             >
               <Image
                 systemName="exclamationmark.triangle.fill"
-                font={15}
+                font={13}
                 foregroundStyle="systemRed"
               />
               <Text
-                font="subheadline"
-                foregroundStyle="label"
+                font="caption1"
+                bold
+                foregroundStyle="systemRed"
                 lineLimit={3}
                 frame={{ maxWidth: Infinity, alignment: "leading" }}
               >
@@ -2205,471 +1736,1169 @@ Storage.set(scopedStorageKey(SNAPSHOT_STORAGE_KEY, cfg), JSON.stringify(createSn
             </HStack>
           )}
 
-          <VStack
-            spacing={0}
-            padding={{ horizontal: 18, vertical: 16 }}
-            frame={{ maxWidth: Infinity, alignment: "leading" }}
-            {...dashboardSurface(22)}
-          >
-            <MonthlyTrafficOverview
-              data={data}
-              thresholdGB={config.trafficThresholdGB}
-              lastUpdated={lastUpdated}
-              loading={loading}
-            />
-          </VStack>
-
           {/* Section 1: ECS 实例状态 */}
-          <DashboardSectionHeader title="实例" detail={config.regionId} />
+          <HStack padding={{ leading: 8, bottom: 2 }} alignment="center">
+            <Text font={13} fontWeight="semibold" foregroundStyle="secondaryLabel">
+              实例运行状态
+            </Text>
+            <Spacer />
+            <Text font={12} foregroundStyle="secondaryLabel">
+              {config.regionId}
+            </Text>
+          </HStack>
 
           {/* 内容容器：纯白不透明（HIG 分层法则，卡片严禁玻璃叠玻璃） */}
-          <VStack spacing={0} frame={{ maxWidth: Infinity, alignment: "leading" }} {...dashboardSurface()}>
+          <VStack
+            background="systemBackground"
+            clipShape={{ type: "rect", cornerRadius: 20, style: "continuous" }}
+            shadow={{ color: "rgba(0, 0, 0, 0.04)", radius: 12, x: 0, y: 3 }}
+            spacing={0}
+            frame={{ maxWidth: Infinity, alignment: "leading" }}
+          >
             {/* 实例信息行 */}
-            <HStack padding={{ horizontal: 16, vertical: 11 }} alignment="center" spacing={12}>
-              <IconTile systemName="server.rack" color="systemGreen" />
-              <VStack alignment="leading" spacing={2} frame={{ maxWidth: Infinity, alignment: "leading" }}>
-                <Text font="body" foregroundStyle="label">
+            <HStack padding={{ horizontal: 16, vertical: 14 }} alignment="center" spacing={12}>
+              <ZStack
+                frame={{ width: 36, height: 36 }}
+                background="rgba(52, 199, 89, 0.10)"
+                clipShape={{ type: "rect", cornerRadius: 9, style: "continuous" }}
+              >
+                <Image
+                  systemName="server.rack"
+                  font={16}
+                  foregroundStyle="systemGreen"
+                />
+              </ZStack>
+              <VStack alignment="leading" spacing={3} frame={{ maxWidth: Infinity, alignment: "leading" }}>
+                <Text font="subheadline" bold foregroundStyle="label">
                   ECS 云服务器
                 </Text>
-                <Text font="footnote" foregroundStyle="secondaryLabel" lineLimit={1}>
+                <Text font="caption2" foregroundStyle="secondaryLabel" lineLimit={1}>
                   {config.ecsInstanceId}
                 </Text>
               </VStack>
-              <HStack spacing={6} alignment="center">
-                <Circle fill={statusColor} frame={{ width: 8, height: 8 }} />
-                <Text font="subheadline" foregroundStyle="secondaryLabel">
+              {/* 运行状态胶囊 (双层呼吸微光雷达波纹发光圆点 + 动态语义色彩) */}
+              <HStack
+                padding={{ horizontal: 10, vertical: 5 }}
+                background={capsuleBg}
+                clipShape={{ type: "capsule" }}
+                spacing={6}
+                alignment="center"
+              >
+                <ZStack frame={{ width: 14, height: 14 }} alignment="center">
+                  <Circle fill={haloColor} frame={{ width: 14, height: 14 }} />
+                  <Circle fill={statusColor} frame={{ width: 7, height: 7 }} />
+                </ZStack>
+                <Text font={12} bold foregroundStyle={statusColor}>
                   {statusLabel}
                 </Text>
               </HStack>
             </HStack>
 
-            <Divider padding={{ leading: 58 }} />
+            <Divider padding={{ leading: 64 }} />
 
-            {/* IP 行：轻触复制 */}
+            {/* IP与地域行 (支持点击一键复制与触感反馈) */}
             <Button
               action={handleCopyIp}
               buttonStyle="plain"
               accessibilityLabel="复制公网 IP 地址"
             >
-              <HStack padding={{ horizontal: 16, vertical: 11 }} alignment="center" spacing={12}>
-                <IconTile systemName={isCopied ? "checkmark" : "network"} color={isCopied ? "systemGreen" : "systemBlue"} />
-                <VStack alignment="leading" spacing={2} frame={{ maxWidth: Infinity, alignment: "leading" }}>
-                  <Text font="body" foregroundStyle="label">
+              <HStack padding={{ horizontal: 16, vertical: 14 }} alignment="center" spacing={12}>
+                <ZStack
+                  frame={{ width: 36, height: 36 }}
+                  background="rgba(0, 122, 255, 0.10)"
+                  clipShape={{ type: "rect", cornerRadius: 9, style: "continuous" }}
+                >
+                  <Image
+                    systemName={isCopied ? "checkmark" : "network"}
+                    font={16}
+                    foregroundStyle={isCopied ? "systemGreen" : "systemBlue"}
+                  />
+                </ZStack>
+                <VStack alignment="leading" spacing={3} frame={{ maxWidth: Infinity, alignment: "leading" }}>
+                  <Text font="subheadline" bold foregroundStyle="label">
                     公网 IP 地址
                   </Text>
-                  <Text font="footnote" monospacedDigit foregroundStyle={isCopied ? "systemGreen" : publicIpColor === "systemBlue" ? "secondaryLabel" : publicIpColor} lineLimit={1}>
-                    {isCopied ? "已复制到剪贴板" : publicIpLabel}
+                  <Text font="caption2" foregroundStyle={isCopied ? "systemGreen" : publicIpColor} lineLimit={1}>
+                    {isCopied ? "已复制到剪贴板 ✓" : publicIpLabel}
                   </Text>
                 </VStack>
-                <Image
-                  systemName={isCopied ? "checkmark.circle.fill" : "doc.on.doc"}
-                  font={15}
-                  foregroundStyle={isCopied ? "systemGreen" : "systemBlue"}
-                />
+                <HStack
+                  spacing={4}
+                  padding={{ horizontal: 8, vertical: 4 }}
+                  background={isCopied ? "rgba(52, 199, 89, 0.12)" : "rgba(142, 142, 147, 0.10)"}
+                  clipShape={{ type: "capsule" }}
+                  alignment="center"
+                >
+                  <Image
+                    systemName={isCopied ? "checkmark" : "doc.on.doc"}
+                    font={11}
+                    foregroundStyle={isCopied ? "systemGreen" : "secondaryLabel"}
+                  />
+                  <Text font={11} bold foregroundStyle={isCopied ? "systemGreen" : "secondaryLabel"}>
+                    {isCopied ? "已复制" : "复制"}
+                  </Text>
+                </HStack>
               </HStack>
             </Button>
+
+            <Divider padding={{ horizontal: 16 }} />
+
+            {/* 开关机与重启控制按钮行 (Apple iOS 26 Liquid Glass Capsules 三核控制) */}
+            <HStack
+              spacing={8}
+              padding={{ horizontal: 16, vertical: 14 }}
+              frame={{ maxWidth: Infinity, alignment: "center" }}
+            >
+              {/* 停止实例按钮 */}
+              <Button
+                action={confirmStop}
+                disabled={!isRunning || actionLoading}
+                buttonStyle="plain"
+                accessibilityLabel={actionLoading ? "正在停止实例" : "停止实例"}
+                frame={{
+                  maxWidth: Infinity,
+                  minHeight: 44,
+                  idealHeight: 44,
+                  alignment: "center"
+                }}
+              >
+                <HStack
+                  spacing={5}
+                  alignment="center"
+                  frame={{
+                    maxWidth: Infinity,
+                    minHeight: 44,
+                    idealHeight: 44,
+                    alignment: "center"
+                  }}
+                  background={isRunning && !actionLoading ? "rgba(255, 59, 48, 0.09)" : "systemGray6"}
+                  border={
+                    isRunning && !actionLoading
+                      ? { style: "rgba(255, 59, 48, 0.25)", width: 0.75 }
+                      : { style: "systemGray4", width: 0.75 }
+                  }
+                  clipShape={{ type: "capsule" }}
+                  shadow={
+                    isRunning && !actionLoading
+                      ? { color: "rgba(255, 59, 48, 0.15)", radius: 6, x: 0, y: 2 }
+                      : undefined
+                  }
+                  {...(isRunning && !actionLoading ? liquidGlass(true) : {})}
+                >
+                  <Image
+                    systemName="power"
+                    font={13}
+                    fontWeight="bold"
+                    foregroundStyle={isRunning && !actionLoading ? "systemRed" : "secondaryLabel"}
+                  />
+                  <Text
+                    font={13}
+                    bold={isRunning && !actionLoading}
+                    foregroundStyle={isRunning && !actionLoading ? "systemRed" : "secondaryLabel"}
+                    lineLimit={1}
+                  >
+                    停止
+                  </Text>
+                </HStack>
+              </Button>
+
+              {/* 重启实例按钮 */}
+              <Button
+                action={confirmReboot}
+                disabled={!isRunning || actionLoading}
+                buttonStyle="plain"
+                accessibilityLabel={actionLoading ? "正在重启实例" : "重启实例"}
+                frame={{
+                  maxWidth: Infinity,
+                  minHeight: 44,
+                  idealHeight: 44,
+                  alignment: "center"
+                }}
+              >
+                <HStack
+                  spacing={5}
+                  alignment="center"
+                  frame={{
+                    maxWidth: Infinity,
+                    minHeight: 44,
+                    idealHeight: 44,
+                    alignment: "center"
+                  }}
+                  background={isRunning && !actionLoading ? "rgba(255, 149, 0, 0.10)" : "systemGray6"}
+                  border={
+                    isRunning && !actionLoading
+                      ? { style: "rgba(255, 149, 0, 0.28)", width: 0.75 }
+                      : { style: "systemGray4", width: 0.75 }
+                  }
+                  clipShape={{ type: "capsule" }}
+                  shadow={
+                    isRunning && !actionLoading
+                      ? { color: "rgba(255, 149, 0, 0.16)", radius: 6, x: 0, y: 2 }
+                      : undefined
+                  }
+                  {...(isRunning && !actionLoading ? liquidGlass(true) : {})}
+                >
+                  <Image
+                    systemName="arrow.triangle.2.circlepath"
+                    font={13}
+                    fontWeight="bold"
+                    foregroundStyle={isRunning && !actionLoading ? "systemOrange" : "secondaryLabel"}
+                  />
+                  <Text
+                    font={13}
+                    bold={isRunning && !actionLoading}
+                    foregroundStyle={isRunning && !actionLoading ? "systemOrange" : "secondaryLabel"}
+                    lineLimit={1}
+                  >
+                    重启
+                  </Text>
+                </HStack>
+              </Button>
+
+              {/* 启动实例按钮 */}
+              <Button
+                action={() => handleAction("start")}
+                disabled={isRunning || actionLoading}
+                buttonStyle="plain"
+                accessibilityLabel={actionLoading ? "正在启动实例" : "启动实例"}
+                frame={{
+                  maxWidth: Infinity,
+                  minHeight: 44,
+                  idealHeight: 44,
+                  alignment: "center"
+                }}
+              >
+                <HStack
+                  spacing={5}
+                  alignment="center"
+                  frame={{
+                    maxWidth: Infinity,
+                    minHeight: 44,
+                    idealHeight: 44,
+                    alignment: "center"
+                  }}
+                  background={!isRunning && !actionLoading ? "rgba(52, 199, 89, 0.12)" : "systemGray6"}
+                  border={
+                    !isRunning && !actionLoading
+                      ? { style: "rgba(52, 199, 89, 0.28)", width: 0.75 }
+                      : { style: "systemGray4", width: 0.75 }
+                  }
+                  clipShape={{ type: "capsule" }}
+                  shadow={
+                    !isRunning && !actionLoading
+                      ? { color: "rgba(52, 199, 89, 0.16)", radius: 6, x: 0, y: 2 }
+                      : undefined
+                  }
+                  {...(!isRunning && !actionLoading ? liquidGlass(true) : {})}
+                >
+                  <Image
+                    systemName="play"
+                    font={13}
+                    fontWeight="bold"
+                    foregroundStyle={!isRunning && !actionLoading ? "systemGreen" : "secondaryLabel"}
+                  />
+                  <Text
+                    font={13}
+                    bold={!isRunning && !actionLoading}
+                    foregroundStyle={!isRunning && !actionLoading ? "systemGreen" : "secondaryLabel"}
+                    lineLimit={1}
+                  >
+                    启动
+                  </Text>
+                </HStack>
+              </Button>
+            </HStack>
           </VStack>
-          <SectionFootnote>
-            状态来自阿里云只读查询；开关机与熔断由 VPS 脚本独立负责。
-          </SectionFootnote>
+          <Text font={12} foregroundStyle="secondaryLabel" padding={{ leading: 8, bottom: 4 }}>
+            为防误触，停止与重启实例均需通过二次确认弹窗执行。
+          </Text>
 
           {/* Section 2: 账户资产与实时费用 (Apple Wallet HIG Card) */}
-          {data && (
+          {data?.financialBalance && (
             <>
-              <DashboardSectionHeader
-                title="账户与费用"
-                trailing={
-                  <Button action={togglePrivacy} buttonStyle="plain" accessibilityLabel={isPrivacy ? "显示金额" : "隐藏金额"}>
-                    <HStack spacing={4} alignment="center">
-                      <Image systemName={isPrivacy ? "eye.slash" : "eye"} font={13} foregroundStyle="systemBlue" />
-                      <Text font="footnote" foregroundStyle="systemBlue">
-                        {isPrivacy ? "显示" : "隐藏"}
-                      </Text>
-                    </HStack>
-                  </Button>
-                }
-              />
+              <HStack padding={{ leading: 8, bottom: 2 }} alignment="center">
+                <Text font={13} fontWeight="semibold" foregroundStyle="secondaryLabel">
+                  账户资产与费用
+                </Text>
+                <Spacer />
+                <Button action={togglePrivacy} buttonStyle="plain" accessibilityLabel={isPrivacy ? "显示金额" : "隐藏金额"}>
+                  <HStack spacing={4} alignment="center">
+                    <Image
+                      systemName={isPrivacy ? "eye.slash.fill" : "eye.fill"}
+                      font={12}
+                      foregroundStyle="secondaryLabel"
+                    />
+                    <Text font={11} foregroundStyle="secondaryLabel">
+                      {isPrivacy ? "已隐藏" : "明细"}
+                    </Text>
+                  </HStack>
+                </Button>
+              </HStack>
 
-              <VStack spacing={0} frame={{ maxWidth: Infinity, alignment: "leading" }} {...dashboardSurface()}>
-                <HStack padding={{ horizontal: 16, vertical: 14 }} alignment="top">
+              <VStack
+                background="systemBackground"
+                clipShape={{ type: "rect", cornerRadius: 20, style: "continuous" }}
+                shadow={{ color: "rgba(0, 0, 0, 0.04)", radius: 12, x: 0, y: 3 }}
+                spacing={0}
+                frame={{ maxWidth: Infinity, alignment: "leading" }}
+              >
+                <HStack padding={{ horizontal: 16, vertical: 14 }} alignment="center">
                   {/* 可用现金余额 */}
-                  <Button
-                    action={handleShowBillHistory}
-                    buttonStyle="plain"
-                    accessibilityLabel="查看最近四个月的账期费用"
-                    frame={{ maxWidth: Infinity }}
-                  >
-                    <VStack alignment="leading" spacing={4} frame={{ maxWidth: Infinity, alignment: "leading" }}>
-                      <HStack alignment="center" spacing={4}>
-                        <Text font="footnote" foregroundStyle="secondaryLabel">
-                          账户现金余额
-                        </Text>
-                        <Image systemName="chevron.right" font={9} foregroundStyle="tertiaryLabel" />
-                      </HStack>
-                      {data.financialBalance ? (
-                        <>
-                          <HStack alignment="lastTextBaseline" spacing={3}>
-                            <Text font="headline" foregroundStyle={data.financialBalance.status === "arrears" ? "systemRed" : "label"}>
-                              {currencySymbol(data.financialBalance.currency)}
-                            </Text>
-                            <Text font={26} fontWeight="bold" monospacedDigit foregroundStyle={data.financialBalance.status === "arrears" ? "systemRed" : "label"} lineLimit={1} minScaleFactor={0.65}>
-                              {isPrivacy ? "****" : data.financialBalance.availableCashAmount}
-                            </Text>
-                          </HStack>
-                          <HStack spacing={4} alignment="center">
-                            <Circle
-                              fill={
-                                data.financialBalance.status === "sufficient"
-                                  ? "systemGreen"
-                                  : data.financialBalance.status === "low"
-                                    ? "systemOrange"
-                                    : "systemRed"
-                              }
-                              frame={{ width: 6, height: 6 }}
-                            />
-                            <Text
-                              font="caption1"
-                              foregroundStyle={
-                                data.financialBalance.status === "sufficient"
-                                  ? "systemGreen"
-                                  : data.financialBalance.status === "low"
-                                    ? "systemOrange"
-                                    : "systemRed"
-                              }
-                            >
-                              {data.financialBalance.status === "sufficient"
-                                ? "资金充足"
-                                : data.financialBalance.status === "low"
-                                  ? "余额偏低"
-                                  : "已欠费"}
-                            </Text>
-                          </HStack>
-                        </>
-                      ) : (
-                        <>
-                          <Text font={26} fontWeight="bold" monospacedDigit foregroundStyle="secondaryLabel">
-                            不可用
-                          </Text>
-                          <Text font="caption1" foregroundStyle="systemOrange">
-                            余额查询不可用
-                          </Text>
-                        </>
-                      )}
-                    </VStack>
-                  </Button>
-                  <Divider frame={{ height: 56 }} />
-
-                  {/* 当月账单查询结果 */}
-                  <VStack alignment="leading" spacing={4} padding={{ leading: 16 }} frame={{ maxWidth: Infinity }}>
-                    <Text font="footnote" foregroundStyle="secondaryLabel">
-                      {financialBillPresentation.label}
+                  <VStack alignment="leading" spacing={4} frame={{ maxWidth: Infinity }}>
+                    <Text font={12} foregroundStyle="secondaryLabel">
+                      账户现金余额
                     </Text>
                     <HStack alignment="lastTextBaseline" spacing={3}>
-                      {data.financialBillStatus === "available" && data.financialBill && (
-                        <Text font="headline" foregroundStyle="label">
-                          {currencySymbol(data.financialBill.currency)}
-                        </Text>
-                      )}
-                      <Text font={26} fontWeight="bold" monospacedDigit foregroundStyle="label">
-                        {data.financialBillStatus === "unavailable"
-                          ? "不可用"
-                          : !data.financialBill
-                            ? "暂无记录"
-                            : isPrivacy
-                              ? "****"
-                              : data.financialBill.paymentAmount}
+                      <Text font={14} bold foregroundStyle={data.financialBalance.status === "arrears" ? "systemRed" : "label"}>
+                        {data.financialBalance.currency === "USD" ? "$" : "¥"}
+                      </Text>
+                      <Text font={22} bold foregroundStyle={data.financialBalance.status === "arrears" ? "systemRed" : "label"}>
+                        {isPrivacy ? "****" : data.financialBalance.availableCashAmount}
+                      </Text>
+                    </HStack>
+                    <HStack spacing={4} alignment="center">
+                      <Circle
+                        fill={
+                          data.financialBalance.status === "sufficient"
+                            ? "systemGreen"
+                            : data.financialBalance.status === "low"
+                              ? "systemOrange"
+                              : "systemRed"
+                        }
+                        frame={{ width: 6, height: 6 }}
+                      />
+                      <Text
+                        font={11}
+                        foregroundStyle={
+                          data.financialBalance.status === "sufficient"
+                            ? "systemGreen"
+                            : data.financialBalance.status === "low"
+                              ? "systemOrange"
+                              : "systemRed"
+                        }
+                      >
+                        {data.financialBalance.status === "sufficient"
+                          ? "资金充足"
+                          : data.financialBalance.status === "low"
+                            ? "余额偏低"
+                            : "已欠费"}
+                      </Text>
+                    </HStack>
+                  </VStack>
+
+                  <Divider frame={{ height: 44 }} />
+
+                  {/* 当月实际扣费支出 */}
+                  <VStack alignment="leading" spacing={4} padding={{ leading: 16 }} frame={{ maxWidth: Infinity }}>
+                    <Text font={12} foregroundStyle="secondaryLabel">
+                      本月消费金额
+                    </Text>
+                    <HStack alignment="lastTextBaseline" spacing={3}>
+                      <Text font={14} bold foregroundStyle="label">
+                        {data.financialBill?.currency === "USD" ? "$" : "¥"}
+                      </Text>
+                      <Text font={22} bold foregroundStyle="label">
+                        {isPrivacy ? "****" : (data.financialBill ? data.financialBill.paymentAmount : "0.00")}
                       </Text>
                     </HStack>
                     <Text
-                      font="caption1"
-                      lineLimit={2}
+                      font={11}
                       foregroundStyle={
-                        data.financialBillStatus === "unavailable"
+                        data.financialBill && parseFloat(data.financialBill.paymentAmount) > 0
                           ? "systemOrange"
-                          : !data.financialBill
-                            ? "secondaryLabel"
-                          : data.financialBill && parseFloat(data.financialBill.paymentAmount) > 0
-                            ? "systemOrange"
-                            : "systemGreen"
+                          : "systemGreen"
                       }
                     >
-                      {data.financialBillStatus === "unavailable"
-                        ? "账单查询不可用"
-                        : !data.financialBill
-                          ? "本月暂无可展示账单记录"
-                          : financialBillPresentation.detail}
+                      {data.financialBill && parseFloat(data.financialBill.paymentAmount) > 0
+                        ? "官方实时账单"
+                        : "免计费额度内"}
                     </Text>
                   </VStack>
                 </HStack>
 
                 <Divider padding={{ horizontal: 16 }} />
 
-                <HStack padding={{ horizontal: 16, vertical: 11 }} alignment="center" spacing={12}>
-                  <IconTile systemName="calendar" color="systemRed" />
-                  <VStack alignment="leading" spacing={2} frame={{ maxWidth: Infinity, alignment: "leading" }}>
-                    <Text font="body" foregroundStyle="label">上月已出账费用</Text>
-                    <Text font="footnote" foregroundStyle="secondaryLabel" lineLimit={1} minScaleFactor={0.8}>
-                      {data.previousFinancialBill?.billingCycle || "上一账期"} · {data.previousFinancialBillStatus === "available"
-                        ? data.previousFinancialBill
-                          ? "账号全部产品账单 · 出账可能延迟"
-                          : "接口可用但暂无账单明细"
-                        : "账单查询不可用"}
-                    </Text>
-                  </VStack>
-                  <Text font="body" monospacedDigit lineLimit={1} minScaleFactor={0.65} foregroundStyle="secondaryLabel">
-                    {data.previousFinancialBillStatus === "available" && data.previousFinancialBill
-                      ? isPrivacy
-                        ? "****"
-                        : `${currencySymbol(data.previousFinancialBill.currency)}${data.previousFinancialBill.paymentAmount}`
-                        : data.previousFinancialBillStatus === "available"
-                          ? "暂无记录"
-                          : "不可用"}
-                  </Text>
+                {/* ECS 实例与弹性 IP 分拆费用微晶卡片 (支持轻触弹窗查看每日明细) */}
+                <HStack padding={{ horizontal: 14, vertical: 10 }} spacing={10}>
+                  {/* ECS 实例费用微晶卡片 */}
+                  <Button
+                    action={handleShowEcsDaily}
+                    buttonStyle="plain"
+                    accessibilityLabel="查看 ECS 实例每日费用明细"
+                    frame={{ maxWidth: Infinity }}
+                  >
+                    <HStack
+                      padding={{ horizontal: 12, vertical: 8 }}
+                      background="rgba(0, 122, 255, 0.06)"
+                      border={{ style: "rgba(0, 122, 255, 0.18)", width: 0.75 }}
+                      clipShape={{ type: "rect", cornerRadius: 12, style: "continuous" }}
+                      frame={{ maxWidth: Infinity }}
+                      alignment="center"
+                      spacing={8}
+                    >
+                      <ZStack frame={{ width: 28, height: 28 }} background="rgba(0, 122, 255, 0.12)" clipShape={{ type: "capsule" }}>
+                        <Image systemName="server.rack" font={12} foregroundStyle="systemBlue" />
+                      </ZStack>
+                      <VStack alignment="leading" spacing={1} frame={{ maxWidth: Infinity }}>
+                        <HStack alignment="center" spacing={3}>
+                          <Text font={11} foregroundStyle="secondaryLabel">实例费用</Text>
+                          <Image systemName="chevron.right" font={8} foregroundStyle="tertiaryLabel" />
+                        </HStack>
+                        <Text font={14} bold foregroundStyle="label">
+                          {isPrivacy ? "****" : `¥${data?.financialBill?.ecsAmount || "0.00"}`}
+                        </Text>
+                      </VStack>
+                    </HStack>
+                  </Button>
+
+                  {/* 弹性 IP 费用微晶卡片 */}
+                  <Button
+                    action={handleShowEipDaily}
+                    buttonStyle="plain"
+                    accessibilityLabel="查看弹性 IP 每日费用明细"
+                    frame={{ maxWidth: Infinity }}
+                  >
+                    <HStack
+                      padding={{ horizontal: 12, vertical: 8 }}
+                      background="rgba(88, 86, 214, 0.06)"
+                      border={{ style: "rgba(88, 86, 214, 0.18)", width: 0.75 }}
+                      clipShape={{ type: "rect", cornerRadius: 12, style: "continuous" }}
+                      frame={{ maxWidth: Infinity }}
+                      alignment="center"
+                      spacing={8}
+                    >
+                      <ZStack frame={{ width: 28, height: 28 }} background="rgba(88, 86, 214, 0.12)" clipShape={{ type: "capsule" }}>
+                        <Image systemName="globe.asia.australia" font={12} foregroundStyle="systemIndigo" />
+                      </ZStack>
+                      <VStack alignment="leading" spacing={1} frame={{ maxWidth: Infinity }}>
+                        <HStack alignment="center" spacing={3}>
+                          <Text font={11} foregroundStyle="secondaryLabel">弹性 IP</Text>
+                          <Image systemName="chevron.right" font={8} foregroundStyle="tertiaryLabel" />
+                        </HStack>
+                        <Text font={14} bold foregroundStyle="label">
+                          {isPrivacy ? "****" : `¥${data?.financialBill?.eipAmount || "0.00"}`}
+                        </Text>
+                      </VStack>
+                    </HStack>
+                  </Button>
                 </HStack>
-
-                <Divider padding={{ leading: 58 }} />
-
-                {/* ECS 与公网网络产品费用（轻触查看每日分类） */}
-                <Button action={handleShowEcsDaily} buttonStyle="plain" accessibilityLabel="查看 ECS 产品每日费用明细" frame={{ maxWidth: Infinity }}>
-                  <HStack padding={{ horizontal: 16, vertical: 11 }} alignment="center" spacing={12} frame={{ maxWidth: Infinity }}>
-                    <IconTile systemName="server.rack" color="systemBlue" />
-                    <Text font="body" foregroundStyle="label" frame={{ maxWidth: Infinity, alignment: "leading" }}>ECS 产品</Text>
-                    <Text font="body" monospacedDigit lineLimit={1} foregroundStyle="secondaryLabel">
-                      {data.financialBillStatus === "unavailable"
-                        ? "—"
-                        : !data.financialBill
-                          ? "暂无"
-                          : isPrivacy
-                            ? "****"
-                            : `${currencySymbol(data.financialBill.currency)}${data.financialBill.ecsAmount}`}
-                    </Text>
-                    <Image systemName="chevron.right" font={13} fontWeight="semibold" foregroundStyle="tertiaryLabel" />
-                  </HStack>
-                </Button>
-
-                <Divider padding={{ leading: 58 }} />
-
-                <Button action={handleShowEipDaily} buttonStyle="plain" accessibilityLabel="查看公网网络产品每日费用明细" frame={{ maxWidth: Infinity }}>
-                  <HStack padding={{ horizontal: 16, vertical: 11 }} alignment="center" spacing={12} frame={{ maxWidth: Infinity }}>
-                    <IconTile systemName="globe.asia.australia" color="systemIndigo" />
-                    <Text font="body" foregroundStyle="label" frame={{ maxWidth: Infinity, alignment: "leading" }}>公网网络</Text>
-                    <Text font="body" monospacedDigit lineLimit={1} foregroundStyle="secondaryLabel">
-                      {data.financialBillStatus === "unavailable"
-                        ? "—"
-                        : !data.financialBill
-                          ? "暂无"
-                          : isPrivacy
-                            ? "****"
-                            : `${currencySymbol(data.financialBill.currency)}${data.financialBill.eipAmount}`}
-                    </Text>
-                    <Image systemName="chevron.right" font={13} fontWeight="semibold" foregroundStyle="tertiaryLabel" />
-                  </HStack>
-                </Button>
               </VStack>
-              <SectionFootnote>
-                可用余额是当前账户资金；轻触余额查看近期账期费用，轻触产品查看最近每日分类。账单不代表余额扣款流水。
-              </SectionFootnote>
+              <Text font={12} foregroundStyle="secondaryLabel" padding={{ leading: 8, bottom: 4 }}>
+                轻触实例费用或弹性 IP 卡片可查看最近每日消费明细与日均推算。
+              </Text>
             </>
           )}
 
-          {/* Section 2: CDT 参考进度 */}
-          <DashboardSectionHeader title="用量详情" detail={data ? `已用 ${data.percentage.toFixed(1)}%` : undefined} />
+          {/* Section 2: CDT 流量用量卡片 */}
+          <HStack padding={{ leading: 8, bottom: 2 }} alignment="center">
+            <Text font={13} fontWeight="semibold" foregroundStyle="secondaryLabel">
+              CDT 互联网出网流量
+            </Text>
+            <Spacer />
+            {data && (
+              <HStack
+                padding={{ horizontal: 8, vertical: 3 }}
+                background={data.percentage >= 90 ? "rgba(255, 59, 48, 0.10)" : "rgba(52, 199, 89, 0.10)"}
+                clipShape={{ type: "capsule" }}
+              >
+                <Text font={12} bold foregroundStyle={data.percentage >= 90 ? "systemRed" : "systemGreen"}>
+                  已用 {data.percentage}%
+                </Text>
+              </HStack>
+            )}
+          </HStack>
 
-          <VStack spacing={0} frame={{ maxWidth: Infinity, alignment: "leading" }} {...dashboardSurface()}>
-            {data && healthMeta && (
-              <>
-                <HStack spacing={12} alignment="center" padding={{ horizontal: 16, vertical: 11 }}>
-                  <IconTile systemName={healthMeta.icon.replace(/\.(circle|octagon)\.fill$/, "")} color={healthMeta.color} />
-                  <VStack alignment="leading" spacing={2} frame={{ maxWidth: Infinity, alignment: "leading" }}>
-                    <Text font="body" foregroundStyle="label" lineLimit={2}>
-                      {healthMeta.label}
+          {/* 内容容器：纯白不透明 */}
+          <VStack
+            background="systemBackground"
+            clipShape={{ type: "rect", cornerRadius: 20, style: "continuous" }}
+            shadow={{ color: "rgba(0, 0, 0, 0.04)", radius: 12, x: 0, y: 3 }}
+            spacing={0}
+            frame={{ maxWidth: Infinity, alignment: "leading" }}
+          >
+            {/* 流量主数据 (基线对齐 items-baseline，修复 [object Object] Bug) */}
+            <HStack padding={{ horizontal: 16, vertical: 14 }} alignment="center" spacing={12}>
+              <ZStack
+                frame={{ width: 36, height: 36 }}
+                background="rgba(175, 82, 222, 0.10)"
+                clipShape={{ type: "rect", cornerRadius: 9, style: "continuous" }}
+              >
+                <Image systemName="arrow.up.and.down" font={16} foregroundStyle="systemPurple" />
+              </ZStack>
+              <VStack alignment="leading" spacing={3} frame={{ maxWidth: Infinity, alignment: "leading" }}>
+                <Text font="subheadline" bold foregroundStyle="label">
+                  出网用量 / 阈值
+                </Text>
+                <Text font="caption2" foregroundStyle="secondaryLabel">
+                  当月警戒阈值: {config.trafficThresholdGB} GB
+                </Text>
+              </VStack>
+              {data && (
+                <VStack alignment="trailing" spacing={2}>
+                  <HStack alignment="lastTextBaseline" spacing={4}>
+                    <Text font={28} bold foregroundStyle="label">
+                      {data.totalGB.toFixed(2)}
                     </Text>
-                    <Text font="footnote" foregroundStyle="secondaryLabel" lineLimit={1} minScaleFactor={0.8}>
-                      本月时间已过 {monthTimeProgress.toFixed(0)}% · 流量已用 {data.percentage.toFixed(1)}% · VPS 线余 {formatCompactUsage(cutoffRemainingGB)} GB
+                    <Text font={14} bold foregroundStyle="label">
+                      GB
                     </Text>
-                  </VStack>
-                </HStack>
-                <Divider padding={{ leading: 58 }} />
-              </>
+                  </HStack>
+                  <Text font={12} foregroundStyle="secondaryLabel">
+                    / {data.thresholdGB} GB
+                  </Text>
+                </VStack>
+              )}
+            </HStack>
+
+            {/* 线性进度条保持胶囊形状，浅色与深色都保留足够对比度 */}
+            {data && (
+              <VStack padding={{ horizontal: 16, top: 2, bottom: 12 }}>
+                <ProgressView
+                  progressViewStyle="linear"
+                  value={Math.max(0.01, Math.min(1.0, data.percentage / 100))}
+                  total={1}
+                  tint={data.color as any}
+                  frame={{ maxWidth: Infinity, height: 10 }}
+                  clipShape={{ type: "capsule" }}
+                />
+              </VStack>
             )}
 
+            {/* 时间进度 vs 流量进度健康度提示 */}
+            {data && healthMeta && (
+              <HStack
+                spacing={6}
+                alignment="center"
+                padding={{ horizontal: 16, top: 0, bottom: 14 }}
+              >
+                <Image
+                  systemName={healthMeta.icon}
+                  font={12}
+                  foregroundStyle={healthMeta.color}
+                />
+                <Text font={11} foregroundStyle={healthMeta.color} lineLimit={1}>
+                  本月时间已过 {monthTimeProgress.toFixed(0)}% · 流量消耗 {data.percentage.toFixed(1)}%（{healthMeta.label}）
+                </Text>
+              </HStack>
+            )}
+
+            <Divider padding={{ horizontal: 16 }} />
+
+            {/* 三列指标卡片 (通透布局，去灰底，数值加粗大字号，内边距 16px) */}
             {data ? (
-              <HStack padding={{ horizontal: 16, vertical: 14 }} alignment="center" spacing={0}>
+              <HStack padding={{ horizontal: 16, vertical: 16 }} alignment="center">
+                {/* 剩余可用 */}
                 <VStack alignment="center" spacing={4} frame={{ maxWidth: Infinity }}>
-                  <Text font="footnote" foregroundStyle="secondaryLabel" lineLimit={1}>
-                    {data.totalGB > data.thresholdGB ? "超出参考值" : "参考余量"}
+                  <Text font={12} foregroundStyle="secondaryLabel">
+                    剩余可用
                   </Text>
                   <HStack alignment="lastTextBaseline" spacing={2}>
-                    <Text font={22} fontWeight="semibold" monospacedDigit lineLimit={1} minScaleFactor={0.7} foregroundStyle={data.totalGB > data.thresholdGB ? "systemRed" : "label"}>
-                      {data.totalGB > data.thresholdGB ? `+${formatCompactUsage(data.totalGB - data.thresholdGB)}` : formatCompactUsage(data.remainingGB)}
+                    <Text font={20} bold foregroundStyle="systemBlue">
+                      {data.remainingGB.toFixed(1)}
                     </Text>
-                    <Text font="caption1" foregroundStyle="secondaryLabel">GB</Text>
+                    <Text font={12} bold foregroundStyle="systemBlue">
+                      GB
+                    </Text>
                   </HStack>
                 </VStack>
 
-                <Divider frame={{ height: 36 }} />
+                <Divider frame={{ height: 28 }} />
 
+                {/* 距结算重置 */}
                 <VStack alignment="center" spacing={4} frame={{ maxWidth: Infinity }}>
-                  <Text font="footnote" foregroundStyle="secondaryLabel" lineLimit={1}>
-                    距结算
+                  <Text font={12} foregroundStyle="secondaryLabel">
+                    距结算重置
                   </Text>
                   <HStack alignment="lastTextBaseline" spacing={2}>
-                    <Text font={22} fontWeight="semibold" monospacedDigit lineLimit={1} minScaleFactor={0.7} foregroundStyle="label">
+                    <Text font={20} bold foregroundStyle="label">
                       {data.daysRemaining}
                     </Text>
-                    <Text font="caption1" foregroundStyle="secondaryLabel">天</Text>
+                    <Text font={12} bold foregroundStyle="secondaryLabel">
+                      天
+                    </Text>
                   </HStack>
                 </VStack>
 
-                <Divider frame={{ height: 36 }} />
+                <Divider frame={{ height: 28 }} />
 
+                {/* 建议日均 */}
                 <VStack alignment="center" spacing={4} frame={{ maxWidth: Infinity }}>
-                  <Text font="footnote" foregroundStyle="secondaryLabel" lineLimit={1}>
-                    日均可用
+                  <Text font={12} foregroundStyle="secondaryLabel">
+                    建议日均
                   </Text>
                   <HStack alignment="lastTextBaseline" spacing={2}>
-                    <Text font={22} fontWeight="semibold" monospacedDigit lineLimit={1} minScaleFactor={0.7} foregroundStyle="label">
-                      {formatCompactUsage(Number(data.dailyBudgetGB))}
+                    <Text font={20} bold foregroundStyle={data.color}>
+                      &lt; {data.dailyBudgetGB}
                     </Text>
-                    <Text font="caption1" foregroundStyle="secondaryLabel">GB</Text>
+                    <Text font={12} bold foregroundStyle={data.color}>
+                      GB
+                    </Text>
                   </HStack>
                 </VStack>
               </HStack>
             ) : (
               <HStack padding={16} alignment="center">
-                <Text font="footnote" foregroundStyle="secondaryLabel">
+                <Text font="caption2" foregroundStyle="secondaryLabel">
                   正在同步阿里云最新用量数据...
                 </Text>
               </HStack>
             )}
           </VStack>
-          <SectionFootnote>
-            VPS 独立负责实例保活与熔断，手机只读展示。流量余量和进度按本地月用量参考值计算，不代表阿里云账号维度的完整免费额度余额。
-          </SectionFootnote>
-
-          {data?.trafficDiagnostics && (
-            <>
-              <DashboardSectionHeader title="CDT 地域额度" detail="只读 · 按地域映射" />
-              <VStack spacing={0} frame={{ maxWidth: Infinity, alignment: "leading" }} {...dashboardSurface()}>
-                {(["mainland", "nonMainland", "unknown"] as CDTTrafficBucket[]).map((bucket, index) => {
-                  const summary = data.trafficDiagnostics!.buckets[bucket]
-                  const label = bucket === "mainland"
-                    ? "内地 · 20 GB参考线"
-                    : bucket === "nonMainland"
-                      ? "非内地 · 200 GB参考线"
-                      : "未识别 · 不套额度"
-                  return (
-                    <VStack key={bucket} spacing={0}>
-                      {index > 0 && <Divider padding={{ leading: 16 }} />}
-                      <HStack padding={{ horizontal: 16, vertical: 11 }} alignment="center">
-                        <Text font="body" foregroundStyle="label" lineLimit={1}>{label}</Text>
-                        <Spacer />
-                        <Text font="subheadline" monospacedDigit foregroundStyle="secondaryLabel" lineLimit={1} minScaleFactor={0.75}>
-                          {summary.totalGB.toFixed(2)} GB
-                          {bucket !== "unknown" ? ` / ${bucket === "mainland" ? 20 : 200} GB` : ""}
-                          {" · "}{summary.itemCount} 条
-                        </Text>
-                      </HStack>
-                    </VStack>
-                  )
-                })}
-                {data.trafficDiagnostics.groups.slice(0, 6).map((group, index) => (
-                  <VStack key={`${group.bucket}-${group.businessRegionId || "none"}-${group.ispType || "none"}-${index}`} spacing={0}>
-                    <Divider padding={{ leading: 16 }} />
-                    <VStack alignment="leading" spacing={2} padding={{ horizontal: 16, vertical: 9 }} frame={{ maxWidth: Infinity, alignment: "leading" }}>
-                      <Text font="subheadline" foregroundStyle="label">
-                        {group.bucket === "mainland"
-                          ? "内地分组"
-                          : group.bucket === "nonMainland"
-                            ? "非内地分组"
-                            : "未识别分组"} · {group.totalGB.toFixed(2)} GB
-                      </Text>
-                      <Text font="caption1" foregroundStyle="secondaryLabel" lineLimit={1} minScaleFactor={0.8}>
-                        BusinessRegionId: {group.businessRegionId || "未返回"} · ISPType: {group.ispType || "未返回"}
-                      </Text>
-                    </VStack>
-                  </VStack>
-                ))}
-              </VStack>
-              <SectionFootnote>
-                已按 BusinessRegionId 映射；未知值保留为未识别，不计入内地 20 GB 或非内地 200 GB。
-              </SectionFootnote>
-            </>
-          )}
+          <HStack alignment="top" spacing={8} padding={{ leading: 8, bottom: 4 }}>
+            <Image systemName="antenna.radiowaves.left.and.right" font={12} foregroundStyle="systemBlue" />
+            <Text
+              font={12}
+              foregroundStyle="secondaryLabel"
+              lineLimit={3}
+              frame={{ maxWidth: Infinity, alignment: "leading" }}
+            >
+              VPS 托管纯统计模式：实例由远端 VPS 自动保活与夜间节省停机，手机端仅展示实时 CDT 流量与官方折后账单。
+            </Text>
+          </HStack>
 
           {/* Section 3: 控制台实时操作日志 */}
-          <DashboardSectionHeader
-            title="最近活动"
-            trailing={
-              <Button
-                action={() => setLogs([])}
-                disabled={logs.length === 0}
-                buttonStyle="plain"
-                accessibilityLabel="清空日志"
+          <HStack padding={{ leading: 8, bottom: 2 }} alignment="center">
+            <Text font={13} fontWeight="semibold" foregroundStyle="secondaryLabel">
+              实时操作日志
+            </Text>
+            <Spacer />
+            <Button
+              action={() => setLogs([])}
+              disabled={logs.length === 0}
+              buttonStyle="plain"
+              accessibilityLabel="清空日志"
+            >
+              <HStack
+                spacing={4}
+                padding={{ horizontal: 10, vertical: 5 }}
+                background="rgba(142, 142, 147, 0.12)"
+                border={{ style: "rgba(142, 142, 147, 0.20)", width: 0.75 }}
+                clipShape={{ type: "capsule" }}
+                alignment="center"
+                {...liquidGlass(true)}
               >
-                <Text font="footnote" foregroundStyle={logs.length === 0 ? "tertiaryLabel" : "systemBlue"}>
+                <Image systemName="trash" font={11} foregroundStyle="secondaryLabel" />
+                <Text font={11} bold foregroundStyle="secondaryLabel">
                   清空
                 </Text>
-              </Button>
-            }
-          />
+              </HStack>
+            </Button>
+          </HStack>
 
           {/* 日志容器：少量内容收缩，超过五行才使用固定视口滚动 */}
           <VStack
+            background="systemBackground"
+            clipShape={{ type: "rect", cornerRadius: 20, style: "continuous" }}
+            shadow={{ color: "rgba(0, 0, 0, 0.04)", radius: 12, x: 0, y: 3 }}
             spacing={0}
             padding={{ horizontal: 16, vertical: 12 }}
             frame={{ maxWidth: Infinity, height: logCardHeight, alignment: "leading" }}
-            {...dashboardSurface()}
           >
             <ScrollView showsIndicators={false} frame={{ maxWidth: Infinity, height: logViewportHeight }}>
               <VStack alignment="leading" spacing={7} frame={{ maxWidth: Infinity, alignment: "leading" }}>
                 {logs.length > 0 ? (
-                  logs.map((entry, index) => {
-                    const parts = splitLogLine(entry.line)
+                  logs.map((log, index) => {
+                    const parts = splitLogLine(log)
                     return (
-                      <HStack key={index} spacing={8} alignment="firstTextBaseline" frame={{ maxWidth: Infinity, alignment: "leading" }}>
-                        <Text font="caption1" monospacedDigit foregroundStyle="tertiaryLabel">
+                      <HStack key={index} spacing={6} alignment="top" frame={{ maxWidth: Infinity, alignment: "leading" }}>
+                        <Text font={11} foregroundStyle="tertiaryLabel">•</Text>
+                        <Text font={11} foregroundStyle="tertiaryLabel">
                           {parts.time}
                         </Text>
                         <Text
-                          font="footnote"
-                          foregroundStyle={logMessageColor(entry.line)}
+                          font={12}
+                          foregroundStyle={logMessageColor(log)}
                           lineLimit={2}
                           frame={{ maxWidth: Infinity, alignment: "leading" }}
                         >
-                          {isPrivacy && entry.financial ? "账户余额: ****" : parts.message}
+                          {parts.message}
                         </Text>
                       </HStack>
                     )
                   })
                 ) : (
-                  <Text font="footnote" foregroundStyle="secondaryLabel">
+                  <Text font={12} foregroundStyle="secondaryLabel">
                     暂无日志，点击刷新同步。
                   </Text>
                 )}
               </VStack>
             </ScrollView>
           </VStack>
-          <SectionFootnote>最近 8 条操作记录</SectionFootnote>
+          <Text font={12} foregroundStyle="secondaryLabel" padding={{ leading: 8, bottom: 8 }}>
+            最近 8 条操作记录
+          </Text>
 
           {/* 版本与构建信息 */}
-          <Text font="caption1" foregroundStyle="tertiaryLabel" frame={{ maxWidth: Infinity, alignment: "center" }} padding={{ top: 12 }}>
-            Aliyun CDT Monitor v{APP_VERSION}
-          </Text>
+          <VStack alignment="center" spacing={2} padding={{ top: 8, bottom: 20 }}>
+            <Text font={11} foregroundStyle="quaternaryLabel">
+              Aliyun CDT Monitor v{APP_VERSION}
+            </Text>
           </VStack>
-        </ScrollView>
-      </ZStack>
+        </VStack>
+      </ScrollView>
     </NavigationStack>
   )
 }
 
 // ==================== 7. 主执行入口 ====================
 
-async function main() {
-  await Navigation.present({
-    element: <ConsoleView />
+function NativeSettingsView({
+  currentConfig,
+  onSave,
+  onCancel
+}: {
+  currentConfig: AppConfig
+  onSave: (next: AppConfig) => void
+  onCancel: () => void
+}) {
+  const [ak, setAk] = useState(currentConfig.accessKeyId)
+  const [sk, setSk] = useState(currentConfig.accessKeySecret)
+  const [region, setRegion] = useState(currentConfig.regionId)
+  const [instanceId, setInstanceId] = useState(currentConfig.ecsInstanceId)
+  const [quota, setQuota] = useState(String(currentConfig.trafficThresholdGB))
+  const [cutoff, setCutoff] = useState(String(currentConfig.vpsCutoffReferenceGB))
+  const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const [testResult, setTestResult] = useState<string | null>(null)
+
+  const buildConfig = (): AppConfig => ({
+    accessKeyId: ak.trim(),
+    accessKeySecret: sk.trim(),
+    regionId: region.trim(),
+    ecsInstanceId: instanceId.trim(),
+    trafficThresholdGB: Number(quota),
+    vpsCutoffReferenceGB: Number(cutoff),
+    resetDayOfMonth: 1
   })
+
+  const save = () => {
+    const next = buildConfig()
+    const validation = validateConfig(next)
+    if (validation) {
+      setMessage(validation)
+      return
+    }
+    setSaving(true)
+    setMessage(null)
+    try {
+      saveConfig(next)
+      onSave(next)
+    } catch (error: any) {
+      setMessage(`保存失败：${error?.message || String(error)}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const testConnection = async () => {
+    const candidate = buildConfig()
+    const validation = validateConfig(candidate)
+    if (validation) {
+      setMessage(validation)
+      return
+    }
+    setTesting(true)
+    setMessage(null)
+    setTestResult(null)
+    try {
+      const core = await fetchCoreSnapshot(candidate, new Date(), false)
+      const financial = await fetchFinancialSnapshot(candidate, core)
+      setTestResult(`CDT ${core.totalGB.toFixed(1)} GB · ECS ${core.ecs.status} · 余额 ${financial.balanceStatus === "available" ? "可读" : "不可用"} · 账单 ${financial.billStatus === "available" ? "可读" : "不可用"}`)
+    } catch (error: any) {
+      setMessage(humanizeAliyunError(error?.message || "连接测试失败"))
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  const smartPaste = async () => {
+    try {
+      const text = (await Pasteboard.getString()) || ""
+      const akMatch = text.match(/LTAI[A-Za-z0-9]{16,24}/i)
+      const ecsMatch = text.match(/i-[a-z0-9]{16,24}/i)
+      const regionMatch = text.match(/(?:cn|ap|us|eu|me|af)-[a-z0-9-]+/i)
+      const secretMatch = text.match(/(?:Secret|SecretKey|KeySecret)[\s:=]*([A-Za-z0-9]{28,34})/i)
+      const tokens = text.match(/[A-Za-z0-9]{28,34}/g) || []
+      const secret = secretMatch?.[1] || tokens.find(token => !token.startsWith("LTAI") && !token.startsWith("i-"))
+      if (akMatch) setAk(akMatch[0])
+      if (ecsMatch) setInstanceId(ecsMatch[0])
+      if (regionMatch) setRegion(regionMatch[0])
+      if (secret) setSk(secret)
+      const count = [akMatch, ecsMatch, regionMatch, secret].filter(Boolean).length
+      setMessage(count ? `已识别并填入 ${count} 项配置，请确认后保存。` : "剪贴板中没有识别到阿里云配置。")
+    } catch (error: any) {
+      setMessage(`读取剪贴板失败：${error?.message || String(error)}`)
+    }
+  }
+
+  return (
+    <ScrollView background="systemGray6" showsIndicators={false} safeAreaPadding={{ bottom: true }}>
+      <VStack alignment="leading" spacing={14} padding={{ horizontal: 16, top: 12, bottom: 30 }}>
+        <HStack alignment="center">
+          <Button title="返回" systemImage="chevron.left" action={onCancel} />
+          <Spacer />
+          <Text font="title2" bold>设置</Text>
+          <Spacer />
+          <Button title={saving ? "保存中" : "保存"} systemImage="checkmark" disabled={saving} action={save} />
+        </HStack>
+        <Text font="caption1" foregroundStyle="secondaryLabel">凭据保存在 Scripting 本地存储中。手机端只读，不会执行 ECS 开关机。</Text>
+        <Button title="从剪贴板识别" systemImage="doc.on.clipboard" action={() => void smartPaste()} />
+
+        <VStack alignment="leading" spacing={12} padding={16} background="systemBackground" clipShape={{ type: "rect", cornerRadius: 18, style: "continuous" }}>
+          <Text font="headline" bold>阿里云访问凭据</Text>
+          <TextField title="AccessKey ID" value={ak} onChanged={setAk} prompt="输入 AccessKey ID" />
+          <SecureField title="AccessKey Secret" value={sk} onChanged={setSk} prompt="输入 AccessKey Secret" />
+        </VStack>
+
+        <VStack alignment="leading" spacing={12} padding={16} background="systemBackground" clipShape={{ type: "rect", cornerRadius: 18, style: "continuous" }}>
+          <Text font="headline" bold>目标实例</Text>
+          <TextField title="Region ID" value={region} onChanged={setRegion} prompt="cn-hongkong" />
+          <TextField title="ECS 实例 ID" value={instanceId} onChanged={setInstanceId} prompt="i-xxxxxxxx" />
+        </VStack>
+
+        <VStack alignment="leading" spacing={12} padding={16} background="systemBackground" clipShape={{ type: "rect", cornerRadius: 18, style: "continuous" }}>
+          <Text font="headline" bold>用量参考</Text>
+          <TextField title="月流量额度 / GB" value={quota} onChanged={setQuota} prompt="200" />
+          <TextField title="VPS 参考线 / GB" value={cutoff} onChanged={setCutoff} prompt="195" />
+          <Text font="caption2" foregroundStyle="secondaryLabel">参考线仅影响手机显示，不会发送到 VPS。</Text>
+        </VStack>
+
+        {message && <Text font="caption1" foregroundStyle="systemRed">{message}</Text>}
+        {testResult && <Text font="caption1" foregroundStyle="systemGreen">{testResult}</Text>}
+        <Button title={testing ? "正在测试…" : "测试连接"} systemImage="antenna.radiowaves.left.and.right" disabled={testing} action={() => void testConnection()} />
+        <Button title={saving ? "保存中…" : "保存设置"} systemImage="checkmark.circle.fill" disabled={saving} action={save} />
+      </VStack>
+    </ScrollView>
+  )
+}
+
+function DailyTrafficChart({ points }: { points: DailyUsagePoint[] }) {
+  const segments: DailyUsagePoint[][] = []
+  let segment: DailyUsagePoint[] = []
+  let previousDay: number | null = null
+  for (const point of points) {
+    if (point.valueGB === null) {
+      if (segment.length) segments.push(segment)
+      segment = []
+      previousDay = null
+      continue
+    }
+    const [year, month, day] = point.date.split("-").map(Number)
+    const dayNumber = Date.UTC(year, month - 1, day)
+    const consecutive = previousDay !== null && dayNumber - previousDay === 86400000
+    if (segment.length && !consecutive) {
+      segments.push(segment)
+      segment = []
+    }
+    segment.push(point)
+    previousDay = dayNumber
+  }
+  if (segment.length) segments.push(segment)
+
+  const marks = (items: DailyUsagePoint[]) => items.map(point => ({
+    label: point.label,
+    value: point.valueGB ?? 0,
+    foregroundStyle: point.isToday ? "systemBlue" : "systemBlue",
+    symbol: "circle" as const,
+    symbolSize: point.isToday ? 24 : 16,
+    lineStyle: { lineWidth: 2.5, lineCap: "round" as const },
+    annotation: {
+      position: "top",
+      alignment: "center",
+      spacing: 5,
+      overflowResolution: { x: "fit", y: "padScale" },
+      content: <Text font={10} bold={point.isToday} foregroundStyle={point.isToday ? "systemBlue" : "secondaryLabel"}>{point.valueGB?.toFixed(1)}</Text>
+    }
+  }))
+
+  return (
+    <VStack spacing={8}>
+      {segments.length === 0 ? (
+        <Text font="caption1" foregroundStyle="secondaryLabel">采样积累后显示每日流量</Text>
+      ) : segments.map((items, index) => (
+        <Chart key={`${items[0].date}-${index}`} frame={{ height: 118 }}>
+          <LineChart labelOnYAxis={false} marks={marks(items)} />
+        </Chart>
+      ))}
+      <Text font={10} foregroundStyle="secondaryLabel">单位 GB · 相邻日期快照差值；未采样日期不补零</Text>
+    </VStack>
+  )
+}
+
+function formatCurrency(value: string | number, currency: string, hidden = false): string {
+  if (hidden) return "••••"
+  const amount = Number(value)
+  if (!Number.isFinite(amount)) return `${currency} ${String(value)}`
+  const fractionDigits = currency === "JPY" ? 0 : 2
+  const formatted = amount.toFixed(fractionDigits)
+  const symbol = currency === "CNY" || currency === "JPY" ? "¥" : currency === "USD" ? "$" : `${currency} `
+  return `${symbol}${formatted}`
+}
+
+function AppDashboard() {
+  const selection = useObservable<number>(0)
+  const [config, setConfig] = useState<AppConfig>(() => normalizeConfig(loadSavedConfig()))
+  const [snapshot, setSnapshot] = useState<MonitorSnapshot | null>(() => loadCachedSnapshot(config, true))
+  const [snapshotStale, setSnapshotStale] = useState<boolean>(() => Boolean(snapshot))
+  const [finance, setFinance] = useState<DashboardSnapshot | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [financeLoading, setFinanceLoading] = useState(false)
+  const [financeLoaded, setFinanceLoaded] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [financeError, setFinanceError] = useState<string | null>(null)
+  const [privacy, setPrivacy] = useState(() => {
+    try { return Storage.get(PRIVACY_STORAGE_KEY) === "true" } catch { return false }
+  })
+  const [lastUpdated, setLastUpdated] = useState<string | null>(() => snapshot?.updatedAt ?? null)
+
+  const isActiveConfig = (candidate: AppConfig) => configScope(candidate) === configScope(normalizeConfig(loadSavedConfig()))
+
+  const loadCore = useCallback(async (cfg: AppConfig = config) => {
+    if (!cfg.accessKeyId || !cfg.accessKeySecret || !cfg.ecsInstanceId) return
+    setLoading(true)
+    setSnapshotStale(true)
+    setError(null)
+    setFinance(null)
+    setFinanceLoading(false)
+    setFinanceLoaded(false)
+    try {
+      const core = await fetchCoreSnapshot(cfg)
+      if (!isActiveConfig(cfg)) return
+      setSnapshot(core)
+      setSnapshotStale(false)
+      setLastUpdated(core.updatedAt)
+      setFinanceError(null)
+    } catch (err: any) {
+      if (isActiveConfig(cfg)) setError(humanizeAliyunError(err?.message || "读取流量或实例状态失败"))
+    } finally {
+      if (isActiveConfig(cfg)) setLoading(false)
+    }
+  }, [config])
+
+  const loadFinance = useCallback(async (cfg: AppConfig = config, core: MonitorSnapshot | null = snapshot) => {
+    if (!core) return
+    setFinanceLoading(true)
+    setFinanceError(null)
+    try {
+      const result = await fetchFinancialSnapshot(cfg, core)
+      if (!isActiveConfig(cfg)) return
+      setFinance(result)
+      if (result.balanceStatus === "unavailable" && result.billStatus === "unavailable") {
+        setFinanceError("余额与账单权限不可用。流量和实例状态仍可独立查看。")
+      }
+    } catch (err: any) {
+      if (isActiveConfig(cfg)) setFinanceError(humanizeAliyunError(err?.message || "读取账单信息失败"))
+    } finally {
+      if (isActiveConfig(cfg)) {
+        setFinanceLoaded(true)
+        setFinanceLoading(false)
+      }
+    }
+  }, [config, snapshot])
+
+  useEffect(() => {
+    if (!isConfigReady(config)) {
+      selection.setValue(2)
+      return
+    }
+    void loadCore(config)
+  }, [config])
+
+  useEffect(() => {
+    const onSelectionChanged = (value: number) => {
+      if (value === 1 && snapshot && !finance && !financeLoading && !financeLoaded) {
+        void loadFinance(config, snapshot)
+      }
+    }
+    selection.subscribe(onSelectionChanged)
+    if (selection.value === 1 && snapshot && !finance && !financeLoading) {
+      void loadFinance(config, snapshot)
+    }
+    return () => selection.unsubscribe(onSelectionChanged)
+  }, [selection, snapshot, finance, financeLoading, config, loadFinance])
+
+  const togglePrivacy = () => {
+    const next = !privacy
+    setPrivacy(next)
+    try { Storage.set(PRIVACY_STORAGE_KEY, String(next)) } catch {}
+  }
+  const copyIp = async () => {
+    if (!snapshot?.ecs.publicIp) return
+    try {
+      await Pasteboard.setString(snapshot.ecs.publicIp)
+    } catch {
+      setError("复制失败，请重试。")
+    }
+  }
+  const statusText = snapshot?.ecs.status === "Running" ? "运行中"
+    : snapshot?.ecs.status === "Stopped" ? "已停止"
+      : snapshot?.ecs.status === "Starting" ? "启动中"
+        : snapshot?.ecs.status === "Stopping" ? "停止中" : "状态未知"
+  const statusColor = snapshot?.ecs.status === "Running" ? "systemGreen"
+    : snapshot?.ecs.status === "Starting" || snapshot?.ecs.status === "Stopping" ? "systemOrange"
+      : "secondaryLabel"
+  const trafficStatus = !snapshot ? "等待数据"
+    : snapshot.cutoffRemainingGB <= 0 ? "已超出参考线"
+      : snapshot.cutoffRemainingGB <= 15 ? "临近参考线" : "预算充足"
+  const trafficColor = !snapshot ? "secondaryLabel"
+    : snapshot.cutoffRemainingGB <= 0 ? "systemRed"
+      : snapshot.cutoffRemainingGB <= 15 ? "systemOrange" : "systemGreen"
+  const formattedUpdate = lastUpdated ? new Date(lastUpdated).toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "尚未同步"
+
+  return (
+    <TabView selection={selection}>
+      <Tab title="概览" systemImage="square.grid.2x2.fill" value={0}>
+        <ScrollView background="systemGray6" showsIndicators={false} safeAreaPadding={{ bottom: true }}>
+          <VStack alignment="leading" spacing={12} padding={{ horizontal: 16, top: 12, bottom: 28 }}>
+            <HStack alignment="center">
+              <VStack alignment="leading" spacing={2}>
+                <Text font="largeTitle" bold>概览</Text>
+                <Text font="caption1" foregroundStyle="secondaryLabel">{snapshotStale ? "缓存 · " : ""}{formattedUpdate}{loading ? " · 正在同步" : snapshot ? " · 只读监控" : " · 等待数据"}</Text>
+              </VStack>
+              <Spacer />
+              <Button title={loading ? "同步中" : "刷新"} systemImage="arrow.clockwise" disabled={loading || !isConfigReady(config)} action={() => void loadCore(config)} />
+            </HStack>
+
+            {error && <Text font="caption1" foregroundStyle="systemRed">{error}</Text>}
+
+            <VStack alignment="leading" spacing={12} padding={18} background="systemBackground" clipShape={{ type: "rect", cornerRadius: 22, style: "continuous" }}>
+              <HStack alignment="center">
+                <Text font="subheadline" foregroundStyle="secondaryLabel">{snapshot?.cutoffRemainingGB !== undefined && snapshot.cutoffRemainingGB < 0 ? "已超出 VPS 参考线" : "距 VPS 参考线剩余"}</Text>
+                <Spacer />
+                <Text font="caption1" bold foregroundStyle={trafficColor}>{trafficStatus}</Text>
+              </HStack>
+              <HStack alignment="lastTextBaseline" spacing={6}>
+                <Text font={46} bold monospacedDigit foregroundStyle={trafficColor}>{snapshot ? Math.abs(snapshot.cutoffRemainingGB).toFixed(1) : "--"}</Text>
+                <Text font="title3" bold foregroundStyle="label">GB</Text>
+              </HStack>
+              <Text font="caption1" foregroundStyle="secondaryLabel">
+                本月已用 <Text font="caption1" bold foregroundStyle="label">{snapshot?.totalGB.toFixed(1) ?? "--"} GB</Text> / {config.trafficThresholdGB} GB
+              </Text>
+              <ProgressView progressViewStyle="linear" value={Math.min(1, Math.max(0, (snapshot?.totalGB ?? 0) / config.trafficThresholdGB))} total={1} tint={trafficColor} frame={{ maxWidth: Infinity, height: 8 }} clipShape={{ type: "capsule" }} />
+              <HStack alignment="center">
+                <VStack alignment="leading" spacing={3}>
+                  <Text font="caption2" foregroundStyle="secondaryLabel">VPS 参考线</Text>
+                  <Text font="headline" bold>{config.vpsCutoffReferenceGB} GB</Text>
+                </VStack>
+                <Spacer />
+                <VStack alignment="trailing" spacing={3}>
+                  <Text font="caption2" foregroundStyle="secondaryLabel">安全日均 · 余 {snapshot?.daysRemaining ?? "--"} 天</Text>
+                  <Text font="headline" bold foregroundStyle={trafficColor}>{snapshot?.dailyBudgetGB.toFixed(2) ?? "--"} GB/天</Text>
+                </VStack>
+              </HStack>
+            </VStack>
+
+            <HStack alignment="center" padding={{ leading: 4, trailing: 4, top: 2, bottom: 1 }}>
+              <Text font="headline" bold>实例</Text>
+              <Spacer />
+              <Text font="caption1" foregroundStyle="secondaryLabel">{config.regionId}</Text>
+            </HStack>
+            <VStack spacing={0} background="systemBackground" clipShape={{ type: "rect", cornerRadius: 18, style: "continuous" }}>
+              <HStack padding={14} spacing={12} alignment="center">
+                <Image systemName="server.rack" font={20} foregroundStyle="systemBlue" />
+                <VStack alignment="leading" spacing={3}>
+                  <Text font="subheadline" bold>{config.ecsInstanceId || "未配置实例"}</Text>
+                  <Text font="caption1" foregroundStyle={statusColor}>{statusText}{snapshot?.ecs.stoppedMode ? ` · ${snapshot.ecs.stoppedMode}` : ""}</Text>
+                </VStack>
+                <Spacer />
+                <Text font="caption1" foregroundStyle="secondaryLabel">{snapshot?.ecs.publicIp ?? "无公网 IP"}</Text>
+                {snapshot?.ecs.publicIp && <Button title="复制" systemImage="doc.on.doc" action={() => void copyIp()} />}
+              </HStack>
+            </VStack>
+
+            <HStack alignment="center" padding={{ leading: 4, trailing: 4, top: 2, bottom: 1 }}>
+              <Text font="headline" bold>每日流量</Text>
+              <Spacer />
+              <Text font="caption2" foregroundStyle="secondaryLabel">快照估算</Text>
+            </HStack>
+            <VStack alignment="leading" spacing={10} padding={16} background="systemBackground" clipShape={{ type: "rect", cornerRadius: 18, style: "continuous" }}>
+              {snapshot ? <DailyTrafficChart points={snapshot.dailyUsage} /> : <Text font="caption1" foregroundStyle="secondaryLabel">同步后显示近 7 日流量。</Text>}
+            </VStack>
+            <Text font="caption2" foregroundStyle="secondaryLabel">手机端只读监控。VPS 熔断由远端脚本负责；未知日期不按零流量绘制。</Text>
+          </VStack>
+        </ScrollView>
+      </Tab>
+
+      <Tab title="费用" systemImage="creditcard.fill" value={1}>
+        <ScrollView background="systemGray6" showsIndicators={false} safeAreaPadding={{ bottom: true }}>
+          <VStack alignment="leading" spacing={12} padding={{ horizontal: 16, top: 12, bottom: 28 }}>
+            <HStack alignment="center">
+              <VStack alignment="leading" spacing={2}>
+                <Text font="largeTitle" bold>费用</Text>
+                <Text font="caption1" foregroundStyle="secondaryLabel">{snapshot?.billingCycle ?? "本月"} · 账户产品汇总</Text>
+              </VStack>
+              <Spacer />
+              <Button title={financeLoading ? "读取中" : "刷新账单"} systemImage="arrow.clockwise" disabled={financeLoading || !snapshot} action={() => void loadFinance(config, snapshot)} />
+            </HStack>
+            {financeError && <Text font="caption1" foregroundStyle="systemOrange">{financeError}</Text>}
+            {finance?.balance && (
+              <VStack alignment="leading" spacing={8} padding={18} background="systemBackground" clipShape={{ type: "rect", cornerRadius: 20, style: "continuous" }}>
+                <Text font="caption1" foregroundStyle="secondaryLabel">可用现金余额</Text>
+                <Text font="largeTitle" bold>{formatCurrency(finance.balance.availableCashAmount, finance.balance.currency, privacy)}</Text>
+                <Text font="caption1" foregroundStyle={finance.balance.status === "arrears" ? "systemRed" : finance.balance.status === "low" ? "systemOrange" : "systemGreen"}>
+                  {finance.balance.status === "arrears" ? "现金余额不足" : finance.balance.status === "low" ? "余额偏低" : "资金状态正常"}
+                </Text>
+              </VStack>
+            )}
+            {finance?.bill ? (
+              <VStack alignment="leading" spacing={12} padding={18} background="systemBackground" clipShape={{ type: "rect", cornerRadius: 20, style: "continuous" }}>
+                <HStack alignment="center"><VStack alignment="leading" spacing={3}><Text font="caption1" foregroundStyle="secondaryLabel">当月应付 · 查询结果</Text><Text font="largeTitle" bold>{formatCurrency(finance.bill.paymentAmount, finance.bill.currency, privacy)}</Text></VStack><Spacer /><Button title={privacy ? "显示金额" : "隐藏金额"} systemImage={privacy ? "eye" : "eye.slash"} action={togglePrivacy} /></HStack>
+                <Divider />
+                <HStack><Text font="subheadline">ECS</Text><Spacer /><Text font="subheadline" bold>{formatCurrency(finance.bill.ecsAmount, finance.bill.currency, privacy)}</Text></HStack>
+                <HStack><Text font="subheadline">EIP</Text><Spacer /><Text font="subheadline" bold>{formatCurrency(finance.bill.eipAmount, finance.bill.currency, privacy)}</Text></HStack>
+                <HStack><Text font="subheadline">CDT</Text><Spacer /><Text font="subheadline" bold>{formatCurrency(finance.bill.cdtAmount, finance.bill.currency, privacy)}</Text></HStack>
+                <Text font="caption2" foregroundStyle="secondaryLabel">当前月账单可能延迟，作为参考，不代表最终结算金额。</Text>
+              </VStack>
+            ) : (
+              <VStack alignment="leading" spacing={8} padding={18} background="systemBackground" clipShape={{ type: "rect", cornerRadius: 20, style: "continuous" }}>
+                <Text font="headline" bold>{financeLoading ? "正在读取账单" : "账单暂不可用"}</Text>
+                <Text font="caption1" foregroundStyle="secondaryLabel">{financeLoading ? "流量和实例状态已先行更新。" : "账单读取失败或权限未开放。此状态不会显示为零费用。"}</Text>
+              </VStack>
+            )}
+            {finance?.bill?.ecsDailyList && (
+              <VStack alignment="leading" spacing={10} padding={16} background="systemBackground" clipShape={{ type: "rect", cornerRadius: 18, style: "continuous" }}>
+                <Text font="headline" bold>最近 7 日 ECS</Text>
+                {finance.bill.ecsDailyList.map(item => <HStack key={item.date} alignment="center"><Text font="subheadline">{item.date}{item.isToday ? " · 今天" : ""}</Text><Spacer /><Text font="subheadline" foregroundStyle={item.available === false ? "systemOrange" : "secondaryLabel"}>{item.available === false ? "暂不可用" : item.settled ? `${finance.bill?.currency} ${privacy ? "••••" : item.amount}` : item.isToday ? "待出账" : "无费用"}</Text></HStack>)}
+              </VStack>
+            )}
+            {finance?.bill?.eipDailyList && (
+              <VStack alignment="leading" spacing={10} padding={16} background="systemBackground" clipShape={{ type: "rect", cornerRadius: 18, style: "continuous" }}>
+                <Text font="headline" bold>最近 7 日 EIP</Text>
+                {finance.bill.eipDailyList.map(item => <HStack key={item.date} alignment="center"><Text font="subheadline">{item.date}{item.isToday ? " · 今天" : ""}</Text><Spacer /><Text font="subheadline" foregroundStyle={item.available === false ? "systemOrange" : "secondaryLabel"}>{item.available === false ? "暂不可用" : item.settled ? `${finance.bill?.currency} ${privacy ? "••••" : item.amount}` : item.isToday ? "待出账" : "无费用"}</Text></HStack>)}
+              </VStack>
+            )}
+            <Text font="caption2" foregroundStyle="secondaryLabel">账户产品汇总，不代表单台 ECS 资源费用。当前月数据可能延迟更新，不是最终结算账单。</Text>
+          </VStack>
+        </ScrollView>
+      </Tab>
+ <Tab title="设置" systemImage="gearshape.fill" value={2}>
+        <NativeSettingsView
+          currentConfig={config}
+          onSave={next => {
+            setConfig(next)
+            setSnapshot(null)
+            setSnapshotStale(false)
+            setFinance(null)
+            setFinanceLoaded(false)
+            setLastUpdated(null)
+            setError(null)
+            setFinanceError(null)
+            selection.setValue(0)
+          }}
+          onCancel={() => selection.setValue(0)}
+        />
+      </Tab>
+    </TabView>
+  )
+}
+
+export async function launchApp() {
+  await Navigation.present({ element: <AppDashboard /> })
   Script.exit()
 }
 
-main()
+declare const __SINGLE_FILE_BUNDLE__: boolean | undefined
+if (typeof __SINGLE_FILE_BUNDLE__ === "undefined" || !__SINGLE_FILE_BUNDLE__) {
+  void launchApp()
+}

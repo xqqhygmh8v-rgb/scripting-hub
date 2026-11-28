@@ -1,6 +1,6 @@
 # 脚本中心目录
 
-最近同步时间：2026-11-27T21:00:40+00:00
+最近同步时间：2026-11-28T07:28:20+00:00
 
 收录 26 个仓库 / 125 个可导入的 Scripting 项目。
 
@@ -10,8 +10,8 @@
 
 | 脚本 | 版本 | 说明 | 仓库 | Star | 来源 |
 |---|---|---|---|---|---|
-| NBA赛程 | 0.5.1 | 全赛季 NBA 赛程、未来三个比赛日组件及虎扑本场球员评分与评论。 | [Maqiaogongmin/Scripting](https://github.com/Maqiaogongmin/Scripting) | 0 | tree |
-| 豆瓣书影音 | 0.3.0 | 查豆瓣影视、图书和音乐，浏览评论，把喜欢的海报或封面放上主屏幕。 | [Maqiaogongmin/Scripting](https://github.com/Maqiaogongmin/Scripting) | 0 | tree |
+| NBA赛程 | 0.6.2 | NBA 赛程、赛果、东西部排行、球员资料与虎扑评分，支持桌面组件。 | [Maqiaogongmin/Scripting](https://github.com/Maqiaogongmin/Scripting) | 0 | tree |
+| 豆瓣书影音 | 0.3.5 | 查豆瓣影视、图书和音乐，浏览评论，把喜欢的海报或封面放上主屏幕。 | [Maqiaogongmin/Scripting](https://github.com/Maqiaogongmin/Scripting) | 0 | tree |
 
 ### 小组件（123）
 
@@ -116,7 +116,7 @@
 | LocalDNS | 1.15.34 | 本地 DNS 与安全服务系统，v1.15.34 解决播放 403 Forbidden 终局问题：1) 抓包实证 01:29:19 videoplayback 失败根因：auto-hd 强行改写媒体流 itag 参数，导致 Google Video 的 HMAC 签名 (sig) 失效，服务端直接拒流返回 HTTP 403 Forbidden（readyState=0 零字节无法播放）；2) 彻底排除破坏签名的 auto-hd 与 init，保留真正负责去广告的 respons… | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | ZakoProxy（AI 代理中转） | 1.4.3 | 基于 ckldy/ZakoProxyCLI 深度移植的自托管 AI API 中转代理。原生运行于 Scripting，具备 LocalDNS 风格的流光毛玻璃 Web 控制台（支持全屏 WebViewController/Safari/局域网）、OpenAI / Claude / Responses 多协议、36 款针对性提示词预设与 Astra 通用执行策略、多账号优先级故障转移与熔断、AES-256 本地加密存储及原生 iOS 控制台。 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | 台风路径 | 2.3.1 | 实时台风路径与多机构预报路径地图（数据源: 四创科技）；大号小组件地图需高德 Web服务 Key，可在小组件参数或主程序「更多」中填写 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
-| 寒霜注入工具 | 1.2.9 | 本地提示词注入与网关代理工具（Scripting 版）：内置完整 WebUI、人物卡管理、提示词库与寒霜预设模板。 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
+| 寒霜注入工具 | 1.2.10 | 本地提示词注入与网关代理工具（Scripting 版）：内置完整 WebUI、人物卡管理、提示词库与寒霜预设模板。 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | 网络收音机 | 1.0.1 | 基于 net-redio 的网络收音机：收录全球上千家公开流媒体电台，支持黑胶唱片旋转、电平示波器、主题调色板与后台锁屏播控。 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | 音乐大合集 | 1.2.0 | 多源聚合音乐播放器，支持在线/离线播放与下载管理 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
 | 黃豆短劇 | 1.2.0 | 浏览、搜索与收藏黃豆短劇内容，支持播放历史和剧集播放。 | [ckldy/scripting-scripts](https://github.com/ckldy/scripting-scripts) | 1 | tree |
@@ -139,8 +139,13 @@
 | 国网电费 | 1.0.7 | 网上国网余额、用电和阶梯小组件。只在本机直连国网接口，不经过任何第三方服务器。 | [YePiXpert/scripting-scripts](https://github.com/YePiXpert/scripting-scripts) | 0 | tree |
 | DeepSeek 用量 | 1.3.0 | — | [youniube/scripting-deepseek-widget](https://github.com/youniube/scripting-deepseek-widget) | 0 | tree |
 | AWS EC2 流量监控 | 1.1.2 | 仅查询 AWS EC2 的 CloudWatch NetworkOut 月度用量；不启动、停止、重启或修改任何 AWS 资源。 | [ZTTYBB/AWSEC2Monitor](https://github.com/ZTTYBB/AWSEC2Monitor) | 0 | tree |
-| 阿里云 CDT 监控 | 1.6.5 | 阿里云 CDT 用量、账单与 ECS 状态只读看板；不连接或控制 VPS，也不执行 ECS 开机、关机或重启。 | [ZTTYBB/scripting-aliyun-cdt](https://github.com/ZTTYBB/scripting-aliyun-cdt) | 0 | tree |
+| 阿里云 CDT 监控 | 1.7.0 | 阿里云 CDT 流量、ECS 状态、每日用量趋势与 BSS 账单看板（VPS 托管纯只读版）。 | [ZTTYBB/scripting-aliyun-cdt](https://github.com/ZTTYBB/scripting-aliyun-cdt) | 0 | tree |
 
 ## 清理记录
 
-本次没有需要清理的内容。
+| 时间 | 类型 | 对象 | 原因 |
+|---|---|---|---|
+| 2026-11-28T07:28:20+00:00 | file | scripts-store/Maqiaogongmin/Scripting/releases/nba-glass-v0.5.1/NBA-Glass.zip | 已不在任何有效项目中 |
+| 2026-11-28T07:28:20+00:00 | file | scripts-store/ZTTYBB/scripting-aliyun-cdt/projects/scripting-aliyun-cdt/bill_queries.ts | 已不在任何有效项目中 |
+| 2026-11-28T07:28:20+00:00 | file | scripts-store/ZTTYBB/scripting-aliyun-cdt/projects/scripting-aliyun-cdt/medium_widget.tsx | 已不在任何有效项目中 |
+| 2026-11-28T07:28:20+00:00 | file | scripts-store/ZTTYBB/scripting-aliyun-cdt/projects/scripting-aliyun-cdt/monitor_runtime.ts | 已不在任何有效项目中 |

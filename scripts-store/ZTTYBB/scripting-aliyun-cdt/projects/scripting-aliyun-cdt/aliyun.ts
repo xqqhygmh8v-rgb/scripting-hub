@@ -3,8 +3,6 @@
  * 专为 iOS Scripting 环境设计，无需安装任何 npm 包或外部 SDK
  */
 import { AppConfig, DEFAULT_CONFIG } from "./config"
-import { isBillQueryAvailable, queryAccountBillPages, recentBillingDates } from "./bill_queries"
-import { aliyunHttpError, bssEndpoint, chinaMonthKey, normalizeEcsStatus, usagePercentage, withRequestTimeout } from "./monitor_runtime"
 
 // ==================== 1. 纯 TS HMAC-SHA1 算法实现 ====================
 
@@ -174,22 +172,37 @@ export async function aliyunRequest<T = any>(
   const requestUrl = `https://${options.domain}/`
   const bodyString = `${canonicalizedQueryString}&Signature=${percentEncode(signature)}`
 
-  return withRequestTimeout(async signal => {
-    const response = method === "GET"
-      ? await fetch(`${requestUrl}?${bodyString}`, { signal })
-      : await fetch(requestUrl, {
+  let response: Response
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15000)
+  try {
+    if (method === "GET") {
+      response = await fetch(`${requestUrl}?${bodyString}`, { signal: controller.signal })
+    } else {
+      response = await fetch(requestUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded"
-        },
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: bodyString,
-        signal
+        signal: controller.signal
       })
-    if (!response.ok) {
-      throw aliyunHttpError(options.action, response.status, await response.text())
     }
-    return (await response.json()) as T
-  }, options.action)
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error(`Aliyun API [${options.action}] timed out after 15000ms`)
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Aliyun API [${options.action}] Error (${response.status}): ${errorText}`)
+  }
+
+  const payload = await response.json() as T & { Success?: boolean; Code?: string; Message?: string }
+  if (payload && typeof payload === "object" && payload.Success === false) {
+    throw new Error(`Aliyun API [${options.action}] failed: ${payload.Code || "BusinessError"} ${payload.Message || ""}`.trim())
+  }
+  return payload
 }
 
 // ==================== 3. 业务数据模型与核心 API ====================
@@ -202,148 +215,6 @@ export interface CDTTrafficResult {
   percentage: number
   statusLevel: "normal" | "warning" | "danger"
   updatedAt: Date
-  trafficDiagnostics?: CDTTrafficDiagnostics
-}
-
-/**
- * Raw rows returned by ListCdtInternetTraffic.
- *
- * The two nested detail fields are intentionally kept as unknown: Alibaba's
- * response shape varies by API revision and account, but diagnostics must not
- * discard them or print credentials while we verify the actual payload.
- */
-export interface CDTTrafficDetail {
-  Traffic?: number | string
-  Product?: string
-  BusinessRegionId?: string
-  ISPType?: string
-  ProductTrafficDetails?: unknown
-  TrafficTierDetails?: unknown
-}
-
-export type CDTTrafficBucket = "mainland" | "nonMainland" | "unknown"
-
-export interface CDTTrafficGroup {
-  bucket: CDTTrafficBucket
-  businessRegionId?: string
-  ispType?: string
-  totalBytes: number
-  totalGB: number
-  itemCount: number
-}
-
-export interface CDTTrafficBucketSummary {
-  bucket: CDTTrafficBucket
-  totalBytes: number
-  totalGB: number
-  itemCount: number
-}
-
-export interface CDTTrafficDiagnostics {
-  buckets: Record<CDTTrafficBucket, CDTTrafficBucketSummary>
-  groups: CDTTrafficGroup[]
-}
-
-/**
- * Explicit mapping for the BusinessRegionId values used by CDT.
- *
- * Do not replace this with a `cn-*` prefix check: Hong Kong is represented
- * by `cn-hongkong` but is not mainland China for the quota buckets.
- */
-export const CDT_MAINLAND_BUSINESS_REGION_IDS = [
-  "cn-beijing",
-  "cn-changsha",
-  "cn-chengdu",
-  "cn-dalian",
-  "cn-fuzhou",
-  "cn-guangzhou",
-  "cn-hangzhou",
-  "cn-heyuan",
-  "cn-huhehaote",
-  "cn-jinan",
-  "cn-nanjing",
-  "cn-qingdao",
-  "cn-shanghai",
-  "cn-shenzhen",
-  "cn-wuhan",
-  "cn-wulanchabu",
-  "cn-xian",
-  "cn-zhangjiakou",
-  "cn-zhengzhou"
-] as const
-
-/** Confirmed from the account's returned `BusinessRegionId` in phase 1. */
-export const CDT_NON_MAINLAND_BUSINESS_REGION_IDS = ["cn-hongkong"] as const
-
-const mainlandBusinessRegionIds = new Set<string>(CDT_MAINLAND_BUSINESS_REGION_IDS)
-const nonMainlandBusinessRegionIds = new Set<string>(CDT_NON_MAINLAND_BUSINESS_REGION_IDS)
-
-function trafficBytes(value: unknown): number {
-  const parsed = typeof value === "number" ? value : Number(value)
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
-}
-
-function diagnosticField(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : undefined
-}
-
-/**
- * Map only explicitly verified BusinessRegionId values.
- * Unknown provider values remain unknown rather than being inferred by prefix.
- */
-export function classifyCDTTrafficBucket(value: unknown): CDTTrafficBucket {
-  const normalized = diagnosticField(value)?.toLowerCase()
-  if (!normalized) return "unknown"
-  if (mainlandBusinessRegionIds.has(normalized)) return "mainland"
-  if (nonMainlandBusinessRegionIds.has(normalized)) return "nonMainland"
-  return "unknown"
-}
-
-export function buildCDTTrafficDiagnostics(details: CDTTrafficDetail[]): CDTTrafficDiagnostics {
-  const buckets: Record<CDTTrafficBucket, CDTTrafficBucketSummary> = {
-    mainland: { bucket: "mainland", totalBytes: 0, totalGB: 0, itemCount: 0 },
-    nonMainland: { bucket: "nonMainland", totalBytes: 0, totalGB: 0, itemCount: 0 },
-    unknown: { bucket: "unknown", totalBytes: 0, totalGB: 0, itemCount: 0 }
-  }
-  const grouped = new Map<string, CDTTrafficGroup>()
-
-  for (const detail of details) {
-    const totalBytes = trafficBytes(detail?.Traffic)
-    const businessRegionId = diagnosticField(detail?.BusinessRegionId)
-    const ispType = diagnosticField(detail?.ISPType)
-    const bucket = classifyCDTTrafficBucket(businessRegionId)
-    const summary = buckets[bucket]
-    summary.totalBytes += totalBytes
-    summary.itemCount += 1
-
-    const key = `${bucket}\u0000${businessRegionId || ""}\u0000${ispType || ""}`
-    const existing = grouped.get(key)
-    if (existing) {
-      existing.totalBytes += totalBytes
-      existing.itemCount += 1
-    } else {
-      grouped.set(key, {
-        bucket,
-        businessRegionId,
-        ispType,
-        totalBytes,
-        totalGB: 0,
-        itemCount: 1
-      })
-    }
-  }
-
-  for (const summary of Object.values(buckets)) {
-    summary.totalGB = Number((summary.totalBytes / 1024 ** 3).toFixed(2))
-  }
-  const groups = Array.from(grouped.values()).map(group => ({
-    ...group,
-    totalGB: Number((group.totalBytes / 1024 ** 3).toFixed(2))
-  }))
-
-  return { buckets, groups }
 }
 
 export type ECSStatus = "Running" | "Stopped" | "Starting" | "Stopping" | "Unknown"
@@ -351,6 +222,7 @@ export type ECSStatus = "Running" | "Stopped" | "Starting" | "Stopping" | "Unkno
 export interface ECSInstanceInfo {
   instanceId: string
   status: ECSStatus
+  stoppedMode?: string
   publicIp?: string
   instanceName?: string
 }
@@ -367,14 +239,12 @@ export interface DailyExpenseItem {
   amount: string
   isToday?: boolean
   settled?: boolean
+  available?: boolean
 }
 
 export interface MonthlyBillInfo {
   billingCycle: string
   paymentAmount: string
-  hasRecords?: boolean
-  // Optional so snapshots saved before this metadata was introduced still render safely.
-  paymentScope?: "monitoredProducts" | "allProducts"
   outstandingAmount: string
   currency: string
   ecsAmount: string
@@ -389,6 +259,7 @@ type ECSIpValue = string | string[] | undefined
 interface ECSInstanceRecord {
   InstanceId: string
   Status: string
+  StoppedMode?: string
   InstanceName?: string
   PublicIpAddress?: { IpAddress?: ECSIpValue }
   EipAddress?: { IpAddress?: ECSIpValue }
@@ -421,6 +292,48 @@ function getInstancePublicIp(instance?: ECSInstanceRecord): string | undefined {
     || firstIp(instance?.PublicIpAddresses)
 }
 
+async function queryAccountBillPages(
+  config: AppConfig,
+  params: Record<string, string | number | boolean>
+): Promise<{ available: boolean; items: any[] }> {
+  const pageSize = 300
+  const maxPages = 100
+  const items: any[] = []
+  let available = false
+
+  for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
+    const result = await aliyunRequest<{
+      Success?: boolean
+      Message?: string
+      Data?: {
+        TotalCount?: number
+        Items?: { TotalCount?: number; Item?: Array<Record<string, unknown>> }
+      }
+    }>({
+      domain: "business.aliyuncs.com",
+      action: "QueryAccountBill",
+      version: "2017-12-14",
+      method: "POST",
+      params: { ...params, PageNum: pageNum, PageSize: pageSize }
+    }, config)
+
+    if (result?.Success === false) throw new Error(result.Message || "QueryAccountBill failed")
+    if (!result?.Data) break
+    available = true
+
+    const pageItems = result.Data.Items?.Item ?? []
+    items.push(...pageItems)
+    const totalCount = Number(result.Data.TotalCount ?? result.Data.Items?.TotalCount)
+    if (Number.isFinite(totalCount) && totalCount > maxPages * pageSize) {
+      throw new Error(`QueryAccountBill exceeds the ${maxPages * pageSize}-item safety limit`)
+    }
+    if (pageItems.length < pageSize || (Number.isFinite(totalCount) && totalCount > 0 && items.length >= totalCount)) break
+    if (pageNum === maxPages) throw new Error(`QueryAccountBill exceeds the ${maxPages}-page safety limit`)
+  }
+
+  return { available, items }
+}
+
 export class AliyunService {
   private config: AppConfig
 
@@ -433,7 +346,7 @@ export class AliyunService {
    */
   async getCDTTraffic(): Promise<CDTTrafficResult> {
     const data = await aliyunRequest<{
-      TrafficDetails?: CDTTrafficDetail[]
+      TrafficDetails?: Array<{ Traffic?: number; Product?: string }>
     }>(
       {
         domain: "cdt.aliyuncs.com",
@@ -445,18 +358,16 @@ export class AliyunService {
     )
 
     const details = data.TrafficDetails || []
-    const trafficDiagnostics = buildCDTTrafficDiagnostics(details)
-    const totalBytes = details.reduce((sum, item) => sum + trafficBytes(item.Traffic), 0)
+    const totalBytes = details.reduce((sum, item) => sum + (item.Traffic || 0), 0)
     const totalGB = Number((totalBytes / 1024 ** 3).toFixed(2))
-    const thresholdGB = this.config.trafficThresholdGB > 0 ? this.config.trafficThresholdGB : DEFAULT_CONFIG.trafficThresholdGB
+    const thresholdGB = this.config.trafficThresholdGB
     const remainingGB = Math.max(0, Number((thresholdGB - totalGB).toFixed(2)))
-    const percentage = usagePercentage(totalGB, thresholdGB)
+    const percentage = Math.min(100, Number(((totalGB / thresholdGB) * 100).toFixed(1)))
 
-    const cutoffReferenceGB = this.config.vpsCutoffReferenceGB > 0 ? this.config.vpsCutoffReferenceGB : DEFAULT_CONFIG.vpsCutoffReferenceGB
     let statusLevel: "normal" | "warning" | "danger" = "normal"
-    if (totalGB >= cutoffReferenceGB) {
+    if (percentage >= 90 || totalGB >= thresholdGB) {
       statusLevel = "danger"
-    } else if (totalGB >= cutoffReferenceGB - 15) {
+    } else if (percentage >= 70) {
       statusLevel = "warning"
     }
 
@@ -467,8 +378,7 @@ export class AliyunService {
       remainingGB,
       percentage,
       statusLevel,
-      updatedAt: new Date(),
-      trafficDiagnostics
+      updatedAt: new Date()
     }
   }
 
@@ -505,13 +415,16 @@ export class AliyunService {
 
     return {
       instanceId: instance.InstanceId,
-      status: normalizeEcsStatus(instance.Status) as ECSStatus,
+      status: (instance.Status as ECSStatus) || "Unknown",
+      stoppedMode: instance.StoppedMode,
       publicIp: getInstancePublicIp(instance),
       instanceName: instance.InstanceName
     }
   }
 
-  /** 获取账户可用余额 (未授权时返回 null) */
+  /**
+   * 7. 获取账户可用余额 (支持优雅降级，未授权返回 null)
+   */
   async getAccountBalance(): Promise<AccountBalanceInfo | null> {
     try {
       const data = await aliyunRequest<{
@@ -523,7 +436,7 @@ export class AliyunService {
         }
       }>(
         {
-          domain: bssEndpoint(this.config),
+          domain: "business.aliyuncs.com",
           action: "QueryAccountBalance",
           version: "2017-12-14",
           method: "POST"
@@ -531,12 +444,12 @@ export class AliyunService {
         this.config
       )
       if (!data?.Data) return null
-      const availableAmount = parseFloat(data.Data.AvailableAmount || "0")
-      const cash = parseFloat(data.Data.AvailableCashAmount || "0")
+      const cash = Number(data.Data.AvailableCashAmount || 0)
+      const available = Number(data.Data.AvailableAmount || 0)
       let status: "sufficient" | "low" | "arrears" = "sufficient"
-      if (availableAmount < 0) {
+      if (available <= 0) {
         status = "arrears"
-      } else if (cash < 10) {
+      } else if (cash < 10 && available < 10) {
         status = "low"
       }
       return {
@@ -551,12 +464,13 @@ export class AliyunService {
   }
 
   /**
-   * 8. 获取当月账单查询结果 (数据可能延迟；未授权返回 null)
+   * 8. 获取当月实时累计消费账单 (支持优雅降级，未授权返回 null)
    */
   async getMonthlyBill(): Promise<MonthlyBillInfo | null> {
     try {
       const now = new Date()
-      const cycle = chinaMonthKey(now)
+      const currentDay = now.getDate()
+      const cycle = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
 
       // 1. 优先调用 QueryBillOverview（官方控制台账单总览对齐，按产品维度直接汇总，确保 ECS/EIP 精确识别）
       let items: Array<{
@@ -569,8 +483,8 @@ export class AliyunService {
         OutstandingAmount?: number
         Currency?: string
       }> = []
-      let available = false
 
+      let billDataAvailable = false
       try {
         const overviewData = await aliyunRequest<{
           Data?: {
@@ -580,7 +494,7 @@ export class AliyunService {
           }
         }>(
           {
-            domain: bssEndpoint(this.config),
+            domain: "business.aliyuncs.com",
             action: "QueryBillOverview",
             version: "2017-12-14",
             method: "POST",
@@ -590,41 +504,32 @@ export class AliyunService {
           },
           this.config
         )
-        if (isBillQueryAvailable(overviewData) && overviewData.Data!.Items!.Item!.length > 0) {
-          items = overviewData.Data!.Items!.Item!
-          available = true
+        if (overviewData?.Data) billDataAvailable = true
+        if (overviewData?.Data?.Items?.Item && overviewData.Data.Items.Item.length > 0) {
+          items = overviewData.Data.Items.Item
         }
       } catch {}
 
-      // 2. 总览为空时仍核对账户账单；仅完整账户空账单可确认为零金额。
-      if (!available) {
-        const accountBillData = await queryAccountBillPages(
-          params => aliyunRequest(
-            {
-              domain: bssEndpoint(this.config),
-              action: "QueryAccountBill",
-              version: "2017-12-14",
-              method: "POST",
-              params
-            },
-            this.config
-          ),
-          {
+      // QueryBillOverview 无产品明细时回退到账户账单，并读取全部分页。
+      if (items.length === 0) {
+        try {
+          const accountBillData = await queryAccountBillPages(this.config, {
             BillingCycle: cycle,
             IsGroupByProduct: true
-          }
-        )
-        available = accountBillData.available
-        items = accountBillData.items
+          })
+          billDataAvailable ||= accountBillData.available
+          items = accountBillData.items
+        } catch {}
       }
 
-      if (!available) return null
+      if (!billDataAvailable) {
+        return null
+      }
 
       let allProductsEffective = 0
       let ecsTotal = 0
       let eipTotal = 0
       let cdtTotal = 0
-      let hasInfrastructureItems = false
       let outstanding = 0
       let currency = "CNY"
 
@@ -633,11 +538,10 @@ export class AliyunService {
         const name = String(it.ProductName || "")
         const pay = Number(it.PaymentAmount || 0)
         const gross = Number(it.PretaxGrossAmount || 0)
-        // 关键：必须优先取 PretaxAmount（实际应付金额：已扣除抢占式竞价折扣、优惠券，如抢占式实例单日仅 0.13 元而非原价 0.94 元）
         let effective = 0
-        if (it.PretaxAmount !== undefined && it.PretaxAmount !== null && it.PretaxAmount !== "") {
+        if (it.PretaxAmount != null) {
           effective = Number(it.PretaxAmount) || 0
-        } else if (it.PaymentAmount !== undefined && it.PaymentAmount !== null && it.PaymentAmount !== "") {
+        } else if (it.PaymentAmount != null) {
           effective = Number(it.PaymentAmount) || 0
         } else {
           effective = gross
@@ -652,7 +556,6 @@ export class AliyunService {
         const isEip = code === "eip" || code === "cbwp" || code.includes("eip") || code.includes("cbwp") || name.includes("弹性公网") || name.includes("EIP") || name.includes("公网IP") || name.includes("共享带宽")
         const isCdt = code === "cdt" || code.includes("cdt") || name.includes("云数据传输") || name.includes("CDT")
 
-        if (isEcs || isEip || isCdt) hasInfrastructureItems = true
         if (isEcs) {
           ecsTotal += effective
         } else if (isEip) {
@@ -662,47 +565,39 @@ export class AliyunService {
         }
       }
 
-      // 保留接口返回的零金额；仅在没有可分类产品时使用全产品合计。
-      const infrastructureTotal = ecsTotal + eipTotal + cdtTotal
-      const finalPayment = hasInfrastructureItems
-        ? infrastructureTotal
-        : allProductsEffective
+      const finalPayment = allProductsEffective
 
-      const formatDaily = (amt: number): string => {
-        if (amt <= 0) return "0.00"
-        if (amt < 0.01) return amt.toFixed(3)
-        return amt.toFixed(2)
-      }
+      const formatDaily = (amt: number): string => amt.toFixed(2)
 
-      // 查询最近日期的每日账单明细；月内数据可能延迟。
+      // 真实读取最近各日期的官方实际账单（QueryAccountBill + DAILY，真实 API 读取，绝非推算）
       const ecsDailyList: DailyExpenseItem[] = []
       const eipDailyList: DailyExpenseItem[] = []
-      const dateQueries = recentBillingDates(now)
+      const daysCount = Math.min(7, currentDay)
+
+      const dateQueries: Array<{ dateStr: string; displayDate: string; isToday: boolean }> = []
+      for (let i = 0; i < daysCount; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth(), currentDay - i)
+        const yyyy = d.getFullYear()
+        const mm = String(d.getMonth() + 1).padStart(2, "0")
+        const dd = String(d.getDate()).padStart(2, "0")
+        dateQueries.push({
+          dateStr: `${yyyy}-${mm}-${dd}`,
+          displayDate: `${mm}-${dd}`,
+          isToday: i === 0
+        })
+      }
 
       try {
         const dailyResults = await Promise.all(
           dateQueries.map(async q => {
             try {
-              const dayRes = await queryAccountBillPages(
-                params => aliyunRequest(
-                  {
-                    domain: bssEndpoint(this.config),
-                    action: "QueryAccountBill",
-                    version: "2017-12-14",
-                    method: "POST",
-                    params
-                  },
-                  this.config
-                ),
-                {
-                  BillingCycle: q.billingCycle,
-                  Granularity: "DAILY",
-                  BillingDate: q.dateStr,
-                  IsGroupByProduct: true
-                }
-              )
-              if (!dayRes.available) throw new Error("Daily account bill is unavailable")
-              const dayItems = dayRes.items
+              const dayResult = await queryAccountBillPages(this.config, {
+                BillingCycle: cycle,
+                Granularity: "DAILY",
+                BillingDate: q.dateStr,
+                IsGroupByProduct: true
+              })
+              const dayItems = dayResult.items
               let dEcs = 0
               let dEip = 0
               for (const it of dayItems) {
@@ -710,11 +605,10 @@ export class AliyunService {
                 const n = String(it.ProductName || "")
                 const p = Number(it.PaymentAmount || 0)
                 const g = Number(it.PretaxGrossAmount || 0)
-                // 优先取 PretaxAmount（抢占式实例折扣后的真实应付金额）
                 let eff = 0
-                if (it.PretaxAmount !== undefined && it.PretaxAmount !== null && it.PretaxAmount !== "") {
+                if (it.PretaxAmount != null) {
                   eff = Number(it.PretaxAmount) || 0
-                } else if (it.PaymentAmount !== undefined && it.PaymentAmount !== null && it.PaymentAmount !== "") {
+                } else if (it.PaymentAmount != null) {
                   eff = p
                 } else {
                   eff = g
@@ -740,7 +634,8 @@ export class AliyunService {
                 isToday: q.isToday,
                 ecsAmount: formatDaily(dEcs),
                 eipAmount: formatDaily(dEip),
-                settled: dayItems.length > 0
+                settled: dayItems.length > 0,
+                available: dayResult.available
               }
             } catch {
               return {
@@ -748,28 +643,27 @@ export class AliyunService {
                 isToday: q.isToday,
                 ecsAmount: "0.00",
                 eipAmount: "0.00",
-                settled: false
+                settled: false,
+                available: false
               }
             }
           })
         )
 
         for (const r of dailyResults) {
-          ecsDailyList.push({ date: r.date, amount: r.ecsAmount, isToday: r.isToday, settled: r.settled })
-          eipDailyList.push({ date: r.date, amount: r.eipAmount, isToday: r.isToday, settled: r.settled })
+          ecsDailyList.push({ date: r.date, amount: r.ecsAmount, isToday: r.isToday, settled: r.settled, available: r.available })
+          eipDailyList.push({ date: r.date, amount: r.eipAmount, isToday: r.isToday, settled: r.settled, available: r.available })
         }
       } catch {
         for (const q of dateQueries) {
-          ecsDailyList.push({ date: q.displayDate, amount: "0.00", isToday: q.isToday, settled: false })
-          eipDailyList.push({ date: q.displayDate, amount: "0.00", isToday: q.isToday, settled: false })
+          ecsDailyList.push({ date: q.displayDate, amount: "0.00", isToday: q.isToday, settled: false, available: false })
+          eipDailyList.push({ date: q.displayDate, amount: "0.00", isToday: q.isToday, settled: false, available: false })
         }
       }
 
       return {
         billingCycle: cycle,
         paymentAmount: finalPayment.toFixed(2),
-        hasRecords: items.length > 0,
-        paymentScope: hasInfrastructureItems ? "monitoredProducts" : "allProducts",
         outstandingAmount: outstanding.toFixed(2),
         currency,
         ecsAmount: ecsTotal.toFixed(2),

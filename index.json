@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-11-27T21:00:40+00:00",
+  "updated_at": "2026-11-28T07:28:20+00:00",
   "count": 26,
   "project_count": 125,
   "repos": [
@@ -1073,7 +1073,7 @@
         },
         {
           "name": "寒霜注入工具",
-          "version": "1.2.9",
+          "version": "1.2.10",
           "description": "本地提示词注入与网关代理工具（Scripting 版）：内置完整 WebUI、人物卡管理、提示词库与寒霜预设模板。",
           "dir": "scripts-store/ckldy/scripting-scripts/projects/寒霜注入工具 2",
           "entry": "index.tsx",
@@ -1313,17 +1313,17 @@
       "projects": [
         {
           "name": "NBA赛程",
-          "version": "0.5.1",
-          "description": "全赛季 NBA 赛程、未来三个比赛日组件及虎扑本场球员评分与评论。",
+          "version": "0.6.2",
+          "description": "NBA 赛程、赛果、东西部排行、球员资料与虎扑评分，支持桌面组件。",
           "dir": "scripts-store/Maqiaogongmin/Scripting/projects/scripts_NBA-Glass",
           "entry": "index.tsx",
-          "files": 13,
+          "files": 17,
           "icon": "basketball.fill",
           "source": "tree"
         },
         {
           "name": "豆瓣书影音",
-          "version": "0.3.0",
+          "version": "0.3.5",
           "description": "查豆瓣影视、图书和音乐，浏览评论，把喜欢的海报或封面放上主屏幕。",
           "dir": "scripts-store/Maqiaogongmin/Scripting/projects/scripts_Douban-Media",
           "entry": "index.tsx",
@@ -1503,8 +1503,8 @@
       "projects": [
         {
           "name": "阿里云 CDT 监控",
-          "version": "1.6.5",
-          "description": "阿里云 CDT 用量、账单与 ECS 状态只读看板；不连接或控制 VPS，也不执行 ECS 开机、关机或重启。",
+          "version": "1.7.0",
+          "description": "阿里云 CDT 流量、ECS 状态、每日用量趋势与 BSS 账单看板（VPS 托管纯只读版）。",
           "dir": "scripts-store/ZTTYBB/scripting-aliyun-cdt/projects/scripting-aliyun-cdt",
           "entry": "index.tsx",
           "files": 12,
